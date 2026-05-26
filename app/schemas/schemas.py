@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from typing import List, Optional, Any
 from pydantic import BaseModel, Field, EmailStr
 import uuid
@@ -443,3 +444,106 @@ class FileUploadResponse(BaseModel):
     file_size: Optional[int] = None
     file_type: Optional[str] = None
     message: Optional[str] = None
+
+
+# ─── Billing Schemas ───────────────────────────────────────────────────────────
+
+class BalanceResponse(BaseModel):
+    source: str  # "access_code" | "purchased" | "none"
+    balance: Decimal
+    access_code: Optional[str] = None
+    issued_by: Optional[str] = None
+
+
+class RedeemCodeRequest(BaseModel):
+    code: str = Field(..., min_length=1)
+
+
+class RedeemCodeResponse(BaseModel):
+    success: bool
+    credits_available: Decimal
+    code: str
+    issued_by: str
+    message: str
+
+
+class AddCreditsRequest(BaseModel):
+    amount_usd: Decimal = Field(..., gt=0, description="Amount in USD to convert to credits")
+
+
+class AddCreditsResponse(BaseModel):
+    success: bool
+    credits_added: Decimal
+    new_balance: Decimal
+    message: str
+
+
+class UsageRecordResponse(BaseModel):
+    id: UUID
+    operation_type: str
+    input_tokens: int
+    output_tokens: int
+    raw_cost_usd: Decimal
+    platform_fee_usd: Decimal
+    total_cost_usd: Decimal
+    credits_charged: Decimal
+    funded_by: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class UsageHistoryResponse(BaseModel):
+    records: List[UsageRecordResponse]
+    total: int
+    pagination: PaginationInfo
+
+
+class PricingConfigResponse(BaseModel):
+    id: UUID
+    operation_type: str
+    cost_per_1k_input_tokens: Decimal
+    cost_per_1k_output_tokens: Decimal
+    platform_fee_multiplier: Decimal
+    minimum_charge_credits: Decimal
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class PricingConfigUpdate(BaseModel):
+    cost_per_1k_input_tokens: Optional[Decimal] = None
+    cost_per_1k_output_tokens: Optional[Decimal] = None
+    platform_fee_multiplier: Optional[Decimal] = Field(None, ge=1.0)
+    minimum_charge_credits: Optional[Decimal] = None
+
+
+class AccessCodeCreateRequest(BaseModel):
+    issued_by: str = Field(..., min_length=1)
+    total_credits: Decimal = Field(..., gt=0)
+    max_redemptions: int = Field(1, ge=1)
+    expires_at: Optional[datetime] = None
+    code: Optional[str] = None  # Auto-generated when omitted
+
+
+class AccessCodeResponse(BaseModel):
+    id: UUID
+    code: str
+    total_credits: Decimal
+    remaining_credits: Decimal
+    issued_by: str
+    max_redemptions: int
+    redemptions_used: int
+    expires_at: Optional[datetime] = None
+    is_active: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AccessCodesListResponse(BaseModel):
+    codes: List[AccessCodeResponse]
+    total: int

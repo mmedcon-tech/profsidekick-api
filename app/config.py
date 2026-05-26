@@ -64,6 +64,18 @@ class Settings(BaseSettings):
     # Email Verification & Approval
     professor_approval_emails: str = Field("", env="PROFESSOR_APPROVAL_EMAILS")
     frontend_url: str = Field("http://localhost:3000", env="FRONTEND_URL")
+
+    # Billing — 1 credit = $0.01 USD → 100 credits per USD
+    credits_per_usd: str = Field("100", env="CREDITS_PER_USD")
+    # Admin secret for admin-only billing endpoints (set a strong value in production)
+    admin_secret: str = Field("", env="ADMIN_SECRET")
+
+    # Wix payment webhook
+    # WIX_WEBHOOK_SECRET — shared secret set as X-Webhook-Secret header in Wix Automation
+    wix_webhook_secret: str = Field("", env="WIX_WEBHOOK_SECRET")
+    # WIX_PRODUCT_CREDIT_MAP — JSON mapping Wix product IDs to credit amounts
+    # Example: {"abc123": 500, "def456": 1000, "ghi789": 5000}
+    wix_product_credit_map: str = Field("{}", env="WIX_PRODUCT_CREDIT_MAP")
     
     @field_validator('allowed_file_types')
     @classmethod

@@ -7,14 +7,16 @@ from fastapi.responses import JSONResponse
 import uvicorn
 
 from app.config import settings
-from app.database.connection import close_redis
+from app.database.connection import close_redis, create_tables
 from app.api.sessions.api import router as sessions_router
 from app.api.auth.api import router as auth_router
 from app.api.users.api import router as users_router
 from app.api.prompts.api import router as prompts_router
 from app.api.courses.api import router as courses_router
 from app.api.course_materials.api import router as course_materials_router
-# from app.api.auth import router as users_router
+from app.api.billing.api import router as billing_router
+from app.api.admin.billing_api import router as admin_billing_router
+from app.api.webhooks.wix import router as wix_webhook_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -23,8 +25,8 @@ async def lifespan(app: FastAPI):
     print("Starting ProfSidekick API...")
     
     # Create database tables
-    # create_tables()
-    # print("Database tables created/verified")
+    create_tables()
+    print("Database tables created/verified")
     
     # Ensure directories exist
     os.makedirs(settings.upload_dir, exist_ok=True)
@@ -146,7 +148,9 @@ app.include_router(users_router)
 app.include_router(prompts_router)
 app.include_router(courses_router)
 app.include_router(course_materials_router)
-# app.include_router(users_router)
+app.include_router(billing_router)
+app.include_router(admin_billing_router)
+app.include_router(wix_webhook_router)
 
 # Add middleware for request logging (optional)
 @app.middleware("http")

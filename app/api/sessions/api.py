@@ -92,7 +92,7 @@ async def create_session(
 
         # Vision-based slide processing
         logger.info(f"⚙️ Processing slides with Vision API")
-        slides_details = await openai_service.process_slides_with_vision(slide_images, images_paths, session_id, session_details_dict.get('visionInstructions'), session_details_dict.get('visionModel'))
+        slides_details = await openai_service.process_slides_with_vision(slide_images, images_paths, session_id, session_details_dict.get('visionInstructions'), session_details_dict.get('visionModel'), user_id=current_user.id, db=db)
         logger.info(f"✅ Slides processed with Vision API")
 
         # Create session with slides
@@ -514,6 +514,7 @@ async def get_session_run(
 async def get_ephemeral_token(
     session_id: str,
     session_run_id: str,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -547,7 +548,7 @@ async def get_ephemeral_token(
                 detail="Session not found"
             )
 
-        token_data = await openai_service.generate_ephemeral_token(session_run.assistant_parameters, session.slidesDetails)
+        token_data = await openai_service.generate_ephemeral_token(session_run.assistant_parameters, session.slidesDetails, user_id=current_user.id, session_run_id=session_run.id, db=db)
         return EphemeralTokenResponse(client_secret=token_data["client_secret"])
         
     except Exception as e:
@@ -560,8 +561,8 @@ async def get_ephemeral_token(
 async def get_sessions(
     page: int = Query(1, ge=1, description="Page number for pagination"),
     limit: int = Query(20, ge=1, le=100, description="Number of sessions per page"),
-    session_status: Optional[str] = Query(None, regex="^(active|completed|draft)$", description="Filter by session status", alias="status"),
-    sort: str = Query("created_desc", regex="^(created_desc|created_asc|updated_desc|updated_asc)$", description="Sort order"),
+    session_status: Optional[str] = Query(None, pattern="^(active|completed|draft)$", description="Filter by session status", alias="status"),
+    sort: str = Query("created_desc", pattern="^(created_desc|created_asc|updated_desc|updated_asc)$", description="Sort order"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -678,7 +679,7 @@ async def update_slide_vision(
                     slide_image = Image.open(actual_file_path)
                 
                 # Process the slide with vision API
-                slide_details = await openai_service.process_slide_with_vision(slide_image, slide.visionInstructions, slide.visionModel)
+                slide_details = await openai_service.process_slide_with_vision(slide_image, slide.visionInstructions, slide.visionModel, user_id=current_user.id, db=db)
                 slide.content = slide_details.get('content')
                 slide.title = slide_details.get('title')
                 logger.info(f"Successfully updated slide vision for slide {slide_id}")
@@ -839,11 +840,13 @@ async def add_new_slide(
             vision_instructions = "You are a helpful assistant that can analyze the slide image and provide a detailed description of the content."
         
         slide_details = await openai_service.process_slide_with_vision(
-            slide_image_pil, 
-            vision_instructions, 
-            vision_model
+            slide_image_pil,
+            vision_instructions,
+            vision_model,
+            user_id=current_user.id,
+            db=db,
         )
-        
+
         # Create new slide object
         new_slide = {
             "id": new_slide_number,
@@ -1038,9 +1041,11 @@ async def replace_slide_image(
         slide_details = await openai_service.process_slide_with_vision(
             slide_image_pil,
             vision_instructions,
-            vision_model
+            vision_model,
+            user_id=current_user.id,
+            db=db,
         )
-        
+
         # Update slide
         target_slide.imagePath = image_path
         target_slide.thumbnailPath = thumbnail_path_url

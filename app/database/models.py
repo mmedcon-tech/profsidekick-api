@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from enum import Enum
-from sqlalchemy import Column, String, Integer, DateTime, Text, ForeignKey, Enum as SQLEnum, Boolean, BigInteger
+from sqlalchemy import Column, String, Integer, DateTime, Text, ForeignKey, Enum as SQLEnum, Boolean, BigInteger, Numeric
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from app.database.connection import Base
@@ -58,6 +58,9 @@ class User(Base):
     prompts = relationship("SavedPrompt", back_populates="user", cascade="all, delete-orphan")
     courses_created = relationship("Course", back_populates="user", cascade="all, delete-orphan")
     courses_enrolled = relationship("Course", secondary="course_students", back_populates="students")
+    credit_balance = relationship("CreditBalance", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    access_code_redemptions = relationship("AccessCodeRedemption", back_populates="user", cascade="all, delete-orphan")
+    usage_records = relationship("UsageRecord", back_populates="user", cascade="all, delete-orphan")
 
 class Course(Base):
     __tablename__ = "courses"
@@ -162,6 +165,7 @@ class SessionRun(Base):
     # Relationship
     session = relationship("Session", back_populates="session_runs")
     user = relationship("User", back_populates="session_runs")
+    usage_records = relationship("UsageRecord", back_populates="session_run")
 
 class SessionMaterial(Base):
     __tablename__ = "session_materials"
@@ -196,3 +200,96 @@ class SavedPrompt(Base):
     
     # Relationships
     user = relationship("User", back_populates="prompts")
+
+
+# ─── Billing Models ────────────────────────────────────────────────────────────
+
+class CreditBalance(Base):
+    __tablename__ = "credit_balances"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, unique=True)
+    balance_credits = Column(Numeric(precision=12, scale=6), nullable=False, default=0)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="credit_balance")
+
+
+class AccessCode(Base):
+    __tablename__ = "access_codes"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    code = Column(String(50), unique=True, nullable=False, index=True)
+    total_credits = Column(Numeric(precision=12, scale=6), nullable=False)
+    remaining_credits = Column(Numeric(precision=12, scale=6), nullable=False)
+    issued_by = Column(String(255), nullable=False)
+    max_redemptions = Column(Integer, nullable=False, default=1)
+    redemptions_used = Column(Integer, nullable=False, default=0)
+    expires_at = Column(DateTime, nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+    redemptions = relationship("AccessCodeRedemption", back_populates="access_code")
+    usage_records = relationship("UsageRecord", back_populates="access_code")
+
+
+class AccessCodeRedemption(Base):
+    __tablename__ = "access_code_redemptions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    access_code_id = Column(UUID(as_uuid=True), ForeignKey("access_codes.id"), nullable=False)
+    redeemed_at = Column(DateTime, default=datetime.utcnow)
+    # Credits remaining on the code at the moment of redemption
+    credits_at_redemption = Column(Numeric(precision=12, scale=6), nullable=False)
+
+    user = relationship("User", back_populates="access_code_redemptions")
+    access_code = relationship("AccessCode", back_populates="redemptions")
+
+
+class UsageRecord(Base):
+    __tablename__ = "usage_records"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    session_run_id = Column(UUID(as_uuid=True), ForeignKey("session_runs.id"), nullable=True)
+    operation_type = Column(String(50), nullable=False)
+    input_tokens = Column(Integer, nullable=False, default=0)
+    output_tokens = Column(Integer, nullable=False, default=0)
+    raw_cost_usd = Column(Numeric(precision=12, scale=6), nullable=False)
+    platform_fee_usd = Column(Numeric(precision=12, scale=6), nullable=False)
+    total_cost_usd = Column(Numeric(precision=12, scale=6), nullable=False)
+    credits_charged = Column(Numeric(precision=12, scale=6), nullable=False)
+    # "purchased" or "access_code"
+    funded_by = Column(String(20), nullable=False)
+    access_code_id = Column(UUID(as_uuid=True), ForeignKey("access_codes.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="usage_records")
+    session_run = relationship("SessionRun", back_populates="usage_records")
+    access_code = relationship("AccessCode", back_populates="usage_records")
+
+
+class PricingConfig(Base):
+    __tablename__ = "pricing_configs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    operation_type = Column(String(50), unique=True, nullable=False, index=True)
+    cost_per_1k_input_tokens = Column(Numeric(precision=12, scale=6), nullable=False, default=0)
+    cost_per_1k_output_tokens = Column(Numeric(precision=12, scale=6), nullable=False, default=0)
+    # Must be >= 1.0; enforced at service layer
+    platform_fee_multiplier = Column(Numeric(precision=5, scale=4), nullable=False, default=1)
+    minimum_charge_credits = Column(Numeric(precision=12, scale=6), nullable=False, default=0)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ProcessedWixOrder(Base):
+    """Idempotency guard — one row per Wix order ID that has been credited."""
+    __tablename__ = "processed_wix_orders"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    wix_order_id = Column(String(255), unique=True, nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    credits_added = Column(Numeric(precision=12, scale=6), nullable=False)
+    processed_at = Column(DateTime, default=datetime.utcnow)
