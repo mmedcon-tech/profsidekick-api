@@ -49,5 +49,8 @@ def get_db():
 
 # Create all tables
 def create_tables():
-    from app.database.models import Session, SessionRun, User
-    Base.metadata.create_all(bind=engine) 
+    from app.database.models import (  # noqa: F401 — imports register models with Base
+        User, Course, CourseStudent, CourseMaterial,
+        Session, SessionRun, SessionMaterial, SavedPrompt
+    )
+    Base.metadata.create_all(bind=engine)
