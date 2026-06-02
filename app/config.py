@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     # Email Verification & Approval
     professor_approval_emails: str = Field("", env="PROFESSOR_APPROVAL_EMAILS")
     frontend_url: str = Field("http://localhost:3000", env="FRONTEND_URL")
+    # Local dev: auto-verify and auto-approve on register (no SMTP required)
+    skip_email_verification: bool = Field(False, env="SKIP_EMAIL_VERIFICATION")
 
     # Billing — 1 credit = $0.01 USD → 100 credits per USD
     credits_per_usd: str = Field("100", env="CREDITS_PER_USD")
