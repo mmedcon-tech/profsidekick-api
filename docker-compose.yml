@@ -18,7 +18,7 @@ services:
       - DEBUG=true
       - SECRET_KEY=your-secret-key-change-in-production
       # CORS
-      - CORS_ORIGINS=http://localhost:3000,http://localhost:3001,https://profsidekick.vercel.app,https://profsidekick-frontend-3il7.vercel.app
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:3001,https://profsidekick.vercel.app,https://profsidekick-frontend-3il7.vercel.app,https://tahidi.mykeja.co.ke
     volumes:
       - ./uploads:/app/uploads
       - ./static:/app/static

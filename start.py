@@ -147,10 +147,12 @@ def main():
     
     # Build uvicorn command
     cmd = [
-        "python", "-m", "uvicorn", 
+        "python", "-m", "uvicorn",
         "app.main:app",
         "--host", "0.0.0.0",
-        "--port", str(port)
+        "--port", str(port),
+        "--proxy-headers",
+        "--forwarded-allow-ips=*"
     ]
     
     # Add debug logging if DEBUG env var is set
