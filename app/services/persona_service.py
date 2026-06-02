@@ -1,7 +1,6 @@
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -26,7 +25,9 @@ class PersonaService:
             detail=f"Unknown avatar id: {avatar_id}",
         )
 
-    def get_persona(self, db: Session, user: User) -> Optional[ProfessorPersona]:
+    def get_persona(
+        self, db: Session, user: User
+    ) -> Optional[ProfessorPersona]:
         return (
             db.query(ProfessorPersona)
             .filter(ProfessorPersona.user_id == user.id)
@@ -42,8 +43,12 @@ class PersonaService:
             "avatar": avatar,
             "preferences": persona.preferences or {},
             "refinedPrompt": persona.refined_prompt or "",
-            "createdAt": persona.created_at.isoformat() if persona.created_at else None,
-            "updatedAt": persona.updated_at.isoformat() if persona.updated_at else None,
+            "createdAt": (
+                persona.created_at.isoformat() if persona.created_at else None
+            ),
+            "updatedAt": (
+                persona.updated_at.isoformat() if persona.updated_at else None
+            ),
         }
 
     def upsert_persona(
@@ -85,10 +90,13 @@ class PersonaService:
         interaction = preferences.get("interactionLevel", "high")
         focus = preferences.get("subjectFocus", "conceptual understanding")
 
-        return f"""# Teaching Persona — {avatar["name"]}
+        name = avatar["name"]
+        desc = avatar["description"]
+        return f"""# Teaching Persona — {name}
 
 ## Identity
-You are {avatar["name"]}, an AI teaching assistant with this personality: {avatar["description"]}
+You are {name}, an AI teaching assistant.
+Personality: {desc}
 
 ## Teaching approach
 - Style: {teaching_style}
@@ -124,14 +132,16 @@ You are {avatar["name"]}, an AI teaching assistant with this personality: {avata
                         {
                             "role": "system",
                             "content": (
-                                "You refine teaching-assistant system prompts. "
-                                "Output only the final prompt text, no markdown fences."
+                                "You refine teaching-assistant prompts. "
+                                "Output only the final prompt text, "
+                                "no markdown fences."
                             ),
                         },
                         {
                             "role": "user",
                             "content": (
-                                f"Improve this teaching persona prompt for voice sessions:\n\n{refined}"
+                                "Improve this teaching persona prompt for "
+                                f"voice sessions:\n\n{refined}"
                             ),
                         },
                     ],
