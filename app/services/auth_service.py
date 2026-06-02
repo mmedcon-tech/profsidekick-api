@@ -119,22 +119,10 @@ class AuthService:
             is_approved=False
         )
         
-        if settings.skip_email_verification:
-            new_user.email_verified = True
-            new_user.is_approved = True
-            new_user.email_verification_token = None
-
         db.add(new_user)
         db.commit()
         db.refresh(new_user)
-
-        if settings.skip_email_verification:
-            return AuthResponse(
-                success=True,
-                message="Registration successful! You can log in now.",
-                user=self.user_to_response(new_user),
-            )
-
+        
         # Send verification email
         user_name = f"{new_user.first_name} {new_user.last_name}"
         email_sent = await email_service.send_verification_email(

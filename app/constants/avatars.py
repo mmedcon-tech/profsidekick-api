@@ -20,7 +20,7 @@ AVATARS = [
     {
         "id": "sage-sage",
         "name": "Prof. Chen",
-        "description": "Calm expert who uses analogies and Socratic questions.",
+        "description": "Calm expert; analogies and Socratic questions.",
         "voice": "sage",
         "imageUrl": "/images/avatars/sage.png",
         "accentColor": "#10B981",
@@ -28,7 +28,7 @@ AVATARS = [
     {
         "id": "director-verse",
         "name": "Dr. Okonkwo",
-        "description": "Direct and concise; focuses on clarity and outcomes.",
+        "description": "Direct and concise; clarity-focused.",
         "voice": "verse",
         "imageUrl": "/images/avatars/director.png",
         "accentColor": "#8B5CF6",
