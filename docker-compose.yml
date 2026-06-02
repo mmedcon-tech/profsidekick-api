@@ -31,9 +31,9 @@ services:
       - profsidekick-network
     restart: unless-stopped
 
-  # PostgreSQL Database
+  # PostgreSQL Database (pgvector/pgvector:pg16 — includes the vector extension for RAG)
   postgres:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg16
     container_name: profsidekick-postgres
     environment:
       - POSTGRES_DB=profsidekick
