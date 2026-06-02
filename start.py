@@ -30,11 +30,21 @@ def setup_database():
         print("📋 Creating tables from models...")
         result = subprocess.run(
             ["python", "-c", """
+from sqlalchemy import text
 from app.database.connection import engine, Base
-from app.database.models import User, Session, Course, SessionRun, SavedPrompt  # Import all models
+from app.database.models import User, Session, Course, SessionRun, SavedPrompt, SlideChunk, KnowledgeChunk
+print('Enabling pgvector extension...')
+with engine.connect() as conn:
+    conn.execute(text('CREATE EXTENSION IF NOT EXISTS vector'))
+    conn.commit()
 print('Creating all tables...')
 Base.metadata.create_all(bind=engine)
-print('All tables created successfully')
+print('Creating IVFFlat indexes for RAG...')
+with engine.connect() as conn:
+    conn.execute(text('CREATE INDEX IF NOT EXISTS ix_slide_chunks_embedding ON slide_chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)'))
+    conn.execute(text('CREATE INDEX IF NOT EXISTS ix_knowledge_chunks_embedding ON knowledge_chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)'))
+    conn.commit()
+print('All tables and indexes created successfully')
 """],
             capture_output=True,
             text=True,
