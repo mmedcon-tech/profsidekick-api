@@ -6,6 +6,20 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from app.database.connection import Base
 
+try:
+    from pgvector.sqlalchemy import Vector as _PgVector  # type: ignore
+    _VECTOR_TYPE = _PgVector(1536)
+except ImportError:  # pragma: no cover — pgvector not installed in this env
+    _VECTOR_TYPE = None  # type: ignore
+
+
+def _vector_column(**kwargs):
+    """Returns a Vector(1536) column when pgvector is available, else Text."""
+    if _VECTOR_TYPE is not None:
+        from pgvector.sqlalchemy import Vector  # type: ignore
+        return Column(Vector(1536), **kwargs)
+    return Column(Text, **kwargs)  # pragma: no cover
+
 
 class ProcessingStatus(str, Enum):
     PENDING = "pending"
@@ -147,6 +161,8 @@ class Session(Base):
     user = relationship("User", back_populates="sessions")
     course = relationship("Course", back_populates="sessions")
     session_materials = relationship("SessionMaterial", back_populates="session", cascade="all, delete-orphan")
+    slide_chunks = relationship("SlideChunk", back_populates="session", cascade="all, delete-orphan")
+    knowledge_chunks = relationship("KnowledgeChunk", back_populates="session", cascade="all, delete-orphan")
 class SessionRun(Base):
     __tablename__ = "session_runs"
     
@@ -293,3 +309,49 @@ class ProcessedWixOrder(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     credits_added = Column(Numeric(precision=12, scale=6), nullable=False)
     processed_at = Column(DateTime, default=datetime.utcnow)
+
+
+# ─── RAG Models ───────────────────────────────────────────────────────────────
+
+class SlideChunk(Base):
+    """
+    A text chunk extracted from a session's presentation slides and embedded
+    for vector similarity search (RAG pipeline).
+
+    Expected shape of a chunk: a contiguous block of slide text, ~400 tokens,
+    with 50-token overlap from the previous chunk on the same slide.
+    ``embedding`` stores the 1536-dimensional vector from
+    text-embedding-3-small.
+    """
+    __tablename__ = "slide_chunks"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id"), nullable=False, index=True)
+    slide_number = Column(Integer, nullable=False)
+    chunk_index = Column(Integer, nullable=False)
+    content = Column(Text, nullable=False)
+    # Vector(1536) when pgvector is available; falls back to Text for test envs
+    embedding = _vector_column(nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    session = relationship("Session", back_populates="slide_chunks")
+
+
+class KnowledgeChunk(Base):
+    """
+    A knowledge chunk captured from professor answers, post-session notes,
+    or supplementary content — stored alongside slide chunks for RAG retrieval.
+
+    ``source`` values: "professor_answer" | "slide" | "post_session_note"
+    """
+    __tablename__ = "knowledge_chunks"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id"), nullable=False, index=True)
+    source = Column(String(50), nullable=False)  # professor_answer | slide | post_session_note
+    content = Column(Text, nullable=False)
+    # Vector(1536) when pgvector is available; falls back to Text for test envs
+    embedding = _vector_column(nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    session = relationship("Session", back_populates="knowledge_chunks")

@@ -14,6 +14,7 @@ from app.database.models import Session, SessionRun, SessionRunStatus, User
 from app.schemas.schemas import SessionDetails, SlideData, PresentationData, AssistantParameters, SessionRunDetails, EphemeralTokenResponse, SessionUpdateDetails, SessionsListResponse, SessionRunsListResponse, SessionCreateRequest
 from app.services.file_processor import FileProcessor
 from app.services.openai_service import OpenAIService
+from app.services.rag_service import ingest_session_document, retrieve_context
 from app.services.session_service import SessionService
 from app.dependencies.auth import get_current_user
 from app.config import settings
@@ -106,6 +107,12 @@ async def create_session(
             slides_details,
         )
         logger.info(f"✅ Session created with ID: {session_id}")
+
+        # Trigger RAG ingestion (non-fatal — embeddings are optional)
+        try:
+            ingest_session_document(session_id, slides_details, db)
+        except Exception as rag_exc:  # noqa: BLE001
+            logger.warning("RAG ingestion failed for session %s — %s", session_id, rag_exc)
 
         # Format slides for response
         logger.info(f"📋 Formatting slides for response")
@@ -1129,3 +1136,37 @@ async def reorder_slides(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error reordering slides: {e}"
         )
+
+
+@router.get("/sessions/{session_id}/search-knowledge")
+async def search_knowledge(
+    session_id: str,
+    q: str = Query(..., description="Search query"),
+    top_k: int = Query(5, ge=1, le=20),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Search a session's knowledge base using cosine similarity over embedded slide chunks.
+    Returns the ``top_k`` most relevant text passages for the given query.
+    """
+    import uuid as _uuid
+
+    try:
+        session_uuid = _uuid.UUID(session_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid session_id format",
+        )
+
+    # Verify session belongs to current user
+    session = await session_service.get_session(db, session_id)
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session not found",
+        )
+
+    chunks = retrieve_context(session_uuid, q, top_k=top_k, db=db)
+    return {"chunks": chunks}
