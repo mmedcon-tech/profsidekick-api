@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import redis.asyncio as aioredis
@@ -51,6 +51,11 @@ def get_db():
 def create_tables():
     from app.database.models import (  # noqa: F401 — imports register models with Base
         User, Course, CourseStudent, CourseMaterial,
-        Session, SessionRun, SessionMaterial, SavedPrompt
+        Session, SessionRun, SessionMaterial, SavedPrompt,
+        SlideChunk, KnowledgeChunk,
     )
+    # Enable pgvector extension before creating tables that use Vector columns
+    with engine.connect() as conn:
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        conn.commit()
     Base.metadata.create_all(bind=engine)
