@@ -58,5 +58,5 @@ botocore==1.34.0
 requests==2.31.0
 
 # RAG pipeline — vector embeddings and pgvector integration
-pgvector==0.3.6
-langchain-text-splitters==0.3.8
+pgvector
+langchain-text-splitters
