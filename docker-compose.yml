@@ -7,18 +7,12 @@ services:
     container_name: profsidekick-backend
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
-      # Database — uses Docker service name 'postgres', not localhost
+      # These override .env values — DATABASE_URL and REDIS_URL must use Docker service names
       - DATABASE_URL=postgresql://profsidekick:password123@postgres:5432/profsidekick
-      # Redis
       - REDIS_URL=redis://redis:6379/0
-      # OpenAI (set your actual API key)
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      # Application
-      - DEBUG=true
-      - SECRET_KEY=your-secret-key-change-in-production
-      # CORS
-      - CORS_ORIGINS=http://localhost:3000,http://localhost:3001,https://profsidekick.vercel.app,https://profsidekick-frontend-3il7.vercel.app,https://tahidi.mykeja.co.ke
     volumes:
       - ./uploads:/app/uploads
       - ./static:/app/static
