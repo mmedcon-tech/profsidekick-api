@@ -27,7 +27,7 @@ class PersonaService:
 
     def get_persona(
         self, db: Session, user: User
-    ) -> Optional[ProfessorPersona]:
+    ) -> Optional[ProfessorPersona]:  # noqa: E501
         return (
             db.query(ProfessorPersona)
             .filter(ProfessorPersona.user_id == user.id)
