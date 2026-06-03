@@ -5,6 +5,7 @@ Requires PostgreSQL + pgvector.  Start the test DB before running:
   docker compose -f docker-compose.test.yml up -d
   export DATABASE_URL=postgresql://postgres:postgres@localhost:5433/profsidekick_test
 """
+
 import uuid
 
 import pytest
@@ -60,7 +61,15 @@ class TestSlideChunkModel:
 
     def test_required_columns_exist(self):
         cols = {c.name for c in SlideChunk.__table__.columns}
-        assert {"id", "session_id", "slide_number", "chunk_index", "content", "embedding", "created_at"} <= cols
+        assert {
+            "id",
+            "session_id",
+            "slide_number",
+            "chunk_index",
+            "content",
+            "embedding",
+            "created_at",
+        } <= cols
 
     def test_session_relationship_declared(self):
         assert "session" in SlideChunk.__mapper__.relationships.keys()
@@ -72,7 +81,14 @@ class TestKnowledgeChunkModel:
 
     def test_required_columns_exist(self):
         cols = {c.name for c in KnowledgeChunk.__table__.columns}
-        assert {"id", "session_id", "source", "content", "embedding", "created_at"} <= cols
+        assert {
+            "id",
+            "session_id",
+            "source",
+            "content",
+            "embedding",
+            "created_at",
+        } <= cols
 
     def test_session_relationship_declared(self):
         assert "session" in KnowledgeChunk.__mapper__.relationships.keys()
@@ -141,7 +157,9 @@ class TestKnowledgeChunkCRUD:
         db_session.add(chunk)
         db_session.flush()
 
-        fetched = db_session.query(KnowledgeChunk).filter_by(session_id=session_id).first()
+        fetched = (
+            db_session.query(KnowledgeChunk).filter_by(session_id=session_id).first()
+        )
         assert fetched is not None
         assert fetched.source == "professor_answer"
         assert "gradient descent" in fetched.content
@@ -161,9 +179,7 @@ class TestKnowledgeChunkCRUD:
         db_session.flush()
 
         fetched = (
-            db_session.query(KnowledgeChunk)
-            .filter_by(session_id=session_id)
-            .all()
+            db_session.query(KnowledgeChunk).filter_by(session_id=session_id).all()
         )
         assert len(fetched) == 3
 

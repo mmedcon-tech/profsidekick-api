@@ -5,6 +5,7 @@ Requires PostgreSQL + pgvector.  Start the test DB before running:
   docker compose -f docker-compose.test.yml up -d
   export DATABASE_URL=postgresql://postgres:postgres@localhost:5433/profsidekick_test
 """
+
 from __future__ import annotations
 
 import uuid
@@ -62,9 +63,9 @@ class TestChunkText:
 
         # Verify that the start of chunk[1] appears near the end of chunk[0].
         first_unique_words_of_chunk1 = chunks[1][:50]
-        assert first_unique_words_of_chunk1 in chunks[0], (
-            "Expected overlap: start of chunk[1] should appear in chunk[0]"
-        )
+        assert (
+            first_unique_words_of_chunk1 in chunks[0]
+        ), "Expected overlap: start of chunk[1] should appear in chunk[0]"
 
     def test_none_like_empty_string_handled(self):
         # Callers may pass an empty-string slide; should not raise.
@@ -157,9 +158,9 @@ class TestIngestSessionDocument:
                 .count()
             )
 
-        assert count_after_second == count_after_first, (
-            "Re-ingestion should replace, not duplicate, chunks"
-        )
+        assert (
+            count_after_second == count_after_first
+        ), "Re-ingestion should replace, not duplicate, chunks"
 
     def test_non_fatal_on_embedding_failure(
         self, db_session, test_session, slides_with_content
@@ -217,9 +218,7 @@ class TestRetrieveContext:
         ]
 
         with patch("app.services.rag_service._embed") as mock_embed:
-            results = retrieve_context(
-                uuid.uuid4(), "machine learning", top_k=5, db=db
-            )
+            results = retrieve_context(uuid.uuid4(), "machine learning", top_k=5, db=db)
             # _embed should NOT have been called (fallback path).
             mock_embed.assert_not_called()
 
@@ -239,9 +238,16 @@ class TestBuildGroundedPrompt:
 
     def test_includes_source_blocks_when_chunks_found(self):
         fake_chunks = [
-            {"slide_number": 2, "chunk_index": 0, "content": "Neural networks overview", "score": 0.9},
+            {
+                "slide_number": 2,
+                "chunk_index": 0,
+                "content": "Neural networks overview",
+                "score": 0.9,
+            },
         ]
-        with patch("app.services.rag_service.retrieve_context", return_value=fake_chunks):
+        with patch(
+            "app.services.rag_service.retrieve_context", return_value=fake_chunks
+        ):
             prompt = build_grounded_prompt(
                 uuid.uuid4(), "neural networks", db=self._mock_db()
             )

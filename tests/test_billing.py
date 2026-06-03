@@ -7,6 +7,7 @@ dependencies so no real OpenAI calls are made.
 Only billing-relevant tables are created; JSONB tables (courses, sessions, etc.)
 are omitted. SQLite skips FK enforcement by default so nullable FKs are fine.
 """
+
 import uuid
 from decimal import Decimal
 
