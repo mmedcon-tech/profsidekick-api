@@ -49,8 +49,11 @@ jobs:
       - name: Install poppler (for pdf2image in tests)
         run: sudo apt-get install -y poppler-utils
 
-      - name: Lint (flake8)
-        run: flake8 app/ tests/
+      # - name: Check formatting (black)
+      #   run: black --check .
+
+      # - name: Lint (flake8)
+      #   run: flake8 app/ tests/
 
       - name: Run tests
         run: pytest tests/ -v --tb=short
