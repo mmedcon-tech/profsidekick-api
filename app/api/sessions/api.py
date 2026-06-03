@@ -1168,5 +1168,10 @@ async def search_knowledge(
             detail="Session not found",
         )
 
-    chunks = retrieve_context(session_uuid, q, top_k=top_k, db=db)
+    # Resolve the course_id so retrieve_context can also search course materials.
+    from app.database.models import Session as SessionModel
+    db_session = db.query(SessionModel).filter(SessionModel.id == session_uuid).first()
+    course_id = db_session.course_id if db_session else None
+
+    chunks = retrieve_context(session_uuid, q, top_k=top_k, db=db, course_id=course_id)
     return {"chunks": chunks}

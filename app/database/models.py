@@ -100,6 +100,12 @@ class Course(Base):
     sessions = relationship("Session", back_populates="course", cascade="all, delete-orphan")
     students = relationship("User", secondary="course_students", back_populates="courses_enrolled")
     course_materials = relationship("CourseMaterial", back_populates="course", cascade="all, delete-orphan")
+    knowledge_chunks = relationship(
+        "KnowledgeChunk",
+        back_populates="course",
+        cascade="all, delete-orphan",
+        foreign_keys="[KnowledgeChunk.course_id]",
+    )
 
 class CourseMaterial(Base):
     __tablename__ = "course_materials"
@@ -162,7 +168,12 @@ class Session(Base):
     course = relationship("Course", back_populates="sessions")
     session_materials = relationship("SessionMaterial", back_populates="session", cascade="all, delete-orphan")
     slide_chunks = relationship("SlideChunk", back_populates="session", cascade="all, delete-orphan")
-    knowledge_chunks = relationship("KnowledgeChunk", back_populates="session", cascade="all, delete-orphan")
+    knowledge_chunks = relationship(
+        "KnowledgeChunk",
+        back_populates="session",
+        cascade="all, delete-orphan",
+        foreign_keys="[KnowledgeChunk.session_id]",
+    )
 class SessionRun(Base):
     __tablename__ = "session_runs"
     
@@ -339,19 +350,29 @@ class SlideChunk(Base):
 
 class KnowledgeChunk(Base):
     """
-    A knowledge chunk captured from professor answers, post-session notes,
-    or supplementary content — stored alongside slide chunks for RAG retrieval.
+    A knowledge chunk from course materials, professor answers, or post-session
+    notes — stored for RAG retrieval.
 
-    ``source`` values: "professor_answer" | "slide" | "post_session_note"
+    ``source`` format:
+      - ``"course_material:<material_uuid>"`` — text from an uploaded course material
+      - ``"professor_answer"`` — professor-provided answer captured during a session
+      - ``"post_session_note"`` — note added after a session
+
+    ``course_id`` is set for course-material chunks; ``session_id`` is set for
+    session-specific chunks.  Exactly one of the two should be non-null.
     """
     __tablename__ = "knowledge_chunks"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id"), nullable=False, index=True)
-    source = Column(String(50), nullable=False)  # professor_answer | slide | post_session_note
+    # session-scoped knowledge (professor_answer, post_session_note)
+    session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id"), nullable=True, index=True)
+    # course-scoped knowledge (course_material)
+    course_id = Column(UUID(as_uuid=True), ForeignKey("courses.id"), nullable=True, index=True)
+    source = Column(String(100), nullable=False)  # course_material:<uuid> | professor_answer | …
     content = Column(Text, nullable=False)
     # Vector(1536) when pgvector is available; falls back to Text for test envs
     embedding = _vector_column(nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    session = relationship("Session", back_populates="knowledge_chunks")
+    session = relationship("Session", back_populates="knowledge_chunks", foreign_keys=[session_id])
+    course = relationship("Course", back_populates="knowledge_chunks", foreign_keys=[course_id])
