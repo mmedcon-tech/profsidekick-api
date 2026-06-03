@@ -75,6 +75,12 @@ class User(Base):
     credit_balance = relationship("CreditBalance", back_populates="user", uselist=False, cascade="all, delete-orphan")
     access_code_redemptions = relationship("AccessCodeRedemption", back_populates="user", cascade="all, delete-orphan")
     usage_records = relationship("UsageRecord", back_populates="user", cascade="all, delete-orphan")
+    professor_persona = relationship(
+        "ProfessorPersona",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
 
 class Course(Base):
     __tablename__ = "courses"
@@ -373,6 +379,22 @@ class KnowledgeChunk(Base):
     # Vector(1536) when pgvector is available; falls back to Text for test envs
     embedding = _vector_column(nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-
     session = relationship("Session", back_populates="knowledge_chunks", foreign_keys=[session_id])
     course = relationship("Course", back_populates="knowledge_chunks", foreign_keys=[course_id])
+
+
+
+
+class ProfessorPersona(Base):
+    __tablename__ = "professor_personas"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, unique=True)
+    avatar_id = Column(String(50), nullable=False)
+    preferences = Column(JSONB, nullable=False, default=dict)
+    refined_prompt = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User", back_populates="professor_persona")
+

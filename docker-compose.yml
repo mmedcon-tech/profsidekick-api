@@ -35,6 +35,7 @@ services:
       - POSTGRES_PASSWORD=password123
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./docker/init-pgvector.sql:/docker-entrypoint-initdb.d/init-pgvector.sql
     ports:
       - "5433:5432"
     healthcheck:
