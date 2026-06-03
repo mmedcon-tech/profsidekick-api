@@ -208,12 +208,15 @@ async def get_session_materials(
     """Get all materials for a session"""
     try:
         session_materials = await course_material_service.get_session_materials(
-            db, session_id, current_user.id
+            db, session_id, current_user.id,
+            skip_ownership_check=(current_user.role == "admin"),
         )
         return SessionMaterialsListResponse(
-            session_materials=session_materials, 
+            session_materials=session_materials,
             total=len(session_materials)
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"❌ Error getting session materials: {e}")
         raise HTTPException(

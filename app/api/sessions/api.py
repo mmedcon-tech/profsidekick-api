@@ -5,17 +5,24 @@ import os
 from pathlib import Path
 from typing import Dict, Any, Optional
 import requests
+import httpx
 from io import BytesIO
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
-from app.database.models import Session, SessionRun, SessionRunStatus, User
+from app.database.models import (
+    Session, SessionRun, SessionRunStatus, User,
+    Avatar, AvatarTemplate, AvatarTemplateVersion, AvatarTemplateRole,
+)
+from app.services.summarization_service import (
+    generate_run_summary, get_recent_session_summary, get_user_memories,
+)
 from app.schemas.schemas import SessionDetails, SlideData, PresentationData, AssistantParameters, SessionRunDetails, EphemeralTokenResponse, SessionUpdateDetails, SessionsListResponse, SessionRunsListResponse, SessionCreateRequest
 from app.services.file_processor import FileProcessor
 from app.services.openai_service import OpenAIService
 from app.services.session_service import SessionService
-from app.dependencies.auth import get_current_user
+from app.dependencies.auth import get_current_user, get_optional_user
 from app.config import settings
 
 # Set up logger
@@ -30,21 +37,62 @@ openai_service = OpenAIService()
 session_service = SessionService()
 
 
+async def _process_upload(
+    fp: FileProcessor,
+    ais: OpenAIService,
+    file_path: str,
+    filename: str,
+    session_id: str,
+    *,
+    source: str,
+    vision_instructions: Optional[str],
+    vision_model: Optional[str],
+):
+    """
+    Unified slide-extraction entry point.
+
+    - PDF  → convert to images → Vision API (existing pipeline)
+    - PPTX / DOCX → direct text extraction (no images, no Vision call)
+
+    Both paths return a list of slide dicts:
+      { slideNumber, title, content, imagePath, thumbnailPath, source }
+    """
+    if fp.is_text_extraction_format(filename):
+        logger.info(f"⚙️ Extracting text content from {Path(filename).suffix.upper()} file")
+        slides = fp.extract_text_content(file_path, source=source)
+        logger.info(f"✅ Extracted {len(slides)} sections from {filename}")
+        return slides
+
+    # PDF path: image conversion + Vision API
+    logger.info(f"⚙️ Converting {filename} to images for Vision processing")
+    slide_images, images_paths = await fp.convert_presentation_to_images(file_path, session_id)
+    logger.info(f"✅ Converted {len(slide_images)} slides to images")
+    slides = await ais.process_slides_with_vision(
+        slide_images, images_paths, session_id, vision_instructions, vision_model
+    )
+    for s in slides:
+        s["source"] = source
+    return slides
+
+
 @router.post("/sessions/create", response_model=SessionDetails)
 async def create_session(
     presentation: UploadFile = File(...),
+    solution_file: Optional[UploadFile] = File(None),
     sessionDetails: str = Form(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
-    Create a new session
+    Create a new session.
+    presentation   — student PDF (rendered in the teaching UI).
+    solution_file  — optional professor solution PDF (processed for AI context only, never rendered).
     """
     try:
         # Parse session details
         logger.info(f"📋 Parsing session details: {sessionDetails}")
         session_details_dict = json.loads(sessionDetails)
-        
+
         # Validate that courseId is present
         if 'courseId' not in session_details_dict:
             raise HTTPException(
@@ -52,12 +100,12 @@ async def create_session(
                 detail="courseId is required in session details"
             )
 
-        # Read file content
+        # Read student file content
         logger.info(f"📂 Reading file content: {presentation.filename}")
         file_content = await presentation.read()
         logger.info(f"✅ File read successfully, size: {len(file_content)} bytes")
-        
-        # Validate file
+
+        # Validate student file
         logger.info(f"🔍 Validating file: {presentation.filename}")
         is_valid, error_message = file_processor.validate_file(file_content, presentation.filename)
         if not is_valid:
@@ -71,8 +119,8 @@ async def create_session(
         logger.info(f"🆔 Generating session ID")
         session_id = session_service.generate_session_id()
         logger.info(f"✅ Session ID generated: {session_id}")
-        
-        # Save uploaded file
+
+        # Save student file
         file_path = await file_processor.save_uploaded_file(file_content, presentation.filename, session_id)
         logger.info(f"✅ File saved to: {file_path}")
 
@@ -83,17 +131,38 @@ async def create_session(
             "fileType": Path(presentation.filename).suffix.lower(),
         }
 
-        # Convert presentation to images
-        logger.info(f"⚙️ Converting presentation to images")
-        slide_images, images_paths = await file_processor.convert_presentation_to_images(
-            file_path, session_id
+        # ── Process student file: PDF → Vision pipeline; PPTX/DOCX → text extraction ──
+        student_slides = await _process_upload(
+            file_processor, openai_service,
+            file_path, presentation.filename, session_id,
+            source="student",
+            vision_instructions=session_details_dict.get('visionInstructions'),
+            vision_model=session_details_dict.get('visionModel'),
         )
-        logger.info(f"✅ Presentation converted to images, {len(slide_images)} slides extracted")
+        logger.info(f"✅ Student slides processed ({len(student_slides)} slides)")
 
-        # Vision-based slide processing
-        logger.info(f"⚙️ Processing slides with Vision API")
-        slides_details = await openai_service.process_slides_with_vision(slide_images, images_paths, session_id, session_details_dict.get('visionInstructions'), session_details_dict.get('visionModel'))
-        logger.info(f"✅ Slides processed with Vision API")
+        # Process professor solution file if provided
+        solution_slides = []
+        if solution_file and solution_file.filename:
+            logger.info(f"📂 Reading solution file: {solution_file.filename}")
+            sol_content = await solution_file.read()
+            sol_valid, sol_error = file_processor.validate_file(sol_content, solution_file.filename)
+            if not sol_valid:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Solution file validation failed: {sol_error}"
+                )
+            sol_path = await file_processor.save_uploaded_file(sol_content, solution_file.filename, session_id)
+            solution_slides = await _process_upload(
+                file_processor, openai_service,
+                sol_path, solution_file.filename, session_id,
+                source="solution",
+                vision_instructions=session_details_dict.get('visionInstructions'),
+                vision_model=session_details_dict.get('visionModel'),
+            )
+            logger.info(f"✅ Solution slides processed ({len(solution_slides)} slides)")
+
+        slides_details = student_slides + solution_slides
 
         # Create session with slides
         logger.info(f"📚 Creating session with slides")
@@ -149,24 +218,36 @@ async def create_session(
 @router.get("/sessions/{session_id}", response_model=SessionDetails)
 async def get_session(
     session_id: str,
-    db: Session = Depends(get_db)
+    current_user: User = Depends(get_optional_user),
+    db: Session = Depends(get_db),
 ):
     """
-    Get a session by ID
+    Get a session by ID.
+
+    Authentication is optional to support the shared-link (guest) flow where
+    students follow a teacher-provided URL without a platform account.
+    The session_id itself acts as the access credential in that scenario.
+
+    Authenticated callers receive the same response; the identity is available
+    here for future per-user filtering or audit logging.
     """
     try:
         session = await session_service.get_session(db, session_id)
         if not session:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Session not found"
+                detail="Session not found",
             )
         return session
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Exception as e:
         logger.error(f"❌ Error getting session: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting session: {e}"
+            detail=f"Error getting session: {e}",
         )
 
 
@@ -174,58 +255,130 @@ async def get_session(
 async def update_session(
     session_id: str,
     request_data: dict,
-    db: Session = Depends(get_db)
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """
-    Update a session by ID
+    Update assistant_parameters for a session.
+    Only the session owner or an admin may call this.
     """
     try:
         if not request_data:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Request data is required"
+                detail="Request data is required",
+            )
+
+        # Ownership check before touching any data.
+        db_session = db.query(Session).filter(Session.session_id == session_id).first()
+        if not db_session:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+        if current_user.role != "admin" and str(db_session.user_id) != str(current_user.id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only modify your own sessions",
             )
 
         session_details = SessionUpdateDetails(**request_data)
         session = await session_service.update_session(db, session_id, session_details)
         if not session:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Session not found"
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
         return session
+    except HTTPException:
+        raise
     except ValueError as e:
         logger.error(f"❌ Invalid request data: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid request data: {str(e)}"
+            detail=f"Invalid request data: {str(e)}",
         )
     except Exception as e:
         logger.error(f"❌ Error updating session: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error updating session: {e}"
+            detail=f"Error updating session: {e}",
         )
 
 @router.delete("/sessions/{session_id}")
 async def delete_session(
     session_id: str,
-    db: Session = Depends(get_db)
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
+    """
+    Hard-delete a session and all its runs.
+    Only the session owner or an admin may call this.
+    This operation is irreversible.
+    """
     try:
+        # Ownership check before the irreversible delete.
+        db_session = db.query(Session).filter(Session.session_id == session_id).first()
+        if not db_session:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+        if current_user.role != "admin" and str(db_session.user_id) != str(current_user.id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only delete your own sessions",
+            )
+
         deleted = await session_service.delete_session(db, session_id)
         if not deleted:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Session not found"
+                detail="Session not found",
             )
         return {"message": "Session deleted successfully"}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"❌ Error deleting session: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error deleting session: {e}"
+            detail=f"Error deleting session: {e}",
         )
+
+@router.patch("/sessions/{session_id}/role")
+async def update_session_role(
+    session_id: str,
+    request_data: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Update the selected role on a session.
+    Validates the role exists, is enabled, and belongs to the session's avatar's template.
+    """
+    try:
+        db_session = db.query(Session).filter(Session.session_id == session_id).first()
+        if not db_session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        if str(db_session.user_id) != str(current_user.id):
+            raise HTTPException(status_code=403, detail="Not authorised")
+
+        role_id = request_data.get("role_id")
+        if not role_id:
+            raise HTTPException(status_code=400, detail="role_id is required")
+
+        role_row = db.query(AvatarTemplateRole).filter(
+            AvatarTemplateRole.id == role_id,
+            AvatarTemplateRole.is_enabled == True,
+        ).first()
+        if not role_row:
+            raise HTTPException(status_code=404, detail="Role not found or disabled")
+
+        db_session.selected_role_id = role_row.id
+        db_session.role_label = role_row.name
+        db.commit()
+
+        return {"sessionId": session_id, "roleId": str(role_row.id), "roleLabel": role_row.name}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error updating session role: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.post("/sessions/{session_id}/run/start", response_model=SessionRunDetails)
 async def start_session_run(
@@ -235,35 +388,46 @@ async def start_session_run(
     db: Session = Depends(get_db)
 ):
     """
-    Start a session run
+    Start a session run.
+
+    assistant_parameters is optional in the request body.  When absent the
+    session's stored assistant_parameters are used as-is — this allows
+    subscriber callers to launch with an empty body ({}).
     """
     try:
-        print(f"Starting session run for session_id: {session_id}")
-        assistant_parameters_dict = request_data.get("assistant_parameters")
-        
-        if not assistant_parameters_dict:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Missing required field: assistant_parameters"
-            )
-        
-        assistant_parameters = AssistantParameters(**assistant_parameters_dict)
-        
+        # Load the session first so we can fall back to its stored params.
         session = await session_service.get_session(db, session_id)
         if not session:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Session not found"
-            )
-        print(f"Session found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+        assistant_parameters_dict = request_data.get("assistant_parameters")
+
+        if not assistant_parameters_dict:
+            # Fall back to the params already stored on the session.
+            stored = session.assistantParameters
+            if stored is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Session has no assistant_parameters and none were supplied in the request",
+                )
+            # session.assistantParameters is an AssistantParameters Pydantic model
+            # (SessionDetails coerces the JSONB dict into it).  The ** operator
+            # requires a mapping with .keys(); Pydantic models don't expose that.
+            # model_dump() produces the plain dict that AssistantParameters() needs.
+            assistant_parameters_dict = stored.model_dump()
+
+        assistant_parameters = AssistantParameters(**assistant_parameters_dict)
+
         session_run = await session_service.start_session_run(db, session_id, str(current_user.id), assistant_parameters)
         if not session_run:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Session not found"
-            )
-        print(f"Current user: {current_user.id}")
-        print(f"Current user: {current_user.username}")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+        # Snapshot the role label from the session row into the run row
+        db_session_raw = db.query(Session).filter(Session.session_id == session_id).first()
+        if db_session_raw and db_session_raw.role_label:
+            session_run.role_at_start = db_session_raw.role_label
+            db.commit()
+
         return SessionRunDetails(
             sessionRunId=str(session_run.session_run_id),
             sessionId=str(session_id),
@@ -272,6 +436,7 @@ async def start_session_run(
             sessionRunMetadata=session_run.session_run_metadata,
             assistantParameters=AssistantParameters(**session_run.assistant_parameters),
             status=session_run.status,
+            courseId=session.courseId,
             courseName=session.courseName,
             className=session.className,
             courseCode=session.courseCode,
@@ -282,6 +447,8 @@ async def start_session_run(
             startTime=session_run.start_time,
             endTime=session_run.end_time
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"❌ Error starting session run: {e}")
         raise HTTPException(
@@ -297,10 +464,24 @@ async def start_session_run(
     db: Session = Depends(get_db)
 ):
     """
-    Start a session run
+    Start a session run for an unauthenticated (shared-link) user.
+    Requires GUEST_USER_UUID to be set in settings and the corresponding
+    users row to exist in the database.
     """
     try:
-        guest_user_id = "8e3957ae-78b8-411f-85c9-a2640fa541f8"
+        guest_user_uuid = settings.guest_user_uuid
+        if not guest_user_uuid:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Guest sessions are not configured (GUEST_USER_UUID not set)",
+            )
+        guest_user = db.query(User).filter(User.id == guest_user_uuid).first()
+        if not guest_user:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Guest sessions are not configured (guest user row missing from database)",
+            )
+        guest_user_id = str(guest_user.id)
         print(f"Starting session run for session_id: {session_id}")
         assistant_parameters_dict = request_data.get("assistant_parameters")
         
@@ -360,23 +541,37 @@ async def stop_session_run(
     db: Session = Depends(get_db)
 ):
     """
-    Stop a session run
+    Stop a session run and trigger post-session summarization.
     """
     try:
         session_run_metadata = request_data.get("session_run_metadata")
-        
+
         session = await session_service.get_session(db, session_id)
         if not session:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Session not found"
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
         session_run = await session_service.stop_session_run(db, session_id, session_run_id, session_run_metadata)
         if not session_run:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Session not found"
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+        # Trigger background summarization (non-blocking — errors are logged, not raised)
+        try:
+            db_session_raw = db.query(Session).filter(Session.session_id == session_id).first()
+            if db_session_raw:
+                import asyncio as _asyncio
+                _asyncio.create_task(
+                    generate_run_summary(
+                        db=db,
+                        session=db_session_raw,
+                        session_run=session_run,
+                        slides_details=db_session_raw.slides_details or [],
+                        user_id=current_user.id,
+                        avatar_id=db_session_raw.avatar_id,
+                    )
+                )
+        except Exception:
+            pass  # Summarization is best-effort
+
         return SessionRunDetails(
             sessionRunId=str(session_run.session_run_id),
             sessionId=str(session.sessionId),
@@ -411,11 +606,18 @@ async def stop_session_run(
     db: Session = Depends(get_db)
 ):
     """
-    Stop a session run
+    Stop a session run for an unauthenticated (shared-link) user.
     """
     try:
+        guest_user_uuid = settings.guest_user_uuid
+        if not guest_user_uuid:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Guest sessions are not configured (GUEST_USER_UUID not set)",
+            )
+
         session_run_metadata = request_data.get("session_run_metadata")
-        
+
         session = await session_service.get_session(db, session_id)
         if not session:
             raise HTTPException(
@@ -431,7 +633,7 @@ async def stop_session_run(
         return SessionRunDetails(
             sessionRunId=str(session_run.session_run_id),
             sessionId=str(session.sessionId),
-            userId="8e3957ae-78b8-411f-85c9-a2640fa541f8",
+            userId=guest_user_uuid,
             username="guest",
             sessionRunMetadata=session_run.session_run_metadata,
             assistantParameters=AssistantParameters(**session_run.assistant_parameters),
@@ -514,31 +716,56 @@ async def get_session_run(
 async def get_ephemeral_token(
     session_id: str,
     session_run_id: str,
-    db: Session = Depends(get_db)
+    current_user: User = Depends(get_optional_user),
+    db: Session = Depends(get_db),
 ):
     """
-    Generate an ephemeral token for OpenAI Realtime API
-    
-    Returns:
-        EphemeralTokenResponse with client_secret containing token and expiration
-        
-    Raises:
-        HTTPException: If token generation fails
+    Mint an OpenAI Realtime API ephemeral token for an active session run.
+
+    Two caller types are supported:
+
+    1. Authenticated user — must be the run owner or an admin.
+       The frontend attaches `Authorization: Bearer <token>` when a user is
+       logged in.
+
+    2. Guest user (shared-link flow) — no token.  Permitted only when the
+       session run was started via the guest endpoint, meaning its user_id
+       matches the platform's configured GUEST_USER_UUID.  If GUEST_USER_UUID
+       is not configured, guest access is denied.
     """
     try:
-        print(f"Getting session slides for session_id: {session_id}")
         session_run = await session_service.get_session_run(db, session_id, session_run_id)
         if not session_run:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Session run not found"
+                detail="Session run not found",
             )
-        print(f"Session run status: {session_run.status}")
+
         if session_run.status != SessionRunStatus.ACTIVE:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Session run is not active"
+                detail="Session run is not active",
             )
+
+        # ── Authorization gate ────────────────────────────────────────────────
+        run_owner_id = str(session_run.user_id)
+
+        if current_user is not None:
+            # Authenticated path: must own the run or be an admin.
+            if current_user.role != "admin" and run_owner_id != str(current_user.id):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You are not authorised to connect to this session run",
+                )
+        else:
+            # Unauthenticated path: only allow guest session runs.
+            guest_uuid = settings.guest_user_uuid
+            if not guest_uuid or run_owner_id != guest_uuid:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Authentication required",
+                )
+        # ─────────────────────────────────────────────────────────────────────
 
         session = await session_service.get_session(db, session_id)
         if not session:
@@ -547,14 +774,100 @@ async def get_ephemeral_token(
                 detail="Session not found"
             )
 
-        token_data = await openai_service.generate_ephemeral_token(session_run.assistant_parameters, session.slidesDetails)
+        # Load raw session row (includes solution slides filtered from public API)
+        db_session_raw = db.query(Session).filter(Session.session_id == session_id).first()
+        all_slides = db_session_raw.slides_details or [] if db_session_raw else []
+        student_slide_list = [s for s in all_slides if s.get('source') != 'solution']
+        solution_slide_list = [s for s in all_slides if s.get('source') == 'solution']
+
+        # ── Resolve session mode ──────────────────────────────────────────────
+        session_mode: str = "teaching"
+        if db_session_raw and hasattr(db_session_raw, "session_mode") and db_session_raw.session_mode:
+            session_mode = db_session_raw.session_mode
+
+        # ── Resolve avatar → template_version → prompts ───────────────────────
+        conversation_prompt: str | None = None
+        teaching_prompt: str | None = None
+        examination_prompt: str | None = None
+        role_label: str | None = None
+        role_context: str | None = None
+        if db_session_raw and db_session_raw.avatar_id:
+            avatar_row = (
+                db.query(Avatar)
+                .filter(Avatar.id == db_session_raw.avatar_id)
+                .first()
+            )
+            if not avatar_row:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="The avatar configured for this session no longer exists. "
+                           "Contact the session owner to reassign an avatar before starting a run.",
+                )
+
+            # Role from session row (set at session creation)
+            role_label = db_session_raw.role_label
+            if db_session_raw.selected_role:
+                role_context = db_session_raw.selected_role.prompt_context
+
+            # Resolve template version: frozen at avatar creation → current published → legacy
+            version: AvatarTemplateVersion | None = None
+            if avatar_row.template_version_id:
+                version = db.query(AvatarTemplateVersion).filter(
+                    AvatarTemplateVersion.id == avatar_row.template_version_id
+                ).first()
+            # Fall back to current published version
+            if not version and avatar_row.template_id:
+                tmpl = db.query(AvatarTemplate).filter(
+                    AvatarTemplate.id == avatar_row.template_id
+                ).first()
+                if tmpl and tmpl.current_version_id:
+                    version = db.query(AvatarTemplateVersion).filter(
+                        AvatarTemplateVersion.id == tmpl.current_version_id
+                    ).first()
+                # Legacy column fallback
+                if not version and tmpl:
+                    conversation_prompt = (tmpl.hidden_system_prompt or "").strip() or None
+            if version:
+                conversation_prompt = (version.conversation_prompt or "").strip() or None
+                teaching_prompt = (getattr(version, "teaching_prompt", None) or "").strip() or None
+                examination_prompt = (getattr(version, "examination_prompt", None) or "").strip() or None
+
+        # ── Session summary + memories ────────────────────────────────────────
+        session_summary = get_recent_session_summary(
+            db, session_id, exclude_run_id=session_run_id
+        )
+        memories: list = []
+        if db_session_raw:
+            memories = get_user_memories(
+                db,
+                user_id=db_session_raw.user_id,
+                avatar_id=db_session_raw.avatar_id,
+            )
+
+        token_data = await openai_service.generate_ephemeral_token(
+            session_run.assistant_parameters,
+            student_slide_list,
+            solution_slide_list or None,
+            conversation_prompt=conversation_prompt,
+            teaching_prompt=teaching_prompt,
+            examination_prompt=examination_prompt,
+            session_mode=session_mode,
+            role_label=role_label,
+            role_context=role_context,
+            session_summary=session_summary,
+            memories=memories,
+        )
         return EphemeralTokenResponse(client_secret=token_data["client_secret"])
-        
+
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"❌ Failed to generate ephemeral token: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate ephemeral token: {str(e)}"
+            detail=f"Failed to generate ephemeral token: {str(e)}",
         )
+
 
 @router.get("/sessions", response_model=SessionsListResponse)
 async def get_sessions(
@@ -562,11 +875,13 @@ async def get_sessions(
     limit: int = Query(20, ge=1, le=100, description="Number of sessions per page"),
     session_status: Optional[str] = Query(None, regex="^(active|completed|draft)$", description="Filter by session status", alias="status"),
     sort: str = Query("created_desc", regex="^(created_desc|created_asc|updated_desc|updated_asc)$", description="Sort order"),
+    avatar_id: Optional[str] = Query(None, description="Filter sessions by avatar_id"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
-    Get paginated list of sessions for the authenticated user
+    Get paginated list of sessions for the authenticated user.
+    Pass avatar_id to scope results to sessions that use a specific avatar.
     """
     try:
         sessions, pagination = await session_service.get_sessions_paginated(
@@ -575,7 +890,8 @@ async def get_sessions(
             page=page,
             limit=limit,
             status=session_status,
-            sort=sort
+            sort=sort,
+            avatar_id=avatar_id,
         )
         
         return SessionsListResponse(
@@ -836,7 +1152,7 @@ async def add_new_slide(
         
         # Process with vision API
         if not vision_instructions:
-            vision_instructions = "You are a helpful assistant that can analyze the slide image and provide a detailed description of the content."
+            vision_instructions = "You are an expert academic content analyst. Extract and describe the complete content of this examination slide for use by an AI oral examiner. Transcribe all text, equations (plain-text notation), code, diagrams (structure, axes, labels, key values), and tables. Be thorough and exact — this content will be used to generate examination questions and evaluate student responses."
         
         slide_details = await openai_service.process_slide_with_vision(
             slide_image_pil, 
@@ -1032,7 +1348,7 @@ async def replace_slide_image(
         
         # Use provided vision instructions or existing ones
         if not vision_instructions:
-            vision_instructions = target_slide.visionInstructions or "You are a helpful assistant that can analyze the slide image and provide a detailed description of the content."
+            vision_instructions = target_slide.visionInstructions or "You are an expert academic content analyst. Extract and describe the complete content of this examination slide for use by an AI oral examiner. Transcribe all text, equations (plain-text notation), code, diagrams (structure, axes, labels, key values), and tables. Be thorough and exact — this content will be used to generate examination questions and evaluate student responses."
         
         # Process with vision API
         slide_details = await openai_service.process_slide_with_vision(
@@ -1123,4 +1439,29 @@ async def reorder_slides(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error reordering slides: {e}"
+        )
+
+
+@router.post("/ai/answer")
+async def ai_answer(request_data: dict):
+    """
+    Proxy endpoint for OpenAI Chat Completions API.
+    Used by the frontend for non-realtime AI calls (slide analysis, etc).
+    """
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {settings.openai_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=request_data,
+            )
+        return response.json()
+    except Exception as e:
+        logger.error(f"❌ Error proxying AI answer: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"AI answer proxy failed: {str(e)}"
         )

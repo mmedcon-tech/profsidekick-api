@@ -8,12 +8,39 @@ import uvicorn
 
 from app.config import settings
 from app.database.connection import close_redis
+
+
+def _run_migrations() -> None:
+    """Apply any pending Alembic migrations at startup.
+
+    Running migrations on startup guarantees the deployed database is always in sync
+    with the ORM models, eliminating 'column does not exist' or 'table does not exist'
+    errors after new deployments add schema changes.
+    """
+    try:
+        from alembic.config import Config
+        from alembic import command
+
+        # Locate alembic.ini relative to this file's package root
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        alembic_cfg = Config(os.path.join(base_dir, "alembic.ini"))
+        alembic_cfg.set_main_option("script_location", os.path.join(base_dir, "alembic"))
+
+        command.upgrade(alembic_cfg, "head")
+        print("DB migrations applied successfully.")
+    except Exception as exc:
+        # Log but do not crash — a partially migrated DB is better than a dead server.
+        print(f"Migration startup error (non-fatal): {exc}")
 from app.api.sessions.api import router as sessions_router
 from app.api.auth.api import router as auth_router
 from app.api.users.api import router as users_router
 from app.api.prompts.api import router as prompts_router
 from app.api.courses.api import router as courses_router
 from app.api.course_materials.api import router as course_materials_router
+from app.api.avatar_templates.api import router as avatar_templates_router
+from app.api.avatars.api import router as avatars_router
+from app.api.publisher.api import router as publisher_router
+from app.api.subscriptions.api import router as subscriptions_router
 # from app.api.auth import router as users_router
 
 @asynccontextmanager
@@ -21,19 +48,18 @@ async def lifespan(app: FastAPI):
     """Application lifespan management"""
     # Startup
     print("Starting ProfSidekick API...")
-    
-    # Create database tables
-    # create_tables()
-    # print("Database tables created/verified")
-    
-    # Ensure directories exist
+
+    # Apply pending DB migrations before accepting traffic
+    _run_migrations()
+
+    # Ensure upload/static directories exist
     os.makedirs(settings.upload_dir, exist_ok=True)
     os.makedirs(settings.static_dir, exist_ok=True)
     os.makedirs(f"{settings.static_dir}/slides", exist_ok=True)
     print("Upload and static directories created/verified")
-    
+
     yield
-    
+
     # Shutdown
     print("Shutting down ProfSidekick API...")
     await close_redis()
@@ -146,7 +172,10 @@ app.include_router(users_router)
 app.include_router(prompts_router)
 app.include_router(courses_router)
 app.include_router(course_materials_router)
-# app.include_router(users_router)
+app.include_router(avatar_templates_router)
+app.include_router(avatars_router)
+app.include_router(publisher_router)
+app.include_router(subscriptions_router)
 
 # Add middleware for request logging (optional)
 @app.middleware("http")

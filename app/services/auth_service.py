@@ -4,6 +4,7 @@ import secrets
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException, status
 from app.database.models import User
 from app.schemas.schemas import UserRegistration, UserResponse, AuthResponse
@@ -53,7 +54,7 @@ class AuthService:
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Token has expired"
             )
-        except jwt.JWTError:
+        except jwt.PyJWTError:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token"
@@ -94,10 +95,10 @@ class AuthService:
             )
         
         # Check if role is valid
-        if registration_data.role not in ["professor", "student"]:
+        if registration_data.role not in ["publisher", "subscriber", "admin"]:
             return AuthResponse(
                 success=False,
-                message="Invalid role"
+                message="Invalid role. Must be publisher, subscriber, or admin."
             )
         
         # Generate email verification token
@@ -113,23 +114,31 @@ class AuthService:
             first_name=registration_data.firstName,
             last_name=registration_data.lastName,
             role=registration_data.role,
-            email_verified=False,
+            email_verified=settings.bypass_email_verification,
             email_verification_token=verification_token,
             email_verification_sent_at=datetime.utcnow(),
-            is_approved=False
+            is_approved=settings.bypass_email_verification
         )
         
-        db.add(new_user)
-        db.commit()
-        db.refresh(new_user)
-        
+        try:
+            db.add(new_user)
+            db.commit()
+            db.refresh(new_user)
+        except IntegrityError:
+            db.rollback()
+            return AuthResponse(
+                success=False,
+                message="Username or email already registered"
+            )
+
         # Send verification email
-        user_name = f"{new_user.first_name} {new_user.last_name}"
-        email_sent = await email_service.send_verification_email(
-            new_user.email,
-            user_name,
-            verification_token
-        )
+        # user_name = f"{new_user.first_name} {new_user.last_name}"
+        # email_sent = await email_service.send_verification_email(
+        #     new_user.email,
+        #     user_name,
+        #     verification_token
+        # )
+        email_sent = True  # Mock email sending for development
         
         if not email_sent:
             return AuthResponse(

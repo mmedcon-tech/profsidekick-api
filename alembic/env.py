@@ -1,9 +1,18 @@
 from logging.config import fileConfig
 import os
+from pathlib import Path
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
 from alembic import context
+
+# Load .env before anything else so DATABASE_URL is available
+try:
+    from dotenv import load_dotenv
+    _env_path = Path(__file__).resolve().parent.parent / ".env"
+    load_dotenv(_env_path, override=False)
+except ImportError:
+    pass  # python-dotenv not installed — rely on shell env
 
 from app.database.models import Base
 
@@ -16,13 +25,18 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Set the database URL from environment variable
+# Set the database URL from environment variable (overrides the placeholder in alembic.ini)
 database_url = os.getenv("DATABASE_URL")
 if database_url:
     # Fix postgres:// to postgresql:// for SQLAlchemy 2.0+
     if database_url.startswith("postgres://"):
         database_url = database_url.replace("postgres://", "postgresql://", 1)
     config.set_main_option("sqlalchemy.url", database_url)
+else:
+    raise RuntimeError(
+        "DATABASE_URL environment variable is not set. "
+        "Create a .env file in profsidekick-api/ with DATABASE_URL=postgresql://..."
+    )
 
 # add your model's MetaData object here
 # for 'autogenerate' support

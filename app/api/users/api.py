@@ -1,9 +1,10 @@
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from app.database.connection import get_db
 from app.database.models import User, Session as SessionModel
-from app.dependencies.auth import get_current_user, auth_service
+from app.dependencies.auth import get_current_user, require_admin, auth_service
 from app.schemas.schemas import (
     UserResponse, UserProfileUpdate, UserSessionsResponse, UserSessionSummary
 )
@@ -103,4 +104,62 @@ async def get_user_sessions(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
-        ) 
+        )
+
+
+# ══════════════════════════════════════════════════════════════════
+# Admin — User management
+# ══════════════════════════════════════════════════════════════════
+
+class UserAdminResponse(UserResponse):
+    is_approved: Optional[bool] = None
+    email_verified: Optional[bool] = None
+
+class UserListAdminResponse(UserResponse):
+    is_approved: Optional[bool] = None
+    email_verified: Optional[bool] = None
+
+    class Config:
+        from_attributes = True
+
+
+@router.get("/admin/users", response_model=List[UserResponse])
+async def admin_list_users(
+    role: Optional[str] = Query(None, description="Filter by role: publisher, subscriber, admin"),
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Admin: list all users, optionally filtered by role."""
+    try:
+        query = db.query(User)
+        if role:
+            query = query.filter(User.role == role)
+        users = query.order_by(User.created_at.desc()).all()
+        return [auth_service.user_to_response(u) for u in users]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ admin_list_users error: {e}")
+        raise HTTPException(status_code=500, detail="Error listing users")
+
+
+@router.delete("/admin/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def admin_delete_user(
+    user_id: str,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Admin: delete any user account."""
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        if str(user.id) == str(current_user.id):
+            raise HTTPException(status_code=400, detail="Cannot delete your own account")
+        db.delete(user)
+        db.commit()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ admin_delete_user error: {e}")
+        raise HTTPException(status_code=500, detail="Error deleting user")

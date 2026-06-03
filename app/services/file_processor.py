@@ -1,6 +1,6 @@
 import os
 import uuid
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any, Optional
 from pathlib import Path
 from PIL import Image
 import io
@@ -9,12 +9,22 @@ import io
 from pptx import Presentation as PPTXPresentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 
+# Word document processing
+try:
+    from docx import Document as DocxDocument
+    _DOCX_AVAILABLE = True
+except ImportError:
+    _DOCX_AVAILABLE = False
+
 # PDF processing
 import PyPDF2
 from pdf2image import convert_from_path
 
 from app.config import settings
 from app.services.cloud_storage_service import cloud_storage
+
+# Extensions that go through text-extraction instead of Vision pipeline
+_TEXT_EXTRACTION_EXTS = {".pptx", ".ppt", ".docx"}
 
 
 class FileProcessor:
@@ -24,16 +34,166 @@ class FileProcessor:
         self.upload_dir = Path(settings.upload_dir)
         self.static_dir = Path(settings.static_dir)
 
+    def is_text_extraction_format(self, filename: str) -> bool:
+        """Return True for formats handled by text extraction (not the Vision pipeline)."""
+        return Path(filename).suffix.lower() in _TEXT_EXTRACTION_EXTS
+
+    def extract_text_content(self, file_path: str, source: str = "student") -> List[Dict[str, Any]]:
+        """
+        Extract text from PPTX, PPT, or DOCX and return a list of slide-compatible dicts.
+
+        Each dict matches the shape that Vision-processed slides produce:
+          { slideNumber, title, content, imagePath, thumbnailPath, source }
+
+        This allows the rest of the pipeline (slides_details storage, context injection)
+        to work identically for PDF and text-based formats.
+        """
+        ext = Path(file_path).suffix.lower()
+        if ext in (".pptx", ".ppt"):
+            return self._extract_pptx_content(file_path, source)
+        if ext == ".docx":
+            return self._extract_docx_content(file_path, source)
+        raise ValueError(f"extract_text_content does not handle {ext}")
+
+    def _extract_pptx_content(self, file_path: str, source: str) -> List[Dict[str, Any]]:
+        """Extract per-slide text from a PPTX file using python-pptx."""
+        try:
+            prs = PPTXPresentation(file_path)
+        except Exception as e:
+            raise ValueError(f"Failed to open PPTX file: {e}")
+
+        slides_out: List[Dict[str, Any]] = []
+        for idx, slide in enumerate(prs.slides, start=1):
+            title_text = ""
+            body_parts: List[str] = []
+
+            for shape in slide.shapes:
+                if not shape.has_text_frame:
+                    continue
+                text = shape.text_frame.text.strip()
+                if not text:
+                    continue
+                # Heuristic: placeholder index 0 or title shape → treat as title
+                if (hasattr(shape, "placeholder_format") and
+                        shape.placeholder_format is not None and
+                        shape.placeholder_format.idx == 0):
+                    title_text = text
+                else:
+                    body_parts.append(text)
+
+            # Speaker notes
+            if slide.has_notes_slide:
+                notes = slide.notes_slide.notes_text_frame.text.strip()
+                if notes:
+                    body_parts.append(f"[Speaker notes] {notes}")
+
+            content = "\n\n".join(body_parts) if body_parts else "(No text content)"
+            slides_out.append({
+                "slideNumber": idx,
+                "title": title_text or f"Slide {idx}",
+                "content": content,
+                "imagePath": None,
+                "thumbnailPath": None,
+                "source": source,
+            })
+
+        return slides_out
+
+    def _extract_docx_content(self, file_path: str, source: str) -> List[Dict[str, Any]]:
+        """
+        Extract text from a DOCX file and split into logical sections.
+
+        Strategy: group paragraphs by heading boundaries. Each Heading 1/2 starts
+        a new 'slide'. Non-heading content is appended to the current section body.
+        Minimum section size is 1 paragraph; long headingless docs are split every
+        DOCX_CHUNK_PARAGRAPHS paragraphs.
+        """
+        CHUNK_SIZE = 25  # paragraphs per section for headingless docs
+
+        if not _DOCX_AVAILABLE:
+            raise ValueError(
+                "python-docx is not installed. Run: pip install python-docx"
+            )
+        try:
+            doc = DocxDocument(file_path)
+        except Exception as e:
+            raise ValueError(f"Failed to open DOCX file: {e}")
+
+        HEADING_STYLES = {"heading 1", "heading 2", "heading 3", "title"}
+
+        sections: List[Dict[str, Any]] = []
+        current_title = "Document Start"
+        current_body: List[str] = []
+        slide_num = 1
+
+        def _flush(title: str, body: List[str], num: int) -> Optional[Dict[str, Any]]:
+            content = "\n".join(body).strip()
+            if not content and not title:
+                return None
+            return {
+                "slideNumber": num,
+                "title": title or f"Section {num}",
+                "content": content or "(No text content)",
+                "imagePath": None,
+                "thumbnailPath": None,
+                "source": source,
+            }
+
+        for para in doc.paragraphs:
+            text = para.text.strip()
+            if not text:
+                continue
+
+            style_name = (para.style.name or "").lower()
+            is_heading = any(style_name.startswith(h) for h in HEADING_STYLES)
+
+            if is_heading:
+                # Flush previous section
+                if current_body:
+                    section = _flush(current_title, current_body, slide_num)
+                    if section:
+                        sections.append(section)
+                        slide_num += 1
+                    current_body = []
+                current_title = text
+            else:
+                current_body.append(text)
+                # Force-flush at chunk boundary for headingless docs
+                if len(current_body) >= CHUNK_SIZE:
+                    section = _flush(current_title, current_body, slide_num)
+                    if section:
+                        sections.append(section)
+                        slide_num += 1
+                    current_body = []
+                    current_title = ""
+
+        # Flush remaining content
+        if current_body or current_title:
+            section = _flush(current_title, current_body, slide_num)
+            if section:
+                sections.append(section)
+
+        # Edge-case: empty document
+        if not sections:
+            sections.append({
+                "slideNumber": 1,
+                "title": "Document",
+                "content": "(Document appears to be empty)",
+                "imagePath": None,
+                "thumbnailPath": None,
+                "source": source,
+            })
+
+        return sections
+
     async def convert_presentation_to_images(self, file_path: str, session_id: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-        """
-        Convert presentation to images
-        """
-        # if file_path.endswith('.pptx') or file_path.endswith('.ppt'):
-            # return await self._convert_pptx_to_images(file_path, session_id)
+        """Convert a PDF presentation to slide images (PNG) for Vision processing."""
         if file_path.endswith('.pdf'):
             return await self._convert_pdf_to_images(file_path, session_id)
-        else:
-            raise ValueError(f"Unsupported file type: {file_path}")
+        raise ValueError(
+            f"convert_presentation_to_images only handles PDF. "
+            f"Use extract_text_content() for {Path(file_path).suffix} files."
+        )
 
     async def _convert_pdf_to_images(self, file_path: str, session_id: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         # Convert PDF pages to images
@@ -60,10 +220,11 @@ class FileProcessor:
                     
                     print(f"Downloaded PDF to temporary file: {temp_file_path}")
                     pdf_images = convert_from_path(
-                        temp_file_path, 
-                        dpi=150,  # Good quality for display
+                        temp_file_path,
+                        dpi=150,
                         first_page=1,
-                        fmt='PNG'
+                        fmt='PNG',
+                        poppler_path=settings.poppler_path or None
                     )
                     
                     # Clean up temporary file
@@ -82,10 +243,11 @@ class FileProcessor:
                 # Use local file path
                 print(f"Converting PDF to images: {file_path}")
                 pdf_images = convert_from_path(
-                    file_path, 
-                    dpi=150,  # Good quality for display
+                    file_path,
+                    dpi=150,
                     first_page=1,
-                    fmt='PNG'
+                    fmt='PNG',
+                    poppler_path=settings.poppler_path or None
                 )
             print(f"Successfully converted {len(pdf_images)} pages to images")
 

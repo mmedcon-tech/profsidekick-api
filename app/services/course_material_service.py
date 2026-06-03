@@ -454,22 +454,30 @@ class CourseMaterialService:
         )
 
     async def get_session_materials(
-        self, 
-        db: Session, 
-        session_id: str, 
-        user_id: str
+        self,
+        db: Session,
+        session_id: str,
+        user_id: str,
+        skip_ownership_check: bool = False,
     ) -> List[SessionMaterialResponse]:
-        """Get all materials for a session"""
-        
-        # Verify session ownership (session_id is string-based identifier)
+        """Get all materials for a session.
+
+        Admins pass skip_ownership_check=True to bypass the course-owner filter.
+        """
         from app.database.models import Session as SessionModel
-        session = db.query(SessionModel).join(Course).filter(
-            and_(
-                SessionModel.session_id == session_id,
-                Course.user_id == user_id
-            )
-        ).first()
-        
+
+        if skip_ownership_check:
+            session = db.query(SessionModel).filter(
+                SessionModel.session_id == session_id
+            ).first()
+        else:
+            session = db.query(SessionModel).join(Course).filter(
+                and_(
+                    SessionModel.session_id == session_id,
+                    Course.user_id == user_id,
+                )
+            ).first()
+
         if not session:
             raise HTTPException(status_code=404, detail="Session not found or access denied")
         
