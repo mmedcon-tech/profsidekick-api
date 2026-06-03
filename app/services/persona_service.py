@@ -117,9 +117,13 @@ Personality: {desc}
         user: User,
         avatar_id: str,
         preferences: Dict[str, Any],
+        additional_instructions: Optional[str] = None,
     ) -> Dict[str, Any]:
         avatar = self._get_avatar(avatar_id)
         refined = self._build_refined_prompt(avatar, preferences)
+        extra = (additional_instructions or "").strip()
+        if extra:
+            refined = f"{refined}\n\n## Additional professor notes\n{extra}"
 
         if settings.openai_api_key:
             try:
