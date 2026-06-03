@@ -26,8 +26,8 @@ class CourseService:
             user = db.query(User).filter(User.id == course_data.user_id).first()
             if user is None:
                 raise HTTPException(status_code=404, detail="User not found")
-            if user.role != "professor":
-                raise HTTPException(status_code=403, detail="User is not a professor")
+            if user.role != "publisher":
+                raise HTTPException(status_code=403, detail="User is not a publisher")
         else:
             raise HTTPException(status_code=400, detail="User ID is required")
 
@@ -55,27 +55,33 @@ class CourseService:
         return CourseDetails(**course.__dict__)
 
     async def get_courses(self, db: Session, user_id: UUID) -> List[CourseDetails]:
-        if user_id is not None:
-            user = db.query(User).filter(User.id == user_id).first()
-            logger.info(f"User: {user}")
-            if user is None:
-                raise HTTPException(status_code=404, detail="User not found")
-            if user.role == "professor":
-                courses = db.query(Course).filter(Course.user_id == user.id).all()
-                for course in courses:
-                    course.owner_name = user.first_name + " " + user.last_name
-                    course.enrollment_count = len(course.students)
-                return [CourseDetails(**course.__dict__) for course in courses]
-            elif user.role == "student":
-                courses = db.query(Course).filter(Course.students.contains(user)).all()
-                for course in courses:
-                    course.owner_name = course.user.first_name + " " + course.user.last_name
-                    course.enrollment_count = len(course.students)
-                return [CourseDetails(**course.__dict__) for course in courses]
-            else:
-                raise HTTPException(status_code=403, detail="User is not a professor or student")
+        if user_id is None:
+            return []
+        user = db.query(User).filter(User.id == user_id).first()
+        if user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        if user.role == "publisher":
+            # Publishers see only their own courses — unchanged
+            courses = db.query(Course).filter(Course.user_id == user.id).all()
+            for course in courses:
+                course.owner_name = f"{user.first_name} {user.last_name}"
+                course.enrollment_count = len(course.students)
+
+        elif user.role in ("admin", "subscriber"):
+            # Admins and subscribers see every course on the platform
+            courses = db.query(Course).all()
+            for course in courses:
+                owner = course.user
+                course.owner_name = (
+                    f"{owner.first_name} {owner.last_name}" if owner else "Unknown"
+                )
+                course.enrollment_count = len(course.students)
+
         else:
-            return None
+            raise HTTPException(status_code=403, detail="Unrecognised role")
+
+        return [CourseDetails(**course.__dict__) for course in courses]
     
     async def get_course(self, db: Session, course_id: str, user_id: UUID) -> CourseDetails:
         course = db.query(Course).filter(Course.course_id == course_id).first()
@@ -90,8 +96,8 @@ class CourseService:
             user = db.query(User).filter(User.id == course_data.user_id).first()
             if user is None:
                 raise HTTPException(status_code=404, detail="User not found")
-            if user.role != "professor":
-                raise HTTPException(status_code=403, detail="User is not a professor")
+            if user.role != "publisher":
+                raise HTTPException(status_code=403, detail="User is not a publisher")
         else:
             raise HTTPException(status_code=400, detail="User ID is required")
 
@@ -130,8 +136,8 @@ class CourseService:
         user = db.query(User).filter(User.id == user_id).first()
         if user is None:
             raise HTTPException(status_code=404, detail="User not found")
-        if user.role != "professor":
-            raise HTTPException(status_code=403, detail="Only professors can enroll students")
+        if user.role != "publisher":
+            raise HTTPException(status_code=403, detail="Only publishers can enroll subscribers")
         
         course = db.query(Course).filter(Course.course_id == course_id).first()
         if course is None:
@@ -145,9 +151,9 @@ class CourseService:
         if student is None:
             logger.error(f"❌ Student not found: {student_email}")
             raise HTTPException(status_code=404, detail="Student not found")
-        if student.role != "student":
+        if student.role != "subscriber":
             logger.error(f"❌ Student is not a student: {student_email}")
-            raise HTTPException(status_code=400, detail="Can only enroll users with student role")
+            raise HTTPException(status_code=400, detail="Can only enroll users with subscriber role")
         
         # Check if student is already enrolled
         existing_enrollment = db.query(CourseStudent).filter(
@@ -173,8 +179,8 @@ class CourseService:
         user = db.query(User).filter(User.id == user_id).first()
         if user is None:
             raise HTTPException(status_code=404, detail="User not found")
-        if user.role != "professor":
-            raise HTTPException(status_code=403, detail="Only professors can view course students")
+        if user.role != "publisher":
+            raise HTTPException(status_code=403, detail="Only publishers can view course students")
             
         course = db.query(Course).filter(Course.course_id == course_id).first()
         if course is None:
@@ -205,8 +211,8 @@ class CourseService:
         user = db.query(User).filter(User.id == user_id).first()
         if user is None:
             raise HTTPException(status_code=404, detail="User not found")
-        if user.role != "professor":
-            raise HTTPException(status_code=403, detail="Only professors can remove students")
+        if user.role != "publisher":
+            raise HTTPException(status_code=403, detail="Only publishers can remove subscribers")
             
         course = db.query(Course).filter(Course.course_id == course_id).first()
         if course is None:
@@ -236,16 +242,17 @@ class CourseService:
             raise HTTPException(status_code=404, detail="Course not found")
         
         # Check access rights
-        if user.role == "professor" and course.user_id != user_id:
+        if user.role == "publisher" and course.user_id != user_id:
             raise HTTPException(status_code=403, detail="You can only view sessions in your own courses")
-        elif user.role == "student":
-            # Check if student is enrolled in the course
+        elif user.role == "subscriber":
+            # Subscribers who are not enrolled see an empty session list — not an error
             enrollment = db.query(CourseStudent).filter(
                 CourseStudent.course_id == course.id,
                 CourseStudent.user_id == user_id
             ).first()
             if not enrollment:
-                raise HTTPException(status_code=403, detail="You are not enrolled in this course")
+                return []
+        # admin: no restriction — falls through and returns all sessions
         
         # Get sessions for the course
         sessions = db.query(SessionModel).filter(SessionModel.course_id == course.id).all()

@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     upload_dir: str = Field("./uploads", env="UPLOAD_DIR")
     static_dir: str = Field("./static", env="STATIC_DIR")
     max_file_size: int = Field(52428800, env="MAX_FILE_SIZE")
-    allowed_file_types: str = Field(".pptx,.ppt,.pdf", env="ALLOWED_FILE_TYPES")
+    allowed_file_types: str = Field(".pptx,.ppt,.pdf,.docx", env="ALLOWED_FILE_TYPES")
     
     # Cloud Storage Configuration (AWS S3)
     use_cloud_storage: bool = Field(False, env="USE_CLOUD_STORAGE")
@@ -35,6 +35,14 @@ class Settings(BaseSettings):
     s3_bucket_region: str = Field("", env="S3_BUCKET_REGION")
     cloudfront_domain: str = Field("", env="CLOUDFRONT_DOMAIN")  # Optional CDN domain
     
+    # Poppler path (required on Windows for pdf2image; leave empty on Linux/Docker where poppler-utils is in PATH)
+    poppler_path: Optional[str] = Field(None, env="POPPLER_PATH")
+
+    # Guest session user — UUID of the users row that owns unauthenticated (shared-link) session runs.
+    # The row must exist in the database before shared-link sessions can be used.
+    # If unset or the row is missing, /run/start/guest and /run/stop/guest return HTTP 503.
+    guest_user_uuid: Optional[str] = Field(None, env="GUEST_USER_UUID")
+
     # Server Configuration
     host: str = Field("0.0.0.0", env="HOST")
     port: int = Field(8000, env="PORT")
@@ -64,6 +72,8 @@ class Settings(BaseSettings):
     # Email Verification & Approval
     professor_approval_emails: str = Field("", env="PROFESSOR_APPROVAL_EMAILS")
     frontend_url: str = Field("http://localhost:3000", env="FRONTEND_URL")
+    # DEV ONLY — set BYPASS_EMAIL_VERIFICATION=false in production
+    bypass_email_verification: bool = Field(True, env="BYPASS_EMAIL_VERIFICATION")
     
     @field_validator('allowed_file_types')
     @classmethod

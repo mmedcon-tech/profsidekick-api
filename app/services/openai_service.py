@@ -5,88 +5,159 @@ import httpx
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 import openai
-from openai import OpenAI
+from openai import OpenAI, AsyncOpenAI
 from app.config import settings
+from app.services.context_builder import build_realtime_instructions, resolve_vision_prompt
 from PIL import Image
+import traceback
 import io
 
 class OpenAIService:
     """Service for OpenAI API integration"""
-    
+
     def __init__(self):
         self.client = OpenAI(api_key=settings.openai_api_key)
-        self.url = "https://api.openai.com/v1/realtime/sessions"
-        self.headers = {
-            "Authorization": f"Bearer {settings.openai_api_key}",
-            "Content-Type": "application/json"
-        }
+        self.async_client = AsyncOpenAI(api_key=settings.openai_api_key)
         
-    async def generate_ephemeral_token(self, assistant_parameters: Any, slides: List[Dict[str, Any]]) -> Dict[str, Any]:
+    # Valid OpenAI Realtime API model identifiers
+    _VALID_REALTIME_MODELS = {
+        "gpt-4o-realtime-preview",
+        "gpt-4o-realtime-preview-2024-12-17",
+        # "gpt-4o-realtime-preview-2024-10-01" — discontinued by OpenAI
+        "gpt-4o-mini-realtime-preview",
+        "gpt-4o-mini-realtime-preview-2024-12-17",
+    }
+    _DEFAULT_REALTIME_MODEL = "gpt-4o-realtime-preview"
+
+    def _normalize_realtime_model(self, model: str) -> str:
+        """Map legacy/invalid model names to a valid Realtime API model identifier."""
+        if model in self._VALID_REALTIME_MODELS:
+            return model
+        if "mini" in model.lower():
+            return "gpt-4o-mini-realtime-preview"
+        return self._DEFAULT_REALTIME_MODEL
+
+    async def generate_ephemeral_token(
+        self,
+        assistant_parameters: Any,
+        slides: List[Dict[str, Any]],
+        solution_slides: List[Dict[str, Any]] = None,
+        # Avatar / template context (resolved at call site)
+        conversation_prompt: Optional[str] = None,
+        teaching_prompt: Optional[str] = None,
+        examination_prompt: Optional[str] = None,
+        session_mode: Optional[str] = None,
+        role_label: Optional[str] = None,
+        role_context: Optional[str] = None,
+        session_summary: Optional[str] = None,
+        memories: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
         """
-        Generate ephemeral token for OpenAI Realtime API
-        
-        Returns:
-            Dictionary containing client_secret with token and expiration
+        Generate ephemeral token for OpenAI Realtime API using the SDK.
+        Using the SDK (rather than raw httpx) guarantees the request shape matches
+        the current GA API format regardless of future OpenAI API changes.
         """
         try:
-            # Make direct HTTP POST request to OpenAI Realtime API
-            if assistant_parameters['turn_detection']['type'] == "server_vad":
-                turn_detection = {
-                    "type": assistant_parameters['turn_detection']['type'],
-                    "prefix_padding_ms": assistant_parameters['turn_detection']['prefix_padding_ms'],
-                    "silence_duration_ms": assistant_parameters['turn_detection']['silence_duration_ms'],
-                    "threshold": assistant_parameters['turn_detection']['threshold'],
-                }
-            elif assistant_parameters['turn_detection']['type'] == "semantic_vad":
-                turn_detection = {
-                    "type": assistant_parameters['turn_detection']['type'],
-                    "eagerness": assistant_parameters['turn_detection']['eagerness'],
-                }
-            else:
-                turn_detection = {
-                    "type": assistant_parameters['turn_detection']['type'],
-                }
+            ap = assistant_parameters if isinstance(assistant_parameters, dict) else vars(assistant_parameters)
 
-            if assistant_parameters['instructions'] is not None and assistant_parameters['instructions'][0] != "{":
-                instructions = assistant_parameters['instructions']
+            raw_model = ap.get('model') or self._DEFAULT_REALTIME_MODEL
+            model = self._normalize_realtime_model(raw_model)
+            if model != raw_model:
+                print(f"⚠️  Remapped realtime model '{raw_model}' → '{model}'")
+
+            instructions = build_realtime_instructions(
+                assistant_parameters=assistant_parameters,
+                slides=slides,
+                solution_slides=solution_slides,
+                conversation_prompt=conversation_prompt,
+                teaching_prompt=teaching_prompt,
+                examination_prompt=examination_prompt,
+                session_mode=session_mode,
+                role_label=role_label,
+                role_context=role_context,
+                session_summary=session_summary,
+                memories=memories,
+            )
+
+            # Build turn_detection in the shape the SDK expects
+            td = ap.get('turn_detection')
+            if td is None:
+                turn_detection = openai.NOT_GIVEN
+            elif td.get('type') == "server_vad":
+                turn_detection = {
+                    "type": "server_vad",
+                    "threshold": td.get('threshold'),
+                    "prefix_padding_ms": td.get('prefix_padding_ms'),
+                    "silence_duration_ms": td.get('silence_duration_ms'),
+                }
+            elif td.get('type') == "semantic_vad":
+                turn_detection = {
+                    "type": "semantic_vad",
+                    "eagerness": td.get('eagerness'),
+                }
             else:
-                instructions_json = json.loads(assistant_parameters['instructions'])
-                instructions = instructions_json['editable'] + "\n" + instructions_json['core']
-            for slide in slides:
-                instructions += f"\n\nSlide {slide.slideNumber}: {slide.title}\n{slide.content}"
+                turn_detection = {"type": td['type']}
+
+            noise_reduction = ap.get('input_audio_noise_reduction')
+            transcription = ap.get('input_audio_transcription')
+
             async with httpx.AsyncClient() as client:
                 response = await client.post(
-                    self.url,
-                    headers=self.headers,
+                    "https://api.openai.com/v1/realtime/sessions",
+                    headers={
+                        "Authorization": f"Bearer {settings.openai_api_key}",
+                        "Content-Type": "application/json",
+                    },
                     json={
-                        "model": assistant_parameters['model'],
-                        "voice": assistant_parameters['voice'],
+                        "model": model,
+                        "voice": ap.get("voice", "alloy"),
                         "instructions": instructions,
-                        "input_audio_format": assistant_parameters['input_audio_format'],
-                        "output_audio_format": assistant_parameters['output_audio_format'],
-                        "temperature": assistant_parameters['temperature'],
-                        "tool_choice": assistant_parameters['tool_choice'],
-                        "input_audio_noise_reduction": assistant_parameters['input_audio_noise_reduction'],
-                        "input_audio_transcription": assistant_parameters['input_audio_transcription'],                        
-                        "tools": assistant_parameters['tools'],
+                        "input_audio_format": ap.get("input_audio_format", "pcm16"),
+                        "output_audio_format": ap.get("output_audio_format", "pcm16"),
+                        "temperature": ap.get("temperature", 0.8),
+                        "tool_choice": ap.get("tool_choice", "auto"),
+                        "tools": ap.get("tools") or [],
                         "turn_detection": turn_detection,
-                    }
+                        "input_audio_noise_reduction": noise_reduction if noise_reduction else None,
+                        "input_audio_transcription": transcription if transcription else None,
+                    },
                 )
-                
-                if response.status_code == 200:
-                    return response.json()
-                else:
-                    raise Exception(f"API request failed with status {response.status_code}: {response.text}")
-            
-        except Exception as e:
-            raise Exception(f"Failed to generate ephemeral token: {str(e)}")
 
-    async def process_slides_with_vision(self, slide_images: List, images_paths: List, session_id: str, vision_instructions: str, vision_model: str) -> List[Dict[str, Any]]:
+            if response.status_code != 200:
+                print(response.text)
+                raise Exception(response.text)
+
+            return response.json()
+
+
+            # The SDK returns a typed object; convert to the dict shape the rest of the code expects
+            return {
+                "client_secret": {
+                    "value": response.client_secret.value,
+                    "expires_at": response.client_secret.expires_at,
+                }
+            }
+
+        except Exception as e:
+            print("❌ generate_ephemeral_token FAILED")
+            print(traceback.format_exc())
+            raise
+
+    async def process_slides_with_vision(
+        self,
+        slide_images: List,
+        images_paths: List,
+        session_id: str,
+        vision_instructions: str,
+        vision_model: str,
+        template_document_analysis_prompt: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         try:
             # Prepare slides for Vision API
             slides_details = []
+            # Priority: explicit vision_instructions from session > template prompt > hardcoded default
             if not vision_instructions:
-                vision_instructions = "You are a helpful assistant that can analyze the slide image and provide a detailed description of the content."
+                vision_instructions = resolve_vision_prompt(template_document_analysis_prompt)
             if not vision_model:
                 vision_model = "gpt-4o"
 
@@ -137,7 +208,7 @@ class OpenAIService:
                         "content": [
                             {
                                 "type": "text",
-                                "text": vision_instructions
+                                "text": "Analyze this slide and extract all content as instructed."
                             },
                             {
                                 "type": "image_url",
@@ -157,7 +228,7 @@ class OpenAIService:
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are a helpful assistant that can analyze the slide content and provide a title for the slide. The title should be a single sentence that captures the main idea of the slide. It should be no more than 10 words. Just write the title directly without title tag."
+                        "content": "Generate a concise academic title for this examination slide (maximum 10 words). Write only the title, no additional text."
                     },
                     {
                         "role": "user",

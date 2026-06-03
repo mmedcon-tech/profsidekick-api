@@ -14,6 +14,7 @@ class SlideData(BaseModel):
     thumbnailPath: Optional[str] = None
     visionInstructions: Optional[str] = None
     visionModel: Optional[str] = None
+    source: Optional[str] = None  # "student" | "solution" — solution slides are never rendered in the UI
 
 class PresentationData(BaseModel):
     filename: str
@@ -74,14 +75,15 @@ class SessionDetails(BaseModel):
     presentationDetails: PresentationData
     slidesDetails: List[SlideData]
     courseId: str = Field(..., description="Course ID that this session belongs to")
-    courseName: str = Field(..., min_length=1, max_length=200)
-    className: str = Field(..., min_length=1, max_length=200)
-    courseCode: str = Field(..., min_length=1, max_length=50)
+    courseName: Optional[str] = None
+    className: Optional[str] = None
+    courseCode: Optional[str] = None
     sessionNumber: Optional[int] = None
     sessionDate: Optional[datetime] = None
     description: Optional[str] = None
     duration: int = Field(..., gt=0, le=480)  # Max 8 hours
     assistantParameters: Optional[AssistantParameters] = None
+    sessionMode: Optional[str] = "teaching"   # 'teaching' | 'examination'
 
 class SessionCreateRequest(BaseModel):
     courseId: str = Field(..., description="Course ID that this session belongs to")
@@ -92,6 +94,11 @@ class SessionCreateRequest(BaseModel):
     duration: int = Field(..., gt=0, le=480)  # Max 8 hours
     visionInstructions: Optional[str] = None
     visionModel: Optional[str] = None
+    # Role selection at session creation
+    selectedRoleId: Optional[UUID] = None
+    roleLabel: Optional[str] = None
+    # Session mode: determines which template prompt is loaded
+    sessionMode: Optional[str] = Field("teaching", pattern="^(teaching|examination)$")
 
 class SessionUpdateDetails(BaseModel):
     # courseName: str = Field(..., min_length=1, max_length=200)
@@ -110,11 +117,12 @@ class SessionRunDetails(BaseModel):
     sessionRunMetadata: Optional[dict] = None
     assistantParameters: AssistantParameters
     status: str
-    
-    courseName: str
-    className: str
-    courseCode: str
-    description: str
+
+    courseId: Optional[str] = None
+    courseName: Optional[str] = None
+    className: Optional[str] = None
+    courseCode: Optional[str] = None
+    description: Optional[str] = None
     duration: int
     presentationDetails: PresentationData
     slidesDetails: List[SlideData]
@@ -188,6 +196,7 @@ class ClassDetails(BaseModel):
     className: str
     courseName: str
     courseCode: str
+    courseId: Optional[str] = None   # the course_id slug used in URLs (e.g. "crs_abc123")
     description: Optional[str] = None
     duration: int
 
@@ -201,6 +210,10 @@ class SessionSummary(BaseModel):
     lastAccessedAt: Optional[datetime] = None
     runCount: int
     lastRunAt: Optional[datetime] = None
+    sessionMode: Optional[str] = "teaching"   # 'teaching' | 'examination'
+    avatarId: Optional[str] = None
+    selectedRoleId: Optional[str] = None
+    roleLabel: Optional[str] = None
 
 class PaginationInfo(BaseModel):
     page: int
@@ -229,6 +242,11 @@ class SessionRunSummary(BaseModel):
     feedback: Optional[SessionRunFeedback] = None
     slidesCompleted: Optional[int] = None
     totalSlides: int
+    avatarId: Optional[str] = None
+    avatarName: Optional[str] = None
+    roleAtStart: Optional[str] = None
+    sessionMode: Optional[str] = None
+    className: Optional[str] = None
 
 class SessionRunsListResponse(BaseModel):
     runs: List[SessionRunSummary]
@@ -443,3 +461,559 @@ class FileUploadResponse(BaseModel):
     file_size: Optional[int] = None
     file_type: Optional[str] = None
     message: Optional[str] = None
+
+# Realtime Feedback Schemas
+class FeedbackAnalysisRequest(BaseModel):
+    question: str
+    response: str
+    slide_number: Optional[int] = None
+
+class FeedbackCardResponse(BaseModel):
+    severity: str  # "green" | "amber" | "red"
+    observation: str
+    keywords: List[str]
+    turn_number: Optional[int] = None
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Avatar layer — prompts live ONLY in AvatarTemplate (admin-owned).
+# Avatar, AvatarConfiguration, and Session contain NO prompt fields.
+# ═══════════════════════════════════════════════════════════════════
+
+# ── Avatar Template Version ───────────────────────────────────────
+
+class AvatarTemplateVersionCreate(BaseModel):
+    conversation_prompt: Optional[str] = None       # LEGACY — kept for backward compat
+    teaching_prompt: Optional[str] = None           # Used when session_mode = 'teaching'
+    examination_prompt: Optional[str] = None        # Used when session_mode = 'examination'
+    document_analysis_prompt: Optional[str] = None
+    change_notes: Optional[str] = None
+
+class AvatarTemplateVersionResponse(BaseModel):
+    id: UUID
+    template_id: UUID
+    version_number: int
+    conversation_prompt: Optional[str] = None       # LEGACY
+    teaching_prompt: Optional[str] = None
+    examination_prompt: Optional[str] = None
+    document_analysis_prompt: Optional[str] = None
+    status: str  # draft | published | archived
+    change_notes: Optional[str] = None
+    created_by: UUID
+    created_at: datetime
+    published_at: Optional[datetime] = None
+    published_by: Optional[UUID] = None
+
+    class Config:
+        from_attributes = True
+
+# ── Avatar Template Role ──────────────────────────────────────────
+
+class AvatarTemplateRoleCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = None
+    prompt_context: Optional[str] = None
+
+class AvatarTemplateRoleUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    description: Optional[str] = None
+    prompt_context: Optional[str] = None
+    is_enabled: Optional[bool] = None
+    sort_order: Optional[int] = None
+
+class AvatarTemplateRoleResponse(BaseModel):
+    id: UUID
+    template_id: UUID
+    name: str
+    description: Optional[str] = None
+    prompt_context: Optional[str] = None
+    is_enabled: bool
+    sort_order: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class RoleReorderRequest(BaseModel):
+    role_ids: List[UUID]  # ordered list — first element gets sort_order 0
+
+# ── Avatar Template ──────────────────────────────────────────
+
+class AvatarTemplateCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = None
+    category: Optional[str] = Field(None, max_length=100)
+
+class AvatarTemplateUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[str] = None
+    category: Optional[str] = Field(None, max_length=100)
+    is_active: Optional[bool] = None
+
+class AvatarTemplateResponse(BaseModel):
+    """Full admin-only response — includes current version prompts."""
+    id: UUID
+    created_by: UUID
+    name: str
+    description: Optional[str] = None
+    category: Optional[str] = None
+    is_active: bool
+    avatar_image_url: Optional[str] = None
+    current_version_id: Optional[UUID] = None
+    current_version: Optional[AvatarTemplateVersionResponse] = None
+    published_state: str  # "unpublished" | "draft" | "published"
+    version_count: int = 0
+    roles: List[AvatarTemplateRoleResponse] = []
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class AvatarTemplateSummary(BaseModel):
+    """Prompt-free — safe for publisher template browsing."""
+    id: UUID
+    name: str
+    description: Optional[str] = None
+    category: Optional[str] = None
+    is_active: bool
+    published_state: str = "unpublished"
+    avatar_image_url: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class AvatarTemplateDetailResponse(AvatarTemplateResponse):
+    """Extended detail view — includes full version history."""
+    versions: List[AvatarTemplateVersionResponse] = []
+
+# ── Rubric ───────────────────────────────────────────────────────
+
+class RubricCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255)
+    content: dict
+
+class RubricResponse(BaseModel):
+    id: UUID
+    avatar_configuration_id: UUID
+    title: str
+    content: dict
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# ── Knowledge Document ───────────────────────────────────────────
+
+class KnowledgeDocumentResponse(BaseModel):
+    id: UUID
+    avatar_configuration_id: UUID
+    title: str
+    file_path: Optional[str] = None
+    file_name: Optional[str] = None
+    file_size: Optional[int] = None
+    file_type: Optional[str] = None
+    content_text: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# ── Reference Solution ───────────────────────────────────────────
+
+class ReferenceSolutionResponse(BaseModel):
+    id: UUID
+    avatar_configuration_id: UUID
+    title: str
+    file_path: Optional[str] = None
+    file_name: Optional[str] = None
+    file_size: Optional[int] = None
+    file_type: Optional[str] = None
+    content_text: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# ── Avatar Configuration ─────────────────────────────────────────
+
+class AvatarConfigurationCreate(BaseModel):
+    voice: Optional[str] = Field(None, max_length=100)
+    language: Optional[str] = Field(None, max_length=50)
+    difficulty_level: Optional[str] = Field(None, max_length=50)
+    additional_settings: Optional[dict] = None
+
+class AvatarConfigurationUpdate(BaseModel):
+    voice: Optional[str] = Field(None, max_length=100)
+    language: Optional[str] = Field(None, max_length=50)
+    difficulty_level: Optional[str] = Field(None, max_length=50)
+    additional_settings: Optional[dict] = None
+
+class AvatarConfigurationResponse(BaseModel):
+    id: UUID
+    avatar_id: UUID
+    voice: Optional[str] = None
+    language: Optional[str] = None
+    difficulty_level: Optional[str] = None
+    additional_settings: Optional[dict] = None
+    rubrics: List[RubricResponse] = []
+    knowledge_documents: List[KnowledgeDocumentResponse] = []
+    reference_solutions: List[ReferenceSolutionResponse] = []
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# ── Teaching Preferences ────────────────────────────────────────
+
+VALID_TEACHING_PACE        = {"thorough", "balanced", "fast"}
+VALID_QUESTIONING_STYLE    = {"socratic", "direct", "guided"}
+VALID_FORMALITY_LEVEL      = {"casual", "balanced", "formal"}
+VALID_DEPTH_LEVEL          = {"surface", "standard", "deep"}
+VALID_ENCOURAGEMENT_LEVEL  = {"high", "neutral", "minimal"}
+VALID_LANGUAGE_LEVEL       = {"introductory", "intermediate", "advanced", "adaptive"}
+
+
+class TeachingPreferences(BaseModel):
+    teaching_pace:       Optional[str] = Field(None, description="thorough | balanced | fast")
+    questioning_style:   Optional[str] = Field(None, description="socratic | direct | guided")
+    formality_level:     Optional[str] = Field(None, description="casual | balanced | formal")
+    depth_level:         Optional[str] = Field(None, description="surface | standard | deep")
+    encouragement_level: Optional[str] = Field(None, description="high | neutral | minimal")
+    language_level:      Optional[str] = Field(None, description="introductory | intermediate | advanced | adaptive")
+
+
+class PublisherAvatarProfileResponse(BaseModel):
+    id: UUID
+    publisher_avatar_id: UUID
+    teaching_pace:       Optional[str] = None
+    questioning_style:   Optional[str] = None
+    formality_level:     Optional[str] = None
+    depth_level:         Optional[str] = None
+    encouragement_level: Optional[str] = None
+    language_level:      Optional[str] = None
+    refined_prompt:      Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ── Avatar ───────────────────────────────────────────────────────
+
+class AvatarCreate(BaseModel):
+    template_id: UUID
+    name: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = None
+    teaching_preferences: Optional[TeachingPreferences] = None
+
+class AvatarUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[str] = None
+
+class AvatarSummary(BaseModel):
+    """List response — includes profile but no heavy configuration payload."""
+    id: UUID
+    template_id: UUID
+    publisher_id: UUID
+    name: str
+    description: Optional[str] = None
+    is_published: bool
+    template_image_url: Optional[str] = None   # inherited from AvatarTemplate.avatar_image_path
+    template_name: Optional[str] = None        # inherited from AvatarTemplate.name
+    profile: Optional[PublisherAvatarProfileResponse] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class AvatarResponse(BaseModel):
+    """Single-avatar detail — includes configuration and profile."""
+    id: UUID
+    template_id: UUID
+    publisher_id: UUID
+    name: str
+    description: Optional[str] = None
+    is_published: bool
+    template_image_url: Optional[str] = None   # inherited from AvatarTemplate.avatar_image_path
+    template_name: Optional[str] = None        # inherited from AvatarTemplate.name
+    configuration: Optional[AvatarConfigurationResponse] = None
+    profile: Optional[PublisherAvatarProfileResponse] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class AvatarPublicResponse(BaseModel):
+    """Subscriber-facing — no configuration, no template metadata."""
+    id: UUID
+    name: str
+    description: Optional[str] = None
+    is_published: bool
+    template_image_url: Optional[str] = None   # inherited from AvatarTemplate.avatar_image_path
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class AvatarListResponse(BaseModel):
+    avatars: List[AvatarSummary]
+    total: int
+
+class AvatarPublicListResponse(BaseModel):
+    avatars: List[AvatarPublicResponse]
+    total: int
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Publisher Learning System schemas
+# ═══════════════════════════════════════════════════════════════════
+
+# ── Chat ─────────────────────────────────────────────────────────
+
+class ChatRequest(BaseModel):
+    conversation_id: Optional[UUID] = None
+    avatar_id: Optional[UUID] = None
+    session_id: Optional[str] = None   # string slug e.g. "sess_abc123"; loads slide content
+    message: str = Field(..., min_length=1, max_length=8000)
+    preferences: Optional[dict] = None
+    selected_content: Optional[str] = None
+
+class ChatOptionsRequest(BaseModel):
+    conversation_id: Optional[UUID] = None
+    avatar_id: Optional[UUID] = None
+    session_id: Optional[str] = None
+    message: str = Field(..., min_length=1, max_length=8000)
+    n: int = Field(3, ge=1, le=5)
+    preferences: Optional[dict] = None
+
+class ResponseOption(BaseModel):
+    option_id: str   # "A", "B", "C", ...
+    content: str
+
+class ChatOptionsResponse(BaseModel):
+    conversation_id: UUID  # pre-created so frontend can reference it
+    options: List[ResponseOption]
+
+class ChatSelectRequest(BaseModel):
+    """Commit a chosen option to conversation history and record feedback."""
+    conversation_id: UUID
+    avatar_id: Optional[UUID] = None
+    user_message: str
+    selected_response: str
+    rejected_responses: List[str] = Field(default_factory=list)
+    feedback_notes: Optional[str] = None
+
+class ChatSelectResponse(BaseModel):
+    conversation_id: UUID
+    message_id: UUID
+    feedback_id: UUID
+    created_at: datetime
+
+class ChatResponse(BaseModel):
+    conversation_id: UUID
+    message_id: UUID
+    reply: str
+    turn_number: int
+    created_at: datetime
+
+class MessageResponse(BaseModel):
+    id: UUID
+    role: str
+    content: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class ConversationSummary(BaseModel):
+    id: UUID
+    avatar_id: Optional[UUID] = None
+    title: str
+    message_count: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class ConversationDetail(BaseModel):
+    id: UUID
+    avatar_id: Optional[UUID] = None
+    title: str
+    messages: List[MessageResponse]
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class ConversationListResponse(BaseModel):
+    conversations: List[ConversationSummary]
+    total: int
+
+# ── Feedback ──────────────────────────────────────────────────────
+
+class FeedbackCreate(BaseModel):
+    avatar_id: Optional[UUID] = None
+    prompt: str = Field(..., min_length=1)
+    selected_response: str = Field(..., min_length=1)
+    rejected_responses: List[str] = Field(default_factory=list)
+    feedback_notes: Optional[str] = None
+
+class FeedbackResponse(BaseModel):
+    id: UUID
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# ── Preferences ───────────────────────────────────────────────────
+
+class PreferenceUpsert(BaseModel):
+    key: str = Field(..., min_length=1, max_length=100)
+    value: Any
+
+class PreferenceResponse(BaseModel):
+    publisher_id: UUID
+    key: str
+    value: Any
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class PreferenceListResponse(BaseModel):
+    preferences: List[PreferenceResponse]
+
+
+# ── Chat Start (AI-initiated opening) ─────────────────────────────
+
+class ChatStartRequest(BaseModel):
+    """
+    Start a new conversation with an AI-generated opening message.
+    The backend assembles the full system prompt and calls the LLM
+    with no user turn, so the AI speaks first.
+    """
+    avatar_id: Optional[UUID] = None
+    session_id: Optional[str] = None
+    preferences: Optional[dict] = None   # e.g. selected_role
+
+class ChatStartResponse(BaseModel):
+    conversation_id: UUID
+    message_id: UUID
+    opening_message: str
+    created_at: datetime
+
+
+# ── Per-message feedback ──────────────────────────────────────────
+
+# ── Template Image ────────────────────────────────────────────────
+
+class TemplateImageResponse(BaseModel):
+    id: UUID
+    avatar_image_url: Optional[str] = None
+
+
+# ── Admin Template Dashboard Stats ───────────────────────────────
+
+class TemplateDashboardStats(BaseModel):
+    template_id: UUID
+    name: str
+    avatar_image_url: Optional[str] = None
+    published_state: str
+    version_count: int
+    publisher_count: int   # number of publishers who created avatars from this template
+    course_count: int      # distinct courses with sessions using these avatars
+    session_count: int     # total sessions
+    session_run_count: int # total session runs
+
+class TemplatePublisherRow(BaseModel):
+    publisher_id: UUID
+    username: str
+    email: str
+    avatar_id: UUID
+    avatar_name: str
+    is_published: bool
+    created_at: datetime
+
+class TemplateCourseRow(BaseModel):
+    course_id: str
+    name: Optional[str] = None
+    code: Optional[str] = None
+    publisher_username: str
+    session_count: int
+    is_active: bool
+
+class TemplateSessionRunRow(BaseModel):
+    run_id: UUID
+    session_id: str
+    session_name: Optional[str] = None
+    publisher_username: str
+    status: str
+    start_time: datetime
+    end_time: Optional[datetime] = None
+    role_at_start: Optional[str] = None
+
+
+# ── Per-message feedback (kept for backward compat during migration) ──────────
+# These schemas are deprecated; new edits use ResponseEditCreate / ResponseEditResponse.
+
+class MessageFeedbackCreate(BaseModel):
+    rating: Optional[str] = Field(None, pattern="^(good|needs_improvement)$")
+    comment: Optional[str] = Field(None, max_length=2000)
+    avatar_id: Optional[UUID] = None
+
+class MessageFeedbackResponse(BaseModel):
+    id: UUID
+    message_id: UUID
+    rating: Optional[str] = None
+    comment: Optional[str] = None
+
+
+# ── Editable AI Responses (publisher_refinement) ──────────────────
+
+class ResponseEditCreate(BaseModel):
+    edited_content: str = Field(..., min_length=1, max_length=16000)
+    original_content: str = Field(..., min_length=1, max_length=16000)
+    avatar_id: Optional[UUID] = None
+    session_id: Optional[str] = None
+
+class ResponseEditResponse(BaseModel):
+    id: UUID
+    message_id: UUID
+    original_content: str
+    edited_content: str
+    edit_type: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ── Avatar Subscriptions ───────────────────────────────────────────
+
+class SubscriptionResponse(BaseModel):
+    id: UUID
+    subscriber_id: UUID
+    avatar_id: UUID
+    subscribed_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class SubscriptionListResponse(BaseModel):
+    subscriptions: List[SubscriptionResponse]
+    total: int
