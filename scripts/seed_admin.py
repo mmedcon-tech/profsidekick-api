@@ -16,6 +16,7 @@ Defaults (override with env vars):
     ADMIN_FIRST     = Admin
     ADMIN_LAST      = User
 """
+
 import os
 import uuid
 

@@ -5,6 +5,7 @@ Revises: 43b7083f77c0
 Create Date: 2026-05-24 00:00:00.000000
 
 """
+
 from typing import Sequence, Union
 
 import sqlalchemy as sa
@@ -45,9 +46,7 @@ def upgrade() -> None:
         ),
         sa.Column("issued_by", sa.String(length=255), nullable=False),
         sa.Column("max_redemptions", sa.Integer(), nullable=False, server_default="1"),
-        sa.Column(
-            "redemptions_used", sa.Integer(), nullable=False, server_default="0"
-        ),
+        sa.Column("redemptions_used", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("expires_at", sa.DateTime(), nullable=True),
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default="true"),
         sa.Column("created_at", sa.DateTime(), nullable=True),
@@ -78,22 +77,14 @@ def upgrade() -> None:
         sa.Column("user_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("session_run_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("operation_type", sa.String(length=50), nullable=False),
-        sa.Column(
-            "input_tokens", sa.Integer(), nullable=False, server_default="0"
-        ),
-        sa.Column(
-            "output_tokens", sa.Integer(), nullable=False, server_default="0"
-        ),
+        sa.Column("input_tokens", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("output_tokens", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("raw_cost_usd", sa.Numeric(precision=12, scale=6), nullable=False),
         sa.Column(
             "platform_fee_usd", sa.Numeric(precision=12, scale=6), nullable=False
         ),
-        sa.Column(
-            "total_cost_usd", sa.Numeric(precision=12, scale=6), nullable=False
-        ),
-        sa.Column(
-            "credits_charged", sa.Numeric(precision=12, scale=6), nullable=False
-        ),
+        sa.Column("total_cost_usd", sa.Numeric(precision=12, scale=6), nullable=False),
+        sa.Column("credits_charged", sa.Numeric(precision=12, scale=6), nullable=False),
         sa.Column("funded_by", sa.String(length=20), nullable=False),
         sa.Column("access_code_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("created_at", sa.DateTime(), nullable=True),

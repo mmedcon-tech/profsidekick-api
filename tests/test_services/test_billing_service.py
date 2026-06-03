@@ -1,4 +1,5 @@
 """Unit tests for billing_service — all DB interaction is mocked."""
+
 import uuid
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
@@ -128,7 +129,9 @@ def test_calculate_cost_basic():
 
 def test_calculate_cost_minimum_enforced():
     db = _make_db()
-    pricing = _make_pricing(input_rate="0.000001", output_rate="0.000001", minimum="5.0")
+    pricing = _make_pricing(
+        input_rate="0.000001", output_rate="0.000001", minimum="5.0"
+    )
     db.query.return_value.filter.return_value.first.return_value = pricing
     result = calculate_cost("chat", 1, 1, db)
     assert result["credits_charged"] == Decimal("5.0")

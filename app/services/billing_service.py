@@ -175,9 +175,9 @@ def charge_usage(
             .with_for_update()
             .first()
         )
-        access_code.remaining_credits = Decimal(
-            str(access_code.remaining_credits)
-        ) - credits_needed
+        access_code.remaining_credits = (
+            Decimal(str(access_code.remaining_credits)) - credits_needed
+        )
         access_code.updated_at = datetime.utcnow()
     else:
         credit_balance = (
@@ -186,9 +186,9 @@ def charge_usage(
             .with_for_update()
             .first()
         )
-        credit_balance.balance_credits = Decimal(
-            str(credit_balance.balance_credits)
-        ) - credits_needed
+        credit_balance.balance_credits = (
+            Decimal(str(credit_balance.balance_credits)) - credits_needed
+        )
         credit_balance.updated_at = datetime.utcnow()
 
     record = UsageRecord(
@@ -223,9 +223,7 @@ def redeem_access_code(
     user_id: UUID, code_str: str, db: Session
 ) -> AccessCodeRedemption:
     code_str = code_str.strip().upper()
-    access_code = (
-        db.query(AccessCode).filter(AccessCode.code == code_str).first()
-    )
+    access_code = db.query(AccessCode).filter(AccessCode.code == code_str).first()
 
     if not access_code:
         raise HTTPException(
@@ -346,15 +344,11 @@ def create_access_code(
 
 
 def list_access_codes(db: Session) -> List[AccessCode]:
-    return (
-        db.query(AccessCode).order_by(AccessCode.created_at.desc()).all()
-    )
+    return db.query(AccessCode).order_by(AccessCode.created_at.desc()).all()
 
 
 def deactivate_access_code(code_id: UUID, db: Session) -> AccessCode:
-    access_code = (
-        db.query(AccessCode).filter(AccessCode.id == code_id).first()
-    )
+    access_code = db.query(AccessCode).filter(AccessCode.id == code_id).first()
     if not access_code:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Access code not found"
