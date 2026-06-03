@@ -165,19 +165,32 @@ class AuthService:
                 message="Invalid username or password"
             )
         
-        # Check if email is verified (skip check if email_verified is None for old accounts)
-        if user.email_verified is False:
-            return AuthResponse(
-                success=False,
-                message="Please verify your email address before logging in. Check your email for the verification link."
-            )
-        
-        # Check if account is approved (skip check if is_approved is None for old accounts)
-        if user.is_approved is False:
-            return AuthResponse(
-                success=False,
-                message="Your account is pending approval. You will receive an email once your account is approved."
-            )
+        # Local dev: no SMTP — treat existing unverified accounts as verified
+        if settings.skip_email_verification:
+            if user.email_verified is False or user.is_approved is False:
+                user.email_verified = True
+                user.is_approved = True
+                user.email_verification_token = None
+                db.commit()
+                db.refresh(user)
+        else:
+            if user.email_verified is False:
+                return AuthResponse(
+                    success=False,
+                    message=(
+                        "Please verify your email address before logging in. "
+                        "Check your email for the verification link."
+                    ),
+                )
+
+            if user.is_approved is False:
+                return AuthResponse(
+                    success=False,
+                    message=(
+                        "Your account is pending approval. You will receive an email "
+                        "once your account is approved."
+                    ),
+                )
         
         # Create access token
         token_data = self.create_access_token(str(user.id), user.username)
