@@ -5,6 +5,7 @@ Revises: c2222222222c
 Create Date: 2026-06-02 00:00:00.000000
 
 """
+
 from typing import Sequence, Union
 
 import sqlalchemy as sa
@@ -25,42 +26,32 @@ def upgrade() -> None:
     op.create_table(
         "slide_chunks",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column(
-            "session_id", postgresql.UUID(as_uuid=True), nullable=False
-        ),
+        sa.Column("session_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("slide_number", sa.Integer(), nullable=False),
         sa.Column("chunk_index", sa.Integer(), nullable=False),
         sa.Column("content", sa.Text(), nullable=False),
         # vector(1536) — OpenAI text-embedding-3-small dimensionality
         sa.Column(
             "embedding",
-            sa.Text().with_variant(
-                sa.text("vector(1536)"), "postgresql"
-            ),
+            sa.Text().with_variant(sa.text("vector(1536)"), "postgresql"),
             nullable=True,
         ),
         sa.Column("created_at", sa.DateTime(), nullable=True),
         sa.ForeignKeyConstraint(["session_id"], ["sessions.id"]),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(
-        "ix_slide_chunks_session_id", "slide_chunks", ["session_id"]
-    )
+    op.create_index("ix_slide_chunks_session_id", "slide_chunks", ["session_id"])
 
     op.create_table(
         "knowledge_chunks",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column(
-            "session_id", postgresql.UUID(as_uuid=True), nullable=False
-        ),
+        sa.Column("session_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("source", sa.String(length=50), nullable=False),
         sa.Column("content", sa.Text(), nullable=False),
         # vector(1536) — OpenAI text-embedding-3-small dimensionality
         sa.Column(
             "embedding",
-            sa.Text().with_variant(
-                sa.text("vector(1536)"), "postgresql"
-            ),
+            sa.Text().with_variant(sa.text("vector(1536)"), "postgresql"),
             nullable=True,
         ),
         sa.Column("created_at", sa.DateTime(), nullable=True),

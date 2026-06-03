@@ -11,6 +11,7 @@ Requires a real PostgreSQL + pgvector database.  Set DATABASE_URL before running
   CI: DATABASE_URL is injected by the GitHub Actions workflow which spins up
       a pgvector/pgvector:pg16 service container.
 """
+
 import os
 import uuid
 
@@ -127,4 +128,3 @@ def client(db_session, test_user):
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
-

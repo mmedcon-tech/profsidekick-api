@@ -13,10 +13,10 @@ logger = logging.getLogger(__name__)
 
 class EmailService:
     """Service for sending emails via SMTP, SendGrid, Resend, or Gmail API"""
-    
+
     def __init__(self):
         self.email_service = settings.email_service.lower()
-        
+
         # SMTP settings
         self.smtp_host = settings.smtp_host
         self.smtp_port = settings.smtp_port
@@ -24,152 +24,153 @@ class EmailService:
         self.smtp_password = settings.smtp_password
         self.from_email = settings.smtp_from_email
         self.from_name = settings.smtp_from_name
-        
+
         # API keys
         self.sendgrid_api_key = settings.sendgrid_api_key
         self.resend_api_key = settings.resend_api_key
-        
+
         logger.info(f"Email service initialized with provider: {self.email_service}")
-    
+
     async def send_email(
         self,
         to_email: str | List[str],
         subject: str,
         html_content: str,
-        text_content: Optional[str] = None
+        text_content: Optional[str] = None,
     ) -> bool:
         """
         Send an email using configured provider (SMTP, SendGrid, or Resend)
-        
+
         Args:
             to_email: Recipient email address or list of addresses
             subject: Email subject
             html_content: HTML content of the email
             text_content: Plain text content (optional)
-        
+
         Returns:
             True if email sent successfully, False otherwise
         """
         try:
             if self.email_service == "sendgrid":
-                return await self._send_via_sendgrid(to_email, subject, html_content, text_content)
+                return await self._send_via_sendgrid(
+                    to_email, subject, html_content, text_content
+                )
             elif self.email_service == "resend":
-                return await self._send_via_resend(to_email, subject, html_content, text_content)
+                return await self._send_via_resend(
+                    to_email, subject, html_content, text_content
+                )
             else:  # default to SMTP
-                return await self._send_via_smtp(to_email, subject, html_content, text_content)
+                return await self._send_via_smtp(
+                    to_email, subject, html_content, text_content
+                )
         except Exception as e:
             logger.error(f"❌ Failed to send email: {e}")
             return False
-    
+
     async def _send_via_sendgrid(
         self,
         to_email: str | List[str],
         subject: str,
         html_content: str,
-        text_content: Optional[str] = None
+        text_content: Optional[str] = None,
     ) -> bool:
         """Send email via SendGrid HTTP API"""
         try:
             to_emails = [to_email] if isinstance(to_email, str) else to_email
-            
+
             payload = {
-                "personalizations": [{
-                    "to": [{"email": email} for email in to_emails]
-                }],
-                "from": {
-                    "email": self.from_email,
-                    "name": self.from_name
-                },
+                "personalizations": [{"to": [{"email": email} for email in to_emails]}],
+                "from": {"email": self.from_email, "name": self.from_name},
                 "subject": subject,
-                "content": [
-                    {"type": "text/html", "value": html_content}
-                ]
+                "content": [{"type": "text/html", "value": html_content}],
             }
-            
+
             if text_content:
-                payload["content"].insert(0, {"type": "text/plain", "value": text_content})
-            
+                payload["content"].insert(
+                    0, {"type": "text/plain", "value": text_content}
+                )
+
             response = requests.post(
                 "https://api.sendgrid.com/v3/mail/send",
                 headers={
                     "Authorization": f"Bearer {self.sendgrid_api_key}",
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
                 },
                 json=payload,
-                timeout=30
+                timeout=30,
             )
-            
+
             response.raise_for_status()
             logger.info(f"✅ Email sent via SendGrid to {to_email}")
             return True
-            
+
         except Exception as e:
             logger.error(f"❌ SendGrid API error: {e}")
             return False
-    
+
     async def _send_via_resend(
         self,
         to_email: str | List[str],
         subject: str,
         html_content: str,
-        text_content: Optional[str] = None
+        text_content: Optional[str] = None,
     ) -> bool:
         """Send email via Resend HTTP API"""
         try:
             to_emails = [to_email] if isinstance(to_email, str) else to_email
-            
+
             payload = {
                 "from": f"{self.from_name} <{self.from_email}>",
                 "to": to_emails,
                 "subject": subject,
-                "html": html_content
+                "html": html_content,
             }
-            
+
             if text_content:
                 payload["text"] = text_content
-            
+
             response = requests.post(
                 "https://api.resend.com/emails",
                 headers={
                     "Authorization": f"Bearer {self.resend_api_key}",
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
                 },
                 json=payload,
-                timeout=30
+                timeout=30,
             )
-            
+
             response.raise_for_status()
             logger.info(f"✅ Email sent via Resend to {to_email}")
             return True
-            
+
         except Exception as e:
             logger.error(f"❌ Resend API error: {e}")
             return False
-    
+
     async def _send_via_smtp(
         self,
         to_email: str | List[str],
         subject: str,
         html_content: str,
-        text_content: Optional[str] = None
+        text_content: Optional[str] = None,
     ) -> bool:
         """Send email via SMTP (for local development)"""
         try:
             logger.info(f"Sending email to {to_email} with subject {subject}")
             # Create message
-            msg = MIMEMultipart('alternative')
-            msg['From'] = f"{self.from_name} <{self.from_email}>"
-            msg['To'] = to_email if isinstance(to_email, str) else ', '.join(to_email)
-            msg['Subject'] = subject
-            
+            msg = MIMEMultipart("alternative")
+            msg["From"] = f"{self.from_name} <{self.from_email}>"
+            msg["To"] = to_email if isinstance(to_email, str) else ", ".join(to_email)
+            msg["Subject"] = subject
+
             # Add text and HTML parts
             if text_content:
-                part1 = MIMEText(text_content, 'plain')
+                part1 = MIMEText(text_content, "plain")
                 msg.attach(part1)
-            
-            part2 = MIMEText(html_content, 'html')
+
+            part2 = MIMEText(html_content, "html")
             msg.attach(part2)
-            
+
             # Send email
             logger.info(f"Sending email to {to_email} with subject {subject}")
             logger.info(f"SMTP host: {self.smtp_host}")
@@ -189,35 +190,34 @@ class EmailService:
                     server.starttls()
                     server.login(self.smtp_username, self.smtp_password)
                     server.send_message(msg)
-            
+
             logger.info(f"✅ Email sent successfully to {to_email}")
             return True
-            
+
         except Exception as e:
             logger.error(f"❌ Failed to send email: {e}")
             return False
-    
+
     async def send_verification_email(
-        self,
-        to_email: str,
-        user_name: str,
-        verification_token: str
+        self, to_email: str, user_name: str, verification_token: str
     ) -> bool:
         """
         Send email verification link
-        
+
         Args:
             to_email: User's email address
             user_name: User's full name
             verification_token: Unique verification token
-        
+
         Returns:
             True if email sent successfully
         """
-        verification_url = f"{settings.frontend_url}/verify-email?token={verification_token}"
-        
+        verification_url = (
+            f"{settings.frontend_url}/verify-email?token={verification_token}"
+        )
+
         subject = "Verify Your Email - ProfSidekick"
-        
+
         html_content = f"""
         <!DOCTYPE html>
         <html>
@@ -293,7 +293,7 @@ class EmailService:
         </body>
         </html>
         """
-        
+
         text_content = f"""
         Welcome to ProfSidekick!
         
@@ -310,32 +310,28 @@ class EmailService:
         
         If you didn't create an account with ProfSidekick, please ignore this email.
         """
-        
+
         return await self.send_email(to_email, subject, html_content, text_content)
-    
+
     async def send_approval_request_email(
-        self,
-        user_email: str,
-        user_name: str,
-        user_role: str,
-        approval_token: str
+        self, user_email: str, user_name: str, user_role: str, approval_token: str
     ) -> bool:
         """
         Send approval request to professor
-        
+
         Args:
             user_email: New user's email
             user_name: New user's full name
             user_role: User's role (professor/student)
             approval_token: Unique approval token
-        
+
         Returns:
             True if email sent successfully
         """
         approval_url = f"{settings.frontend_url}/approve-user?token={approval_token}"
-        
+
         subject = f"New User Registration - Approval Required"
-        
+
         html_content = f"""
         <!DOCTYPE html>
         <html>
@@ -419,7 +415,7 @@ class EmailService:
         </body>
         </html>
         """
-        
+
         text_content = f"""
         New User Registration - Approval Required
         
@@ -436,33 +432,28 @@ class EmailService:
         
         Once approved, the user will receive an email notification and can start using the platform.
         """
-        
+
         return await self.send_email(
-            settings.professor_approval_emails,
-            subject,
-            html_content,
-            text_content
+            settings.professor_approval_emails, subject, html_content, text_content
         )
-    
+
     async def send_approval_confirmation_email(
-        self,
-        to_email: str,
-        user_name: str
+        self, to_email: str, user_name: str
     ) -> bool:
         """
         Send email to user after their account is approved
-        
+
         Args:
             to_email: User's email address
             user_name: User's full name
-        
+
         Returns:
             True if email sent successfully
         """
         login_url = f"{settings.frontend_url}/login"
-        
+
         subject = "Your Account Has Been Approved! 🎉"
-        
+
         html_content = f"""
         <!DOCTYPE html>
         <html>
@@ -541,7 +532,7 @@ class EmailService:
         </body>
         </html>
         """
-        
+
         text_content = f"""
         Account Approved!
         
@@ -561,10 +552,9 @@ class EmailService:
         
         Welcome aboard!
         """
-        
+
         return await self.send_email(to_email, subject, html_content, text_content)
 
 
 # Global instance
 email_service = EmailService()
-

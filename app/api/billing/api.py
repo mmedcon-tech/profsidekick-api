@@ -61,9 +61,9 @@ def add_credits(
     credit_balance = billing_service.add_credits(current_user.id, body.amount_usd, db)
     from decimal import Decimal
 
-    credits_added = (body.amount_usd * Decimal(str(billing_service.CREDITS_PER_USD))).quantize(
-        Decimal("0.000001")
-    )
+    credits_added = (
+        body.amount_usd * Decimal(str(billing_service.CREDITS_PER_USD))
+    ).quantize(Decimal("0.000001"))
     return AddCreditsResponse(
         success=True,
         credits_added=credits_added,
@@ -79,7 +79,9 @@ def get_usage(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    result = billing_service.get_usage_history(current_user.id, db, page=page, limit=limit)
+    result = billing_service.get_usage_history(
+        current_user.id, db, page=page, limit=limit
+    )
     total_pages = (result["total"] + limit - 1) // limit if result["total"] else 1
     return UsageHistoryResponse(
         records=[UsageRecordResponse.model_validate(r) for r in result["records"]],
