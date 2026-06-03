@@ -51,12 +51,12 @@ class AuthService:
         except jwt.ExpiredSignatureError:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token has expired"
+                detail="Token has expired",
             )
-        except jwt.JWTError:
+        except jwt.InvalidTokenError:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token"
+                detail="Invalid token",
             )
     
     def user_to_response(self, user: User) -> UserResponse:
@@ -119,10 +119,22 @@ class AuthService:
             is_approved=False
         )
         
+        if settings.skip_email_verification:
+            new_user.email_verified = True
+            new_user.is_approved = True
+            new_user.email_verification_token = None
+
         db.add(new_user)
         db.commit()
         db.refresh(new_user)
-        
+
+        if settings.skip_email_verification:
+            return AuthResponse(
+                success=True,
+                message="Registration successful! You can log in now.",
+                user=self.user_to_response(new_user),
+            )
+
         # Send verification email
         user_name = f"{new_user.first_name} {new_user.last_name}"
         email_sent = await email_service.send_verification_email(
@@ -153,19 +165,32 @@ class AuthService:
                 message="Invalid username or password"
             )
         
-        # Check if email is verified (skip check if email_verified is None for old accounts)
-        if user.email_verified is False:
-            return AuthResponse(
-                success=False,
-                message="Please verify your email address before logging in. Check your email for the verification link."
-            )
-        
-        # Check if account is approved (skip check if is_approved is None for old accounts)
-        if user.is_approved is False:
-            return AuthResponse(
-                success=False,
-                message="Your account is pending approval. You will receive an email once your account is approved."
-            )
+        # Local dev: no SMTP — treat existing unverified accounts as verified
+        if settings.skip_email_verification:
+            if user.email_verified is False or user.is_approved is False:
+                user.email_verified = True
+                user.is_approved = True
+                user.email_verification_token = None
+                db.commit()
+                db.refresh(user)
+        else:
+            if user.email_verified is False:
+                return AuthResponse(
+                    success=False,
+                    message=(
+                        "Please verify your email address before logging in. "
+                        "Check your email for the verification link."
+                    ),
+                )
+
+            if user.is_approved is False:
+                return AuthResponse(
+                    success=False,
+                    message=(
+                        "Your account is pending approval. You will receive an email "
+                        "once your account is approved."
+                    ),
+                )
         
         # Create access token
         token_data = self.create_access_token(str(user.id), user.username)
