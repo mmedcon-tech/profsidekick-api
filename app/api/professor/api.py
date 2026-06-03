@@ -33,6 +33,7 @@ class ProfessorPersonaUpsert(BaseModel):
 class PersonaRefineRequest(BaseModel):
     avatarId: str
     preferences: PersonaPreferenceSelections
+    additionalInstructions: Optional[str] = None
 
 
 @router.get("/avatars")
@@ -92,6 +93,7 @@ async def refine_professor_persona(
             current_user,
             body.avatarId,
             body.preferences.model_dump(),
+            additional_instructions=body.additionalInstructions,
         )
     except HTTPException:
         raise
