@@ -1,3 +1,4 @@
+import logging
 import os
 import uuid
 from typing import List, Optional
@@ -14,6 +15,8 @@ from app.schemas.schemas import (
 from app.config import settings
 from app.services.file_processor import FileProcessor
 from app.services.cloud_storage_service import cloud_storage
+
+logger = logging.getLogger(__name__)
 
 
 class CourseMaterialService:
@@ -171,9 +174,28 @@ class CourseMaterialService:
                 file_type=file.content_type,
                 message="File uploaded successfully"
             )
-            
+
         except Exception as e:
             return FileUploadResponse(success=False, message=f"Upload failed: {str(e)}")
+
+        finally:
+            # Non-fatal RAG ingestion — runs after the file record is committed.
+            # Errors here must never fail the upload response.
+            try:
+                from app.services.rag_service import ingest_course_material
+                ingest_course_material(
+                    course_id=material.course_id,
+                    material_id=material.id,
+                    file_content=file_content,
+                    file_name=file.filename or "",
+                    db=db,
+                )
+            except Exception as rag_exc:
+                logger.warning(
+                    "upload_material_file: RAG ingestion failed for material %s — %s",
+                    material.id,
+                    rag_exc,
+                )
 
     async def get_course_materials(
         self, 
@@ -358,12 +380,22 @@ class CourseMaterialService:
                     material_dir = Path(material.file_path).parent
                     if material_dir.exists() and not any(material_dir.iterdir()):
                         material_dir.rmdir()
-            except Exception as e:
-                print(f"Warning: Could not delete file {material.file_path}: {e}")
-        
+        # Remove RAG embeddings for this material before deleting the record.
+        try:
+            from app.database.models import KnowledgeChunk
+            db.query(KnowledgeChunk).filter(
+                KnowledgeChunk.source == f"course_material:{str(material.id)}"
+            ).delete()
+        except Exception as rag_exc:
+            logger.warning(
+                "delete_course_material: failed to remove KnowledgeChunks for %s — %s",
+                material.id,
+                rag_exc,
+            )
+
         db.delete(material)
         db.commit()
-        
+
         return {"message": "Material deleted successfully"}
 
     # Session Materials methods
