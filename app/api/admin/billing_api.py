@@ -25,7 +25,11 @@ def _require_admin(x_admin_secret: str = Header(..., alias="X-Admin-Secret")):
         )
 
 
-@router.post("/access-codes", response_model=AccessCodeResponse, dependencies=[Depends(_require_admin)])
+@router.post(
+    "/access-codes",
+    response_model=AccessCodeResponse,
+    dependencies=[Depends(_require_admin)],
+)
 def create_access_code(
     body: AccessCodeCreateRequest,
     db: Session = Depends(get_db),
@@ -41,7 +45,11 @@ def create_access_code(
     return AccessCodeResponse.model_validate(code)
 
 
-@router.get("/access-codes", response_model=AccessCodesListResponse, dependencies=[Depends(_require_admin)])
+@router.get(
+    "/access-codes",
+    response_model=AccessCodesListResponse,
+    dependencies=[Depends(_require_admin)],
+)
 def list_access_codes(db: Session = Depends(get_db)):
     codes = billing_service.list_access_codes(db)
     return AccessCodesListResponse(

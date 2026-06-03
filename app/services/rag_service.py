@@ -17,6 +17,7 @@ Embedding model: text-embedding-3-small (1536 dimensions, $0.02 / 1M tokens).
 Chunking strategy: ~400-token windows with 50-token overlap (character-based
 approximation: 1 token ≈ 4 characters → ~1 600 chars per chunk, 200-char overlap).
 """
+
 from __future__ import annotations
 
 import io
@@ -36,8 +37,8 @@ logger = logging.getLogger(__name__)
 # Chunking constants
 # ---------------------------------------------------------------------------
 
-_CHARS_PER_CHUNK = 1_600   # ≈ 400 tokens at 4 chars/token
-_CHARS_OVERLAP = 200       # ≈ 50 tokens of overlap between consecutive chunks
+_CHARS_PER_CHUNK = 1_600  # ≈ 400 tokens at 4 chars/token
+_CHARS_OVERLAP = 200  # ≈ 50 tokens of overlap between consecutive chunks
 
 # ---------------------------------------------------------------------------
 # Embedding
@@ -228,9 +229,6 @@ def ingest_course_material(
     return len(rows)
 
 
-
-
-
 def ingest_session_document(
     session_id: uuid.UUID,
     slides: List[Dict[str, Any]],
@@ -338,7 +336,6 @@ def retrieve_context(
 
         [{"slide_number": int|None, "chunk_index": int, "content": str,
           "score": float, "source": "slide"|"course_material"}]
-    """
 
     Falls back to a plain text search (ILIKE) when pgvector is unavailable.
     """
@@ -374,7 +371,9 @@ def retrieve_context(
     try:
         query_vector = _embed([query])[0]
     except Exception as exc:  # noqa: BLE001
-        logger.warning("retrieve_context: embedding failed — %s; using keyword fallback", exc)
+        logger.warning(
+            "retrieve_context: embedding failed — %s; using keyword fallback", exc
+        )
         return _keyword_fallback(session_id, query, top_k, db, course_id=course_id)
 
     results: List[Dict[str, Any]] = []
@@ -487,7 +486,6 @@ def _keyword_fallback(
         )
 
     return results[:top_k]
-
 
 
 # ---------------------------------------------------------------------------

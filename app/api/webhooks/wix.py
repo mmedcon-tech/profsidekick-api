@@ -18,6 +18,7 @@ Idempotency:
   Each Wix order ID is stored in processed_wix_orders. Duplicate webhook
   deliveries are silently acknowledged without double-crediting.
 """
+
 import json
 import logging
 import secrets
@@ -170,7 +171,10 @@ async def wix_payment_webhook(
     # ── 1. Extract order ID ──────────────────────────────────────────────────
     order_id = _extract_order_id(payload)
     if not order_id:
-        logger.warning("Wix webhook: could not extract order_id — payload keys: %s", list(payload.keys()))
+        logger.warning(
+            "Wix webhook: could not extract order_id — payload keys: %s",
+            list(payload.keys()),
+        )
         return {"received": True, "warning": "order_id not found — no credits added"}
 
     # ── 2. Idempotency check ─────────────────────────────────────────────────
@@ -186,7 +190,9 @@ async def wix_payment_webhook(
     # ── 3. Extract buyer email ───────────────────────────────────────────────
     buyer_email = _extract_buyer_email(payload)
     if not buyer_email:
-        logger.warning("Wix webhook: could not extract buyer email for order %s", order_id)
+        logger.warning(
+            "Wix webhook: could not extract buyer email for order %s", order_id
+        )
         _record_processed(db, order_id, user_id=None, credits_added=Decimal("0"))
         return {"received": True, "warning": "buyer email not found — no credits added"}
 
@@ -229,7 +235,11 @@ async def wix_payment_webhook(
         total_credits_usd += amount_usd
         logger.info(
             "Wix webhook: order %s — product %s qty %d → %d credits ($%s USD)",
-            order_id, product_id, quantity, total_credits, amount_usd,
+            order_id,
+            product_id,
+            quantity,
+            total_credits,
+            amount_usd,
         )
 
     if total_credits_usd == Decimal("0"):

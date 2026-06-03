@@ -9,9 +9,7 @@ class Settings(BaseSettings):
     openai_api_key: str = Field("", env="OPENAI_API_KEY")
 
     # Database Configuration
-    database_url: str = Field(
-        "sqlite:///./profsidekick.db", env="DATABASE_URL"
-    )
+    database_url: str = Field("sqlite:///./profsidekick.db", env="DATABASE_URL")
 
     # Redis Configuration
     redis_url: str = Field("redis://localhost:6379/0", env="REDIS_URL")
@@ -20,17 +18,13 @@ class Settings(BaseSettings):
     app_name: str = Field("ProfSidekick API", env="APP_NAME")
     app_version: str = Field("1.0.0", env="APP_VERSION")
     debug: bool = Field(False, env="DEBUG")
-    secret_key: str = Field(
-        "dev-secret-key-change-in-production", env="SECRET_KEY"
-    )
+    secret_key: str = Field("dev-secret-key-change-in-production", env="SECRET_KEY")
 
     # File Upload Configuration
     upload_dir: str = Field("./uploads", env="UPLOAD_DIR")
     static_dir: str = Field("./static", env="STATIC_DIR")
     max_file_size: int = Field(52428800, env="MAX_FILE_SIZE")
-    allowed_file_types: str = Field(
-        ".pptx,.ppt,.pdf", env="ALLOWED_FILE_TYPES"
-    )
+    allowed_file_types: str = Field(".pptx,.ppt,.pdf", env="ALLOWED_FILE_TYPES")
 
     # Cloud Storage Configuration (AWS S3)
     use_cloud_storage: bool = Field(False, env="USE_CLOUD_STORAGE")
@@ -39,9 +33,7 @@ class Settings(BaseSettings):
     aws_region: str = Field("us-east-1", env="AWS_REGION")
     s3_bucket_name: str = Field("", env="S3_BUCKET_NAME")
     s3_bucket_region: str = Field("", env="S3_BUCKET_REGION")
-    cloudfront_domain: str = Field(
-        "", env="CLOUDFRONT_DOMAIN"
-    )  # Optional CDN domain
+    cloudfront_domain: str = Field("", env="CLOUDFRONT_DOMAIN")  # Optional CDN domain
 
     # Server Configuration
     host: str = Field("0.0.0.0", env="HOST")
@@ -56,9 +48,7 @@ class Settings(BaseSettings):
     # Email Configuration
     # For production, use EMAIL_SERVICE=sendgrid or resend (API-based, no SMTP ports)
     # For development, use EMAIL_SERVICE=smtp
-    email_service: str = Field(
-        "smtp", env="EMAIL_SERVICE"
-    )  # smtp, sendgrid, resend
+    email_service: str = Field("smtp", env="EMAIL_SERVICE")  # smtp, sendgrid, resend
 
     # SMTP Configuration (for local development)
     smtp_host: str = Field("smtp.gmail.com", env="SMTP_HOST")
@@ -104,9 +94,7 @@ class Settings(BaseSettings):
     @classmethod
     def parse_cors_origins(cls, v) -> List[str]:
         if isinstance(v, str):
-            return [
-                origin.strip() for origin in v.split(",") if origin.strip()
-            ]
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
         return v if isinstance(v, list) else [v]
 
     @field_validator("professor_approval_emails")

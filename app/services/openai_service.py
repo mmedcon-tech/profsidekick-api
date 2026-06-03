@@ -44,6 +44,7 @@ class OpenAIService:
         # Pre-call balance check
         if user_id is not None and db is not None:
             from app.services.billing_service import charge_usage
+
             charge_usage(
                 user_id=user_id,
                 operation_type="realtime_token",
@@ -54,46 +55,65 @@ class OpenAIService:
             )
 
         try:
-            if assistant_parameters['turn_detection']['type'] == "server_vad":
+            if assistant_parameters["turn_detection"]["type"] == "server_vad":
                 turn_detection = {
-                    "type": assistant_parameters['turn_detection']['type'],
-                    "prefix_padding_ms": assistant_parameters['turn_detection']['prefix_padding_ms'],
-                    "silence_duration_ms": assistant_parameters['turn_detection']['silence_duration_ms'],
-                    "threshold": assistant_parameters['turn_detection']['threshold'],
+                    "type": assistant_parameters["turn_detection"]["type"],
+                    "prefix_padding_ms": assistant_parameters["turn_detection"][
+                        "prefix_padding_ms"
+                    ],
+                    "silence_duration_ms": assistant_parameters["turn_detection"][
+                        "silence_duration_ms"
+                    ],
+                    "threshold": assistant_parameters["turn_detection"]["threshold"],
                 }
-            elif assistant_parameters['turn_detection']['type'] == "semantic_vad":
+            elif assistant_parameters["turn_detection"]["type"] == "semantic_vad":
                 turn_detection = {
-                    "type": assistant_parameters['turn_detection']['type'],
-                    "eagerness": assistant_parameters['turn_detection']['eagerness'],
+                    "type": assistant_parameters["turn_detection"]["type"],
+                    "eagerness": assistant_parameters["turn_detection"]["eagerness"],
                 }
             else:
                 turn_detection = {
-                    "type": assistant_parameters['turn_detection']['type'],
+                    "type": assistant_parameters["turn_detection"]["type"],
                 }
 
-            if assistant_parameters['instructions'] is not None and assistant_parameters['instructions'][0] != "{":
-                instructions = assistant_parameters['instructions']
+            if (
+                assistant_parameters["instructions"] is not None
+                and assistant_parameters["instructions"][0] != "{"
+            ):
+                instructions = assistant_parameters["instructions"]
             else:
-                instructions_json = json.loads(assistant_parameters['instructions'])
-                instructions = instructions_json['editable'] + "\n" + instructions_json['core']
+                instructions_json = json.loads(assistant_parameters["instructions"])
+                instructions = (
+                    instructions_json["editable"] + "\n" + instructions_json["core"]
+                )
             for slide in slides:
-                instructions += f"\n\nSlide {slide.slideNumber}: {slide.title}\n{slide.content}"
+                instructions += (
+                    f"\n\nSlide {slide.slideNumber}: {slide.title}\n{slide.content}"
+                )
 
             async with httpx.AsyncClient() as client:
                 response = await client.post(
                     self.url,
                     headers=self.headers,
                     json={
-                        "model": assistant_parameters['model'],
-                        "voice": assistant_parameters['voice'],
+                        "model": assistant_parameters["model"],
+                        "voice": assistant_parameters["voice"],
                         "instructions": instructions,
-                        "input_audio_format": assistant_parameters['input_audio_format'],
-                        "output_audio_format": assistant_parameters['output_audio_format'],
-                        "temperature": assistant_parameters['temperature'],
-                        "tool_choice": assistant_parameters['tool_choice'],
-                        "input_audio_noise_reduction": assistant_parameters['input_audio_noise_reduction'],
-                        "input_audio_transcription": assistant_parameters['input_audio_transcription'],
-                        "tools": assistant_parameters['tools'],
+                        "input_audio_format": assistant_parameters[
+                            "input_audio_format"
+                        ],
+                        "output_audio_format": assistant_parameters[
+                            "output_audio_format"
+                        ],
+                        "temperature": assistant_parameters["temperature"],
+                        "tool_choice": assistant_parameters["tool_choice"],
+                        "input_audio_noise_reduction": assistant_parameters[
+                            "input_audio_noise_reduction"
+                        ],
+                        "input_audio_transcription": assistant_parameters[
+                            "input_audio_transcription"
+                        ],
+                        "tools": assistant_parameters["tools"],
                         "turn_detection": turn_detection,
                     },
                 )
@@ -212,6 +232,7 @@ class OpenAIService:
 
             if user_id is not None and db is not None:
                 from app.services.billing_service import charge_usage
+
                 charge_usage(
                     user_id=user_id,
                     operation_type="vision",
@@ -247,6 +268,7 @@ class OpenAIService:
 
             if user_id is not None and db is not None:
                 from app.services.billing_service import charge_usage
+
                 charge_usage(
                     user_id=user_id,
                     operation_type="chat",
