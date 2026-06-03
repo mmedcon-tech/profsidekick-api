@@ -17,6 +17,7 @@ services:
       # Application
       - DEBUG=true
       - SECRET_KEY=your-secret-key-change-in-production
+      - SKIP_EMAIL_VERIFICATION=${SKIP_EMAIL_VERIFICATION:-false}
       # CORS
       - CORS_ORIGINS=http://localhost:3000,http://localhost:3001,https://profsidekick.vercel.app,https://profsidekick-frontend-3il7.vercel.app
     volumes:
@@ -33,7 +34,7 @@ services:
 
   # PostgreSQL Database
   postgres:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg16
     container_name: profsidekick-postgres
     environment:
       - POSTGRES_DB=profsidekick
@@ -41,6 +42,7 @@ services:
       - POSTGRES_PASSWORD=password123
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./docker/init-pgvector.sql:/docker-entrypoint-initdb.d/init-pgvector.sql
     ports:
       - "5432:5432"
     healthcheck:
