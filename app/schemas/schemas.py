@@ -442,6 +442,9 @@ class CourseMaterialResponse(CourseMaterialBase):
     file_name: Optional[str] = None
     file_size: Optional[int] = None
     file_type: Optional[str] = None
+    rag_status: Optional[str] = None   # pending|processing|complete|failed
+    rag_error: Optional[str] = None
+    rag_chunks: Optional[int] = None
     created_at: datetime
     updated_at: datetime
 

@@ -5,7 +5,7 @@ from typing import List, Optional
 from pathlib import Path
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
-from fastapi import HTTPException, UploadFile
+from fastapi import HTTPException
 from app.database.models import CourseMaterial, Course, SessionMaterial, MaterialType
 from app.schemas.schemas import (
     CourseMaterialCreate,
@@ -92,14 +92,27 @@ class CourseMaterialService:
             additional_info=db_material.additional_info,
             is_required=db_material.is_required,
             is_active=db_material.is_active,
+            rag_status=db_material.rag_status,
+            rag_error=db_material.rag_error,
+            rag_chunks=db_material.rag_chunks,
             created_at=db_material.created_at,
             updated_at=db_material.updated_at,
         )
 
     async def upload_material_file(
-        self, db: Session, material_id: str, file: UploadFile, user_id: str
+        self,
+        db: Session,
+        material_id: str,
+        file_content: bytes,
+        file_name: str,
+        content_type: Optional[str],
+        user_id: str,
     ) -> FileUploadResponse:
-        """Upload a file for a course material"""
+        """Store the uploaded file bytes for a course material.
+
+        RAG ingestion is NOT performed here — callers must enqueue it as a
+        background task so the upload response is not blocked.
+        """
 
         # Get material and verify ownership
         material = (
@@ -114,99 +127,63 @@ class CourseMaterialService:
                 status_code=404, detail="Material not found or access denied"
             )
 
+        # Validate file
+        is_valid, error_message = self.file_processor.validate_file(
+            file_content, file_name
+        )
+        if not is_valid:
+            return FileUploadResponse(success=False, message=error_message)
+
         try:
-            # Read file content
-            file_content = await file.read()
-
-            # Validate file
-            is_valid, error_message = self.file_processor.validate_file(
-                file_content, file.filename
-            )
-            if not is_valid:
-                return FileUploadResponse(success=False, message=error_message)
-
             # Generate unique filename for path reference
-            file_ext = Path(file.filename).suffix.lower()
-            unique_filename = f"{uuid.uuid4()}_{file.filename}"
+            unique_filename = f"{uuid.uuid4()}_{file_name}"
             material_dir = self.materials_dir / str(material_id)
             file_path = material_dir / unique_filename
 
             if settings.use_cloud_storage:
-                # Upload to cloud storage
                 try:
                     s3_key, public_url = await cloud_storage.upload_file(
                         file_content=file_content,
                         file_path=str(file_path),
-                        content_type=file.content_type,
+                        content_type=content_type,
                         metadata={
                             "material_id": str(material_id),
                             "course_id": str(material.course_id),
-                            "original_filename": file.filename or "unknown",
+                            "original_filename": file_name or "unknown",
                             "file_type": "course_material",
                         },
                     )
-
-                    # Update material record with cloud storage info
                     material.file_path = public_url
-                    material.file_name = file.filename
-                    material.file_size = len(file_content)
-                    material.file_type = file.content_type
-
                 except Exception as e:
-                    print(f"Failed to upload to cloud storage: {e}")
-                    # Fallback to local storage
+                    logger.warning("Cloud storage upload failed, falling back to local: %s", e)
                     material_dir.mkdir(parents=True, exist_ok=True)
                     with open(file_path, "wb") as f:
                         f.write(file_content)
-
                     material.file_path = str(file_path)
-                    material.file_name = file.filename
-                    material.file_size = len(file_content)
-                    material.file_type = file.content_type
             else:
-                # Save to local storage
                 material_dir.mkdir(parents=True, exist_ok=True)
                 with open(file_path, "wb") as f:
                     f.write(file_content)
-
                 material.file_path = str(file_path)
-                material.file_name = file.filename
-                material.file_size = len(file_content)
-                material.file_type = file.content_type
+
+            material.file_name = file_name
+            material.file_size = len(file_content)
+            material.file_type = content_type
+            material.rag_status = "pending"
 
             db.commit()
 
             return FileUploadResponse(
                 success=True,
                 file_path=material.file_path,
-                file_name=file.filename,
+                file_name=file_name,
                 file_size=len(file_content),
-                file_type=file.content_type,
+                file_type=content_type,
                 message="File uploaded successfully",
             )
 
         except Exception as e:
             return FileUploadResponse(success=False, message=f"Upload failed: {str(e)}")
-
-        finally:
-            # Non-fatal RAG ingestion — runs after the file record is committed.
-            # Errors here must never fail the upload response.
-            try:
-                from app.services.rag_service import ingest_course_material
-
-                ingest_course_material(
-                    course_id=material.course_id,
-                    material_id=material.id,
-                    file_content=file_content,
-                    file_name=file.filename or "",
-                    db=db,
-                )
-            except Exception as rag_exc:
-                logger.warning(
-                    "upload_material_file: RAG ingestion failed for material %s — %s",
-                    material.id,
-                    rag_exc,
-                )
 
     async def get_course_materials(
         self, db: Session, course_id: str, user_id: str, include_inactive: bool = False
@@ -255,6 +232,9 @@ class CourseMaterialService:
                 additional_info=material.additional_info,
                 is_required=material.is_required,
                 is_active=material.is_active,
+                rag_status=material.rag_status,
+                rag_error=material.rag_error,
+                rag_chunks=material.rag_chunks,
                 created_at=material.created_at,
                 updated_at=material.updated_at,
             )
@@ -299,6 +279,9 @@ class CourseMaterialService:
             additional_info=material.additional_info,
             is_required=material.is_required,
             is_active=material.is_active,
+            rag_status=material.rag_status,
+            rag_error=material.rag_error,
+            rag_chunks=material.rag_chunks,
             created_at=material.created_at,
             updated_at=material.updated_at,
         )
@@ -353,6 +336,9 @@ class CourseMaterialService:
             additional_info=material.additional_info,
             is_required=material.is_required,
             is_active=material.is_active,
+            rag_status=material.rag_status,
+            rag_error=material.rag_error,
+            rag_chunks=material.rag_chunks,
             created_at=material.created_at,
             updated_at=material.updated_at,
         )
@@ -519,6 +505,9 @@ class CourseMaterialService:
                 additional_info=material.additional_info,
                 is_required=material.is_required,
                 is_active=material.is_active,
+                rag_status=material.rag_status,
+                rag_error=material.rag_error,
+                rag_chunks=material.rag_chunks,
                 created_at=material.created_at,
                 updated_at=material.updated_at,
             ),
@@ -582,6 +571,9 @@ class CourseMaterialService:
                     additional_info=sm.course_material.additional_info,
                     is_required=sm.course_material.is_required,
                     is_active=sm.course_material.is_active,
+                    rag_status=sm.course_material.rag_status,
+                    rag_error=sm.course_material.rag_error,
+                    rag_chunks=sm.course_material.rag_chunks,
                     created_at=sm.course_material.created_at,
                     updated_at=sm.course_material.updated_at,
                 ),
@@ -652,6 +644,9 @@ class CourseMaterialService:
                 additional_info=session_material.course_material.additional_info,
                 is_required=session_material.course_material.is_required,
                 is_active=session_material.course_material.is_active,
+                rag_status=session_material.course_material.rag_status,
+                rag_error=session_material.course_material.rag_error,
+                rag_chunks=session_material.course_material.rag_chunks,
                 created_at=session_material.course_material.created_at,
                 updated_at=session_material.course_material.updated_at,
             ),

@@ -190,7 +190,7 @@ async def create_session(
         logger.error(f"❌ Error creating session: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error creating session: {e}",
+            detail="Error creating session",
         )
 
 
@@ -210,7 +210,7 @@ async def get_session(session_id: str, db: Session = Depends(get_db)):
         logger.error(f"❌ Error getting session: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting session: {e}",
+            detail="Error getting session",
         )
 
 
@@ -245,7 +245,7 @@ async def update_session(
         logger.error(f"❌ Error updating session: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error updating session: {e}",
+            detail="Error updating session",
         )
 
 
@@ -262,7 +262,7 @@ async def delete_session(session_id: str, db: Session = Depends(get_db)):
         logger.error(f"❌ Error deleting session: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error deleting session: {e}",
+            detail="Error deleting session",
         )
 
 
@@ -325,7 +325,7 @@ async def start_session_run(
         logger.error(f"❌ Error starting session run: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error starting session run: {e}",
+            detail="Error starting session run",
         )
 
 
@@ -387,7 +387,7 @@ async def start_session_run(
         logger.error(f"❌ Error starting session run: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error starting session run: {e}",
+            detail="Error starting session run",
         )
 
 
@@ -441,7 +441,7 @@ async def stop_session_run(
         logger.error(f"❌ Error stopping session run: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error stopping session run: {e}",
+            detail="Error stopping session run",
         )
 
 
@@ -496,7 +496,7 @@ async def stop_session_run(
         logger.error(f"❌ Error stopping session run: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error stopping session run: {e}",
+            detail="Error stopping session run",
         )
 
 
@@ -554,7 +554,7 @@ async def get_session_run(
         logger.error(f"❌ Error getting session run: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting session run: {e}",
+            detail="Error getting session run",
         )
 
 
@@ -608,7 +608,7 @@ async def get_ephemeral_token(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate ephemeral token: {str(e)}",
+            detail="Failed to generate ephemeral token",
         )
 
 
@@ -648,7 +648,7 @@ async def get_sessions(
         logger.error(f"❌ Error getting sessions: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting sessions: {e}",
+            detail="Error getting sessions",
         )
 
 
@@ -671,7 +671,7 @@ async def get_session_runs(
         logger.error(f"❌ Error getting session runs: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting session runs: {e}",
+            detail="Error getting session runs",
         )
 
 
@@ -771,7 +771,7 @@ async def update_slide_vision(
         logger.error(f"❌ Error updating slide vision: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error updating slide vision: {e}",
+            detail="Error updating slide vision",
         )
 
 
@@ -818,7 +818,7 @@ async def update_slide_content(
         logger.error(f"❌ Error updating slide content: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error updating slide content: {e}",
+            detail="Error updating slide content",
         )
 
 
@@ -962,7 +962,7 @@ async def add_new_slide(
         logger.error(f"❌ Error adding new slide: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error adding new slide: {e}",
+            detail="Error adding new slide",
         )
 
 
@@ -1021,7 +1021,7 @@ async def delete_slide(
         logger.error(f"❌ Error deleting slide: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error deleting slide: {e}",
+            detail="Error deleting slide",
         )
 
 
@@ -1172,7 +1172,7 @@ async def replace_slide_image(
         logger.error(f"❌ Error replacing slide image: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error replacing slide image: {e}",
+            detail="Error replacing slide image",
         )
 
 
@@ -1233,7 +1233,7 @@ async def reorder_slides(
         logger.error(f"❌ Error reordering slides: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error reordering slides: {e}",
+            detail="Error reordering slides",
         )
 
 
