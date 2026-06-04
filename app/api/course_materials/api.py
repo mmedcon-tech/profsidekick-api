@@ -46,7 +46,7 @@ async def get_course_materials(
         logger.error(f"❌ Error getting course materials: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting course materials: {e}",
+            detail="Error getting course materials",
         )
 
 
@@ -69,7 +69,7 @@ async def create_course_material(
         logger.error(f"❌ Error creating course material: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error creating course material: {e}",
+            detail="Error creating course material",
         )
 
 
@@ -89,7 +89,7 @@ async def get_course_material(
         logger.error(f"❌ Error getting course material: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting course material: {e}",
+            detail="Error getting course material",
         )
 
 
@@ -110,7 +110,7 @@ async def update_course_material(
         logger.error(f"❌ Error updating course material: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error updating course material: {e}",
+            detail="Error updating course material",
         )
 
 
@@ -130,7 +130,7 @@ async def delete_course_material(
         logger.error(f"❌ Error deleting course material: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error deleting course material: {e}",
+            detail="Error deleting course material",
         )
 
 
@@ -151,7 +151,7 @@ async def upload_material_file(
         logger.error(f"❌ Error uploading material file: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error uploading material file: {e}",
+            detail="Error uploading material file",
         )
 
 
@@ -207,7 +207,7 @@ async def create_material_with_file(
         logger.error(f"❌ Error creating material with file: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error creating material with file: {e}",
+            detail="Error creating material with file",
         )
 
 
@@ -232,7 +232,7 @@ async def get_session_materials(
         logger.error(f"❌ Error getting session materials: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting session materials: {e}",
+            detail="Error getting session materials",
         )
 
 
@@ -255,7 +255,7 @@ async def create_session_material(
         logger.error(f"❌ Error creating session material: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error creating session material: {e}",
+            detail="Error creating session material",
         )
 
 
@@ -278,7 +278,7 @@ async def update_session_material(
         logger.error(f"❌ Error updating session material: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error updating session material: {e}",
+            detail="Error updating session material",
         )
 
 
@@ -298,5 +298,5 @@ async def delete_session_material(
         logger.error(f"❌ Error deleting session material: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error deleting session material: {e}",
+            detail="Error deleting session material",
         )
