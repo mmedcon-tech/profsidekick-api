@@ -196,8 +196,8 @@ async def delete_course_material(
 @router.post("/{material_id}/upload", response_model=FileUploadResponse)
 async def upload_material_file(
     material_id: str,
-    file: UploadFile = File(...),
     background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -227,6 +227,7 @@ async def upload_material_file(
 @router.post("/courses/{course_id}/upload", response_model=CourseMaterialResponse)
 async def create_material_with_file(
     course_id: str,
+    background_tasks: BackgroundTasks,
     title: str = Form(...),
     material_type: MaterialType = Form(...),
     description: str = Form(None),
@@ -237,7 +238,6 @@ async def create_material_with_file(
     doi: str = Form(None),
     is_required: bool = Form(True),
     file: UploadFile = File(...),
-    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
