@@ -207,6 +207,10 @@ class CourseMaterialService:
                     material.id,
                     rag_exc,
                 )
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
 
     async def get_course_materials(
         self, db: Session, course_id: str, user_id: str, include_inactive: bool = False

@@ -37,7 +37,7 @@ async def get_courses(
         logger.error(f"❌ Error getting courses: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting courses: {e}",
+            detail="Error getting courses",
         )
 
 
@@ -55,7 +55,7 @@ async def create_course(
         logger.error(f"❌ Error creating course: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error creating course: {e}",
+            detail="Error creating course",
         )
 
 
@@ -72,7 +72,7 @@ async def get_course(
         logger.error(f"❌ Error getting course: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting course: {e}",
+            detail="Error getting course",
         )
 
 
@@ -91,7 +91,7 @@ async def update_course(
         logger.error(f"❌ Error updating course: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error updating course: {e}",
+            detail="Error updating course",
         )
 
 
@@ -108,7 +108,7 @@ async def delete_course(
         logger.error(f"❌ Error deleting course: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error deleting course: {e}",
+            detail="Error deleting course",
         )
 
 
@@ -144,7 +144,7 @@ async def get_course_students(
         logger.error(f"❌ Error getting course students: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting course students: {e}",
+            detail="Error getting course students",
         )
 
 
@@ -164,7 +164,7 @@ async def remove_student_from_course(
         logger.error(f"❌ Error removing student from course: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error removing student from course: {e}",
+            detail="Error removing student from course",
         )
 
 
@@ -183,5 +183,5 @@ async def get_course_sessions(
         logger.error(f"❌ Error getting course sessions: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting course sessions: {e}",
+            detail="Error getting course sessions",
         )
