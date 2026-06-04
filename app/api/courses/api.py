@@ -33,6 +33,8 @@ async def get_courses(
     try:
         courses = await course_service.get_courses(db, current_user.id)
         return courses
+    except HTTPException:
+        raise  # pass 403 / 404 through unchanged so the message is readable
     except Exception as e:
         logger.error(f"❌ Error getting courses: {e}")
         raise HTTPException(
@@ -179,6 +181,8 @@ async def get_course_sessions(
             db, course_id, current_user.id
         )
         return sessions
+    except HTTPException:
+        raise  # pass 403/404 through with their real status codes and messages
     except Exception as e:
         logger.error(f"❌ Error getting course sessions: {e}")
         raise HTTPException(
