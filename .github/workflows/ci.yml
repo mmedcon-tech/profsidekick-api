@@ -1,0 +1,59 @@
+name: Backend CI
+
+on:
+  pull_request:
+    branches: [staging, main]
+  push:
+    branches: [staging]
+
+jobs:
+  test:
+    name: Lint, format, and test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # pgvector/pgvector image ships with the vector extension pre-installed
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: profsidekick_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/profsidekick_test
+      SECRET_KEY: ci-test-secret-key-not-for-production
+      OPENAI_API_KEY: sk-test-placeholder
+      ADMIN_SECRET: ci-admin-secret
+      REDIS_URL: ""
+      USE_CLOUD_STORAGE: "false"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install poppler (for pdf2image in tests)
+        run: sudo apt-get install -y poppler-utils
+
+      # - name: Check formatting (black)
+      #   run: black --check .
+
+      # - name: Lint (flake8)
+      #   run: flake8 app/ tests/
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short
