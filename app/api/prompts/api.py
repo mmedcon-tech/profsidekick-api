@@ -39,7 +39,7 @@ async def get_prompts(
         logger.error(f"❌ Error getting prompts: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting prompts: {e}",
+            detail="Error getting prompts",
         )
 
 
@@ -57,7 +57,7 @@ async def create_prompt(
         logger.error(f"❌ Error creating prompt: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error creating prompt: {e}",
+            detail="Error creating prompt",
         )
 
 
@@ -78,7 +78,7 @@ async def update_prompt(
         logger.error(f"❌ Error updating prompt: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error updating prompt: {e}",
+            detail="Error updating prompt",
         )
 
 
@@ -96,5 +96,5 @@ async def delete_prompt(
         logger.error(f"❌ Error deleting prompt: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error deleting prompt: {e}",
+            detail="Error deleting prompt",
         )

@@ -177,6 +177,9 @@ class CourseMaterial(Base):
     additional_info = Column(JSONB, nullable=True)  # For additional flexible data
     is_required = Column(Boolean, default=True)  # Required vs recommended material
     is_active = Column(Boolean, default=True)
+    rag_status = Column(String(20), nullable=True)   # pending|processing|complete|failed
+    rag_error = Column(Text, nullable=True)
+    rag_chunks = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
 

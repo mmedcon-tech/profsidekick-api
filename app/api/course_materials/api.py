@@ -1,9 +1,10 @@
 import logging
+import uuid
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from app.database.connection import get_db
-from app.database.models import User
+from app.database.models import CourseMaterial, User
 from app.schemas.schemas import (
     CourseMaterialCreate,
     CourseMaterialUpdate,
@@ -26,6 +27,64 @@ course_material_service = CourseMaterialService()
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
+
+def _run_rag_ingestion(material_id: str, file_content: bytes, file_name: str) -> None:
+    """Background task: embed and index a course material file.
+
+    Runs after the upload response is sent so the endpoint is not blocked.
+    Opens its own DB session so it is fully isolated from the request session.
+    """
+    from app.database.connection import SessionLocal
+    from app.services.rag_service import ingest_course_material
+
+    db = SessionLocal()
+    try:
+        material = db.query(CourseMaterial).filter(
+            CourseMaterial.id == uuid.UUID(material_id)
+        ).first()
+        if not material:
+            logger.error("RAG ingestion: material %s not found in DB", material_id)
+            return
+
+        db.query(CourseMaterial).filter(CourseMaterial.id == material.id).update(
+            {"rag_status": "processing"}
+        )
+        db.commit()
+
+        n = ingest_course_material(
+            course_id=material.course_id,
+            material_id=material.id,
+            file_content=file_content,
+            file_name=file_name,
+            db=db,
+        )
+
+        db.query(CourseMaterial).filter(CourseMaterial.id == material.id).update(
+            {"rag_status": "complete", "rag_chunks": n, "rag_error": None}
+        )
+        db.commit()
+        logger.info(
+            "RAG ingestion complete: material_id=%s chunks=%d", material_id, n
+        )
+
+    except Exception as exc:
+        db.rollback()
+        try:
+            db.query(CourseMaterial).filter(
+                CourseMaterial.id == uuid.UUID(material_id)
+            ).update({"rag_status": "failed", "rag_error": str(exc)[:500]})
+            db.commit()
+        except Exception:
+            pass
+        logger.error(
+            "RAG ingestion failed: material_id=%s error=%s",
+            material_id,
+            exc,
+            exc_info=True,
+        )
+    finally:
+        db.close()
+
 # Course Materials Endpoints
 
 
@@ -46,7 +105,7 @@ async def get_course_materials(
         logger.error(f"❌ Error getting course materials: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting course materials: {e}",
+            detail="Error getting course materials",
         )
 
 
@@ -69,7 +128,7 @@ async def create_course_material(
         logger.error(f"❌ Error creating course material: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error creating course material: {e}",
+            detail="Error creating course material",
         )
 
 
@@ -89,7 +148,7 @@ async def get_course_material(
         logger.error(f"❌ Error getting course material: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting course material: {e}",
+            detail="Error getting course material",
         )
 
 
@@ -110,7 +169,7 @@ async def update_course_material(
         logger.error(f"❌ Error updating course material: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error updating course material: {e}",
+            detail="Error updating course material",
         )
 
 
@@ -130,28 +189,37 @@ async def delete_course_material(
         logger.error(f"❌ Error deleting course material: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error deleting course material: {e}",
+            detail="Error deleting course material",
         )
 
 
 @router.post("/{material_id}/upload", response_model=FileUploadResponse)
 async def upload_material_file(
     material_id: str,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Upload a file for a course material"""
     try:
+        file_content = await file.read()
         result = await course_material_service.upload_material_file(
-            db, material_id, file, current_user.id
+            db, material_id, file_content, file.filename or "", file.content_type, current_user.id
         )
+        if result.success:
+            background_tasks.add_task(
+                _run_rag_ingestion,
+                material_id=material_id,
+                file_content=file_content,
+                file_name=file.filename or "",
+            )
         return result
     except Exception as e:
         logger.error(f"❌ Error uploading material file: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error uploading material file: {e}",
+            detail="Error uploading material file",
         )
 
 
@@ -159,6 +227,7 @@ async def upload_material_file(
 @router.post("/courses/{course_id}/upload", response_model=CourseMaterialResponse)
 async def create_material_with_file(
     course_id: str,
+    background_tasks: BackgroundTasks,
     title: str = Form(...),
     material_type: MaterialType = Form(...),
     description: str = Form(None),
@@ -174,7 +243,9 @@ async def create_material_with_file(
 ):
     """Create a course material and upload file in one step"""
     try:
-        # Create material first
+        file_content = await file.read()
+        file_name = file.filename or ""
+
         material_data = CourseMaterialCreate(
             course_id=course_id,
             title=title,
@@ -192,12 +263,18 @@ async def create_material_with_file(
             db, material_data, current_user.id
         )
 
-        # Upload file
-        await course_material_service.upload_material_file(
-            db, str(material.id), file, current_user.id
+        upload_result = await course_material_service.upload_material_file(
+            db, str(material.id), file_content, file_name, file.content_type, current_user.id
         )
 
-        # Return updated material with file info
+        if upload_result.success:
+            background_tasks.add_task(
+                _run_rag_ingestion,
+                material_id=str(material.id),
+                file_content=file_content,
+                file_name=file_name,
+            )
+
         updated_material = await course_material_service.get_course_material(
             db, str(material.id), current_user.id
         )
@@ -207,7 +284,7 @@ async def create_material_with_file(
         logger.error(f"❌ Error creating material with file: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error creating material with file: {e}",
+            detail="Error creating material with file",
         )
 
 
@@ -232,7 +309,7 @@ async def get_session_materials(
         logger.error(f"❌ Error getting session materials: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting session materials: {e}",
+            detail="Error getting session materials",
         )
 
 
@@ -255,7 +332,7 @@ async def create_session_material(
         logger.error(f"❌ Error creating session material: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error creating session material: {e}",
+            detail="Error creating session material",
         )
 
 
@@ -278,7 +355,7 @@ async def update_session_material(
         logger.error(f"❌ Error updating session material: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error updating session material: {e}",
+            detail="Error updating session material",
         )
 
 
@@ -298,5 +375,5 @@ async def delete_session_material(
         logger.error(f"❌ Error deleting session material: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error deleting session material: {e}",
+            detail="Error deleting session material",
         )
