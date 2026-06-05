@@ -1,9 +1,10 @@
 import uuid
 from datetime import datetime
 from enum import Enum
-from sqlalchemy import Column, String, Integer, DateTime, Text, ForeignKey, Enum as SQLEnum, Boolean, BigInteger
+from sqlalchemy import Column, String, Integer, DateTime, Text, ForeignKey, Enum as SQLEnum, Boolean, BigInteger, Numeric, Index
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
+from pgvector.sqlalchemy import Vector
 from app.database.connection import Base
 
 
@@ -179,6 +180,84 @@ class SessionRun(Base):
     # Relationships
     session = relationship("Session", back_populates="session_runs")
     user = relationship("User", back_populates="session_runs")
+
+
+class CreditBalance(Base):
+    __tablename__ = "credit_balances"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, unique=True)
+    balance_credits = Column(Numeric(12, 6), nullable=False, default=0)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")
+
+
+class AccessCode(Base):
+    __tablename__ = "access_codes"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    code = Column(String(50), nullable=False, unique=True, index=True)
+    total_credits = Column(Numeric(12, 6), nullable=False)
+    remaining_credits = Column(Numeric(12, 6), nullable=False)
+    issued_by = Column(String(255), nullable=False)
+    max_redemptions = Column(Integer, nullable=False, default=1)
+    redemptions_used = Column(Integer, nullable=False, default=0)
+    expires_at = Column(DateTime, nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+    redemptions = relationship("AccessCodeRedemption", back_populates="access_code")
+    usage_records = relationship("UsageRecord", back_populates="access_code")
+
+
+class AccessCodeRedemption(Base):
+    __tablename__ = "access_code_redemptions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    access_code_id = Column(UUID(as_uuid=True), ForeignKey("access_codes.id"), nullable=False)
+    redeemed_at = Column(DateTime, default=datetime.utcnow)
+    credits_at_redemption = Column(Numeric(12, 6), nullable=False)
+
+    user = relationship("User")
+    access_code = relationship("AccessCode", back_populates="redemptions")
+
+
+class UsageRecord(Base):
+    __tablename__ = "usage_records"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    session_run_id = Column(UUID(as_uuid=True), ForeignKey("session_runs.id"), nullable=True)
+    operation_type = Column(String(50), nullable=False)
+    input_tokens = Column(Integer, nullable=False, default=0)
+    output_tokens = Column(Integer, nullable=False, default=0)
+    raw_cost_usd = Column(Numeric(12, 6), nullable=False)
+    platform_fee_usd = Column(Numeric(12, 6), nullable=False)
+    total_cost_usd = Column(Numeric(12, 6), nullable=False)
+    credits_charged = Column(Numeric(12, 6), nullable=False)
+    funded_by = Column(String(20), nullable=False)
+    access_code_id = Column(UUID(as_uuid=True), ForeignKey("access_codes.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")
+    session_run = relationship("SessionRun")
+    access_code = relationship("AccessCode", back_populates="usage_records")
+
+
+class PricingConfig(Base):
+    __tablename__ = "pricing_configs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    operation_type = Column(String(50), nullable=False, unique=True, index=True)
+    cost_per_1k_input_tokens = Column(Numeric(12, 6), nullable=False, default=0)
+    cost_per_1k_output_tokens = Column(Numeric(12, 6), nullable=False, default=0)
+    platform_fee_multiplier = Column(Numeric(5, 4), nullable=False, default=1)
+    minimum_charge_credits = Column(Numeric(12, 6), nullable=False, default=0)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
 
 class SessionMaterial(Base):
     __tablename__ = "session_materials"
@@ -430,6 +509,53 @@ class ReferenceSolution(Base):
     updated_at = Column(DateTime, default=datetime.utcnow)
 
     avatar_configuration = relationship("AvatarConfiguration", back_populates="reference_solutions")
+
+
+class SlideChunk(Base):
+    __tablename__ = "slide_chunks"
+    __table_args__ = (
+        Index(
+            "ix_slide_chunks_embedding",
+            "embedding",
+            postgresql_using="ivfflat",
+            postgresql_with={"lists": 100},
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id"), nullable=False, index=True)
+    slide_number = Column(Integer, nullable=False)
+    chunk_index = Column(Integer, nullable=False)
+    content = Column(Text, nullable=False)
+    embedding = Column(Vector(1536), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    session = relationship("Session")
+
+
+class KnowledgeChunk(Base):
+    __tablename__ = "knowledge_chunks"
+    __table_args__ = (
+        Index(
+            "ix_knowledge_chunks_embedding",
+            "embedding",
+            postgresql_using="ivfflat",
+            postgresql_with={"lists": 100},
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id = Column(UUID(as_uuid=True), ForeignKey("sessions.id"), nullable=True, index=True)
+    course_id = Column(UUID(as_uuid=True), ForeignKey("courses.id", ondelete="CASCADE"), nullable=True, index=True)
+    source = Column(String(100), nullable=False)
+    content = Column(Text, nullable=False)
+    embedding = Column(Vector(1536), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    session = relationship("Session")
+    course = relationship("Course")
 
 
 # ═══════════════════════════════════════════════════════════════════
