@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     
     # Security
     cors_origins: str = Field("http://localhost:3000,https://profsidekick.vercel.app,https://profsidekick-frontend-3il7.vercel.app", env="CORS_ORIGINS")
+    credits_per_usd: int = Field(100, env="CREDITS_PER_USD")
     
     # Email Configuration
     # For production, use EMAIL_SERVICE=sendgrid or resend (API-based, no SMTP ports)
