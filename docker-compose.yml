@@ -7,18 +7,12 @@ services:
     container_name: profsidekick-backend
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
-      # Database
-      - DATABASE_URL=${DATABASE_URL}
-      # Redis
+      # These override .env values — DATABASE_URL and REDIS_URL must use Docker service names
+      - DATABASE_URL=postgresql://profsidekick:password123@postgres:5432/profsidekick
       - REDIS_URL=redis://redis:6379/0
-      # OpenAI (set your actual API key)
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      # Application
-      - DEBUG=true
-      - SECRET_KEY=your-secret-key-change-in-production
-      # CORS
-      - CORS_ORIGINS=http://localhost:3000,http://localhost:3001,https://profsidekick.vercel.app,https://profsidekick-frontend-3il7.vercel.app
     volumes:
       - ./uploads:/app/uploads
       - ./static:/app/static
@@ -31,9 +25,9 @@ services:
       - profsidekick-network
     restart: unless-stopped
 
-  # PostgreSQL Database
+  # PostgreSQL Database (pgvector/pgvector:pg16 — includes the vector extension for RAG)
   postgres:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg16
     container_name: profsidekick-postgres
     environment:
       - POSTGRES_DB=profsidekick
@@ -41,8 +35,9 @@ services:
       - POSTGRES_PASSWORD=password123
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./docker/init-pgvector.sql:/docker-entrypoint-initdb.d/init-pgvector.sql
     ports:
-      - "5432:5432"
+      - "5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U profsidekick -d profsidekick"]
       interval: 10s

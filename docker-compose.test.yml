@@ -1,0 +1,26 @@
+# Test database — PostgreSQL 16 with pgvector extension
+#
+# Usage:
+#   docker compose -f docker-compose.test.yml up -d
+#   # then run tests:
+#   DATABASE_URL=postgresql://postgres:postgres@localhost:5433/profsidekick_test pytest tests/ -v
+#   # tear down:
+#   docker compose -f docker-compose.test.yml down -v
+
+services:
+  postgres-test:
+    image: pgvector/pgvector:pg16
+    container_name: profsidekick-postgres-test
+    environment:
+      POSTGRES_DB: profsidekick_test
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"          # 5433 on host so it doesn't clash with the main DB
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d profsidekick_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    tmpfs:
+      - /var/lib/postgresql/data   # in-memory — no persistent volume needed for tests
