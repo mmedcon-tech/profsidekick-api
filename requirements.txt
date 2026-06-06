@@ -18,12 +18,12 @@ httpx==0.27.0
 # File processing and media handling
 python-pptx==0.6.23
 pypdf2==3.0.1
-pillow==10.1.0
+# pillow==10.1.0
 python-magic==0.4.27
 pdf2image==1.16.3
 
 # Configuration and environment
-pydantic==2.5.0
+pydantic>=2.5.2,<3.0.0
 pydantic-settings==2.1.0
 python-dotenv==1.0.0
 
@@ -40,7 +40,7 @@ pytest==7.4.3
 pytest-asyncio==0.21.1
 
 # Development tools
-black==23.11.0
+black==24.10.0
 flake8==6.1.0
 
 # Authentication
@@ -55,4 +55,8 @@ boto3==1.34.0
 botocore==1.34.0
 
 # HTTP requests for downloading files from cloud storage
-requests==2.31.0 
+requests==2.31.0
+
+# RAG pipeline — vector embeddings and pgvector integration
+pgvector
+langchain-text-splitters

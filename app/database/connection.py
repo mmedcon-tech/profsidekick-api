@@ -56,12 +56,30 @@ def get_db():
     db = SessionLocal()
     try:
         yield db
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 
 
 # Create all tables
 def create_tables():
-    from app.database.models import Session, SessionRun, User
+    from app.database.models import (  # noqa: F401 — imports register models with Base
+        User,
+        Course,
+        CourseStudent,
+        CourseMaterial,
+        Session,
+        SessionRun,
+        SessionMaterial,
+        SavedPrompt,
+        SlideChunk,
+        KnowledgeChunk,
+    )
 
+    # Enable pgvector extension before creating tables that use Vector columns
+    with engine.connect() as conn:
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        conn.commit()
     Base.metadata.create_all(bind=engine)

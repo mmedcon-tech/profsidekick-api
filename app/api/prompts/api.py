@@ -5,13 +5,19 @@ from sqlalchemy.orm import Session
 from app.database.connection import get_db
 from app.database.models import User
 from app.dependencies.auth import get_current_user
-from app.schemas.schemas import PromptsResponse, SavedPromptCreate, SavedPrompt, SavedPromptUpdate
+from app.schemas.schemas import (
+    PromptsResponse,
+    SavedPromptCreate,
+    SavedPrompt,
+    SavedPromptUpdate,
+)
 from app.services.prompt_service import PromptService
 
 # Set up logger
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["prompts"])
+
 
 @router.get("/prompts", response_model=PromptsResponse)
 async def get_prompts(
@@ -21,24 +27,27 @@ async def get_prompts(
     search: Optional[str] = None,
     include_public: bool = Query(True),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     try:
         prompt_service = PromptService()
-        prompts = await prompt_service.get_prompts(db, page, limit, category, search, include_public, current_user)
+        prompts = await prompt_service.get_prompts(
+            db, page, limit, category, search, include_public, current_user
+        )
         return prompts
     except Exception as e:
         logger.error(f"❌ Error getting prompts: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting prompts: {e}"
+            detail="Error getting prompts",
         )
+
 
 @router.post("/prompts", response_model=SavedPrompt)
 async def create_prompt(
     prompt_data: SavedPromptCreate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     try:
         prompt_service = PromptService()
@@ -48,32 +57,36 @@ async def create_prompt(
         logger.error(f"❌ Error creating prompt: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error creating prompt: {e}"
+            detail="Error creating prompt",
         )
+
 
 @router.put("/prompts/{prompt_id}", response_model=SavedPrompt)
 async def update_prompt(
     prompt_id: str,
     prompt_data: SavedPromptUpdate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     try:
         prompt_service = PromptService()
-        prompt = await prompt_service.update_prompt(db, prompt_id, prompt_data, current_user)
+        prompt = await prompt_service.update_prompt(
+            db, prompt_id, prompt_data, current_user
+        )
         return prompt
     except Exception as e:
         logger.error(f"❌ Error updating prompt: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error updating prompt: {e}"
+            detail="Error updating prompt",
         )
-    
+
+
 @router.delete("/prompts/{prompt_id}", response_model=SavedPrompt)
 async def delete_prompt(
     prompt_id: str,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     try:
         prompt_service = PromptService()
@@ -83,5 +96,5 @@ async def delete_prompt(
         logger.error(f"❌ Error deleting prompt: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error deleting prompt: {e}"
+            detail="Error deleting prompt",
         )
