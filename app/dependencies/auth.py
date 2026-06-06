@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
@@ -6,6 +7,7 @@ from app.services.auth_service import AuthService
 from app.database.models import User
 
 security = HTTPBearer()
+security_optional = HTTPBearer(auto_error=False)
 auth_service = AuthService()
 
 
@@ -36,10 +38,13 @@ async def get_current_user(
 
 
 async def get_optional_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_optional),
     db: Session = Depends(get_db),
-) -> User:
+) -> Optional[User]:
     """Get current user but allow optional authentication"""
+    if credentials is None:
+        return None
+
     try:
         return await get_current_user(credentials, db)
     except HTTPException:
