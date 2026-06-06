@@ -11,9 +11,8 @@ import time
 
 
 def setup_database():
-    """Set up database tables for fresh deployment"""
+    """Run Alembic migrations to bring the database schema up to date."""
 
-    # Get DATABASE_URL
     database_url = os.getenv("DATABASE_URL")
 
     if not database_url:
@@ -28,69 +27,32 @@ def setup_database():
         )
         return True
 
-    print("🔄 Setting up fresh database...")
+    print("🔄 Running Alembic migrations...")
 
     try:
-        # Create all tables from SQLAlchemy models
-        print("📋 Creating tables from models...")
         result = subprocess.run(
-            [
-                "python",
-                "-c",
-                """
-from sqlalchemy import text
-from app.database.connection import engine, Base
-from app.database.models import User, Session, Course, SessionRun, SavedPrompt, SlideChunk, KnowledgeChunk
-print('Enabling pgvector extension...')
-with engine.connect() as conn:
-    conn.execute(text('CREATE EXTENSION IF NOT EXISTS vector'))
-    conn.commit()
-print('Creating all tables...')
-Base.metadata.create_all(bind=engine)
-print('Creating IVFFlat indexes for RAG...')
-with engine.connect() as conn:
-    conn.execute(text('CREATE INDEX IF NOT EXISTS ix_slide_chunks_embedding ON slide_chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)'))
-    conn.execute(text('CREATE INDEX IF NOT EXISTS ix_knowledge_chunks_embedding ON knowledge_chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)'))
-    conn.commit()
-print('All tables and indexes created successfully')
-""",
-            ],
+            ["python", "-m", "alembic", "upgrade", "head"],
             capture_output=True,
             text=True,
-            timeout=60,
+            timeout=120,
         )
+
+        print(result.stdout)
+        if result.stderr:
+            print(result.stderr)
 
         if result.returncode != 0:
-            print(f"❌ Table creation failed")
-            print(f"STDOUT: {result.stdout}")
-            print(f"STDERR: {result.stderr}")
+            print("❌ Alembic migration failed")
             return False
 
-        print("✅ All tables created successfully")
-
-        # Mark migrations as current (so future migrations work)
-        print("🏷️  Marking database as up-to-date...")
-        stamp_result = subprocess.run(
-            ["python", "-m", "alembic", "stamp", "head"],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-
-        if stamp_result.returncode == 0:
-            print("✅ Database marked as up-to-date")
-        else:
-            print("⚠️  Could not mark database as up-to-date, but tables exist")
-            print(f"STDOUT: {stamp_result.stdout}")
-            print(f"STDERR: {stamp_result.stderr}")
-
+        print("✅ Database migrations applied successfully")
         return True
 
     except subprocess.TimeoutExpired:
-        print("❌ Database setup timed out")
+        print("❌ Database migration timed out")
         return False
     except Exception as e:
-        print(f"❌ Database setup error: {e}")
+        print(f"❌ Database migration error: {e}")
         return False
 
 
