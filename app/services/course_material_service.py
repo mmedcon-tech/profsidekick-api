@@ -4,7 +4,7 @@ from typing import List, Optional
 from pathlib import Path
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
-from fastapi import HTTPException, UploadFile
+from fastapi import BackgroundTasks, HTTPException, UploadFile
 from app.database.models import CourseMaterial, Course, SessionMaterial, MaterialType
 from app.schemas.schemas import (
     CourseMaterialCreate, CourseMaterialUpdate, CourseMaterialResponse,
@@ -14,6 +14,7 @@ from app.schemas.schemas import (
 from app.config import settings
 from app.services.file_processor import FileProcessor
 from app.services.cloud_storage_service import cloud_storage
+from app.services.rag_service import ingest_course_material_background
 
 
 class CourseMaterialService:
@@ -88,7 +89,8 @@ class CourseMaterialService:
         db: Session, 
         material_id: str, 
         file: UploadFile, 
-        user_id: str
+        user_id: str,
+        background_tasks: Optional[BackgroundTasks] = None,
     ) -> FileUploadResponse:
         """Upload a file for a course material"""
         
@@ -162,6 +164,16 @@ class CourseMaterialService:
                 material.file_type = file.content_type
             
             db.commit()
+            db.refresh(material)
+
+            if background_tasks is not None:
+                background_tasks.add_task(
+                    ingest_course_material_background,
+                    material.course_id,
+                    material.id,
+                    file_content,
+                    file.filename or "uploaded_material",
+                )
             
             return FileUploadResponse(
                 success=True,
@@ -361,6 +373,13 @@ class CourseMaterialService:
             except Exception as e:
                 print(f"Warning: Could not delete file {material.file_path}: {e}")
         
+        from app.database.models import KnowledgeChunk
+
+        db.query(KnowledgeChunk).filter(
+            KnowledgeChunk.course_id == material.course_id,
+            KnowledgeChunk.source == f"course_material:{str(material.id)}",
+        ).delete()
+
         db.delete(material)
         db.commit()
         
