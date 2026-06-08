@@ -29,6 +29,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session as DBSession
 
 from app.config import settings
+from app.database.connection import SessionLocal
 from app.database.models import KnowledgeChunk, SlideChunk
 
 logger = logging.getLogger(__name__)
@@ -229,6 +230,32 @@ def ingest_course_material(
     return len(rows)
 
 
+def ingest_course_material_background(
+    course_id: uuid.UUID,
+    material_id: uuid.UUID,
+    file_content: bytes,
+    file_name: str,
+) -> None:
+    """
+    Background-task wrapper for course-material ingestion.
+
+    FastAPI request-scoped DB sessions are closed before/around background
+    execution, so this task owns a fresh session for the ingestion transaction.
+    """
+    db = SessionLocal()
+    try:
+        ingest_course_material(course_id, material_id, file_content, file_name, db)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception(
+            "Background RAG ingestion failed for course material %s: %s",
+            material_id,
+            exc,
+        )
+        db.rollback()
+    finally:
+        db.close()
+
+
 def ingest_session_document(
     session_id: uuid.UUID,
     slides: List[Dict[str, Any]],
@@ -309,6 +336,30 @@ def ingest_session_document(
         session_id,
     )
     return len(rows)
+
+
+def ingest_session_document_background(
+    session_id: uuid.UUID,
+    slides: List[Dict[str, Any]],
+) -> None:
+    """
+    Background-task wrapper for session slide ingestion.
+
+    Uses a fresh DB session because request-scoped sessions are not safe to
+    reuse after the upload response has been sent.
+    """
+    db = SessionLocal()
+    try:
+        ingest_session_document(session_id, slides, db)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception(
+            "Background RAG ingestion failed for session %s: %s",
+            session_id,
+            exc,
+        )
+        db.rollback()
+    finally:
+        db.close()
 
 
 # ---------------------------------------------------------------------------
@@ -407,7 +458,7 @@ def retrieve_context(
     if course_id is not None and knowledge_sample is not None:
         knowledge_rows = db.execute(
             text(
-                "SELECT chunk_index, content, source, "
+                "SELECT content, source, "
                 "1 - (embedding <=> CAST(:vec AS vector)) AS score "
                 "FROM knowledge_chunks "
                 "WHERE course_id = :cid "
@@ -420,7 +471,7 @@ def retrieve_context(
         results.extend(
             {
                 "slide_number": None,
-                "chunk_index": row.chunk_index if hasattr(row, "chunk_index") else 0,
+                "chunk_index": 0,
                 "content": row.content,
                 "score": float(row.score),
                 "source": "course_material",

@@ -7,7 +7,7 @@ from typing import Dict, Any, Optional
 import requests
 import httpx
 from io import BytesIO
-from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, status, Query
+from fastapi import APIRouter, BackgroundTasks, UploadFile, File, Form, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
@@ -22,6 +22,7 @@ from app.schemas.schemas import SessionDetails, SlideData, PresentationData, Ass
 from app.services.file_processor import FileProcessor
 from app.services.openai_service import OpenAIService
 from app.services.session_service import SessionService
+from app.services.rag_service import ingest_session_document_background
 from app.dependencies.auth import get_current_user, get_optional_user
 from app.config import settings
 
@@ -77,6 +78,7 @@ async def _process_upload(
 
 @router.post("/sessions/create", response_model=SessionDetails)
 async def create_session(
+    background_tasks: BackgroundTasks,
     presentation: UploadFile = File(...),
     solution_file: Optional[UploadFile] = File(None),
     sessionDetails: str = Form(...),
@@ -175,6 +177,14 @@ async def create_session(
             slides_details,
         )
         logger.info(f"✅ Session created with ID: {session_id}")
+
+        db_session_raw = db.query(Session).filter(Session.session_id == session_id).first()
+        if db_session_raw:
+            background_tasks.add_task(
+                ingest_session_document_background,
+                db_session_raw.id,
+                slides_details,
+            )
 
         # Format slides for response
         logger.info(f"📋 Formatting slides for response")

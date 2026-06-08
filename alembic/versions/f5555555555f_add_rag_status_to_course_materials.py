@@ -1,7 +1,7 @@
 """add rag_status, rag_error, rag_chunks to course_materials
 
 Revision ID: f5555555555f
-Revises: e4444444444e
+Revises: 736a240d08c6
 Create Date: 2026-06-04 00:00:00.000000
 
 """
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "f5555555555f"
-down_revision: Union[str, None] = "e4444444444e"
+down_revision: Union[str, None] = "736a240d08c6"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

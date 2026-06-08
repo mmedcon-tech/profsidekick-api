@@ -1,6 +1,6 @@
 import logging
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from app.database.connection import get_db
 from app.database.models import User
@@ -125,6 +125,7 @@ async def delete_course_material(
 @router.post("/{material_id}/upload", response_model=FileUploadResponse)
 async def upload_material_file(
     material_id: str,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -132,7 +133,7 @@ async def upload_material_file(
     """Upload a file for a course material"""
     try:
         result = await course_material_service.upload_material_file(
-            db, material_id, file, current_user.id
+            db, material_id, file, current_user.id, background_tasks
         )
         return result
     except Exception as e:
@@ -146,6 +147,7 @@ async def upload_material_file(
 @router.post("/courses/{course_id}/upload", response_model=CourseMaterialResponse)
 async def create_material_with_file(
     course_id: str,
+    background_tasks: BackgroundTasks,
     title: str = Form(...),
     material_type: MaterialType = Form(...),
     description: str = Form(None),
@@ -181,7 +183,7 @@ async def create_material_with_file(
         
         # Upload file
         await course_material_service.upload_material_file(
-            db, str(material.id), file, current_user.id
+            db, str(material.id), file, current_user.id, background_tasks
         )
         
         # Return updated material with file info
