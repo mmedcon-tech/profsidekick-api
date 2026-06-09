@@ -72,6 +72,7 @@ class CourseService:
             for course in courses:
                 course.owner_name = f"{user.first_name} {user.last_name}"
                 course.enrollment_count = len(course.students)
+                course.session_count = db.query(SessionModel).filter(SessionModel.course_id == course.id).count()
             return [CourseDetails(**course.__dict__) for course in courses]
 
         elif user.role in ("admin", "subscriber"):
@@ -126,6 +127,7 @@ class CourseService:
                     f"{owner.first_name} {owner.last_name}" if owner else "Unknown"
                 )
                 course.enrollment_count = len(course.students)
+                course.session_count = db.query(SessionModel).filter(SessionModel.course_id == course.id).count()
 
                 enrolled: Optional[bool] = None
                 if user.role == "subscriber":
@@ -172,6 +174,7 @@ class CourseService:
                     )
 
         course_dict = {k: v for k, v in course.__dict__.items() if not k.startswith("_")}
+        course_dict["session_count"] = db.query(SessionModel).filter(SessionModel.course_id == course.id).count()
         if user and user.role == "subscriber":
             enrollment = (
                 db.query(CourseStudent)

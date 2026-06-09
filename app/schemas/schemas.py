@@ -306,6 +306,7 @@ class CourseDetails(BaseModel):
     username: Optional[str] = None
     owner_name: Optional[str] = None
     enrollment_count: Optional[int] = None
+    session_count: Optional[int] = None
     name: Optional[str] = None
     code: Optional[str] = None
     section: Optional[str] = None
