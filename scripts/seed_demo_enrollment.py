@@ -26,6 +26,36 @@ DEMO_COURSE_ID = "demo-leadership-101"
 DEMO_COURSE_NAME = "Basic Level Leadership"
 DEMO_SESSION_ID = "demo-session-001"
 
+DEMO_PRESENTATION = {
+    "filename": "leadership-foundations.pdf",
+    "filePath": "/uploads/demo/leadership-foundations.pdf",
+    "fileSize": 1024,
+    "fileType": "application/pdf",
+}
+
+DEMO_SLIDES = [
+    {
+        "id": 1,
+        "slideNumber": 1,
+        "title": "Learning the basics",
+        "content": "Introduction to core leadership principles and team communication.",
+        "imagePath": "",
+        "thumbnailPath": "",
+        "visionInstructions": "",
+        "visionModel": "",
+    },
+    {
+        "id": 2,
+        "slideNumber": 2,
+        "title": "Leading with clarity",
+        "content": "How to set expectations, give feedback, and build trust.",
+        "imagePath": "",
+        "thumbnailPath": "",
+        "visionInstructions": "",
+        "visionModel": "",
+    },
+]
+
 
 def seed() -> None:
     from app.database.models import Course, CourseStudent, Session, SessionRun, User
@@ -100,11 +130,16 @@ def seed() -> None:
                 class_name="Leadership Foundations",
                 description="Session 1 — introduction to leadership principles.",
                 duration=45,
-                total_slides=10,
+                presentation_details=DEMO_PRESENTATION,
+                slides_details=DEMO_SLIDES,
             )
             db.add(session)
             db.flush()
             print(f"Created session: {session.class_name}")
+        elif not session.presentation_details or not session.slides_details:
+            session.presentation_details = session.presentation_details or DEMO_PRESENTATION
+            session.slides_details = session.slides_details or DEMO_SLIDES
+            print(f"Updated session content: {session.class_name}")
 
         for sub in subscribers:
             existing_run = (
