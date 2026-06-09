@@ -89,6 +89,7 @@ class AvatarService:
             name=data.name,
             description=data.description,
             is_published=False,
+            subscription_cost=template.subscription_cost,
             template_version_id=template.current_version_id,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),

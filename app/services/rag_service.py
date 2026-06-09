@@ -30,7 +30,7 @@ from sqlalchemy.orm import Session as DBSession
 
 from app.config import settings
 from app.database.connection import SessionLocal
-from app.database.models import KnowledgeChunk, SlideChunk
+from app.database.models import KnowledgeChunk, KnowledgeDocument, SlideChunk
 
 logger = logging.getLogger(__name__)
 
@@ -143,6 +143,17 @@ def _extract_text_from_content(file_content: bytes, filename: str) -> str:
             return "\n\n".join(slide_texts)
         except Exception as exc:
             logger.warning("PPTX text extraction failed for %s: %s", filename, exc)
+            return ""
+
+    if suffix in ("docx", "doc"):
+        try:
+            from docx import Document as DocxDocument  # type: ignore
+
+            doc = DocxDocument(io.BytesIO(file_content))
+            paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+            return "\n\n".join(paragraphs)
+        except Exception as exc:
+            logger.warning("DOCX text extraction failed for %s: %s", filename, exc)
             return ""
 
     # Attempt UTF-8 plain-text read for .txt / .md / other text files.
@@ -355,6 +366,117 @@ def ingest_session_document_background(
         logger.exception(
             "Background RAG ingestion failed for session %s: %s",
             session_id,
+            exc,
+        )
+        db.rollback()
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# Avatar knowledge-document ingestion
+# ---------------------------------------------------------------------------
+
+
+def ingest_avatar_knowledge_document(
+    document_id: uuid.UUID,
+    avatar_configuration_id: uuid.UUID,
+    file_content: bytes,
+    file_name: str,
+    db: DBSession,
+) -> int:
+    """
+    Extract text from an avatar knowledge document, chunk, embed, and persist
+    as KnowledgeChunk rows.
+
+    Scoping strategy: both course_id and session_id are left NULL; the source
+    tag "avatar_knowledge:{avatar_configuration_id}:{document_id}" is the
+    stable identifier used to delete stale chunks on re-upload.
+
+    Also writes the extracted plain text back to KnowledgeDocument.content_text
+    so it is available for direct inspection without hitting the chunks table.
+
+    Returns the number of chunks stored (0 if no extractable text found).
+    """
+    source_tag = f"avatar_knowledge:{avatar_configuration_id}:{document_id}"
+
+    # Delete stale chunks from any previous upload of the same document.
+    db.query(KnowledgeChunk).filter(
+        KnowledgeChunk.source == source_tag,
+    ).delete()
+
+    raw_text = _extract_text_from_content(file_content, file_name)
+
+    # Persist extracted text on the document record itself.
+    doc = db.query(KnowledgeDocument).filter(KnowledgeDocument.id == document_id).first()
+    if doc is not None:
+        doc.content_text = raw_text or None
+        db.flush()
+
+    if not raw_text or not raw_text.strip():
+        logger.info(
+            "ingest_avatar_knowledge_document: no text extracted from %s (doc %s)",
+            file_name,
+            document_id,
+        )
+        db.commit()
+        return 0
+
+    raw_chunks = _chunk_text(raw_text)
+    if not raw_chunks:
+        db.commit()
+        return 0
+
+    try:
+        vectors = _embed(raw_chunks)
+    except Exception as exc:  # noqa: BLE001
+        logger.error(
+            "ingest_avatar_knowledge_document: embedding failed for doc %s — %s",
+            document_id,
+            exc,
+        )
+        vectors = [None] * len(raw_chunks)  # type: ignore[list-item]
+
+    rows: List[KnowledgeChunk] = [
+        KnowledgeChunk(
+            id=uuid.uuid4(),
+            course_id=None,
+            session_id=None,
+            source=source_tag,
+            content=chunk,
+            embedding=vector,
+        )
+        for chunk, vector in zip(raw_chunks, vectors)
+    ]
+
+    db.add_all(rows)
+    db.commit()
+
+    logger.info(
+        "ingest_avatar_knowledge_document: stored %d chunks for doc %s (avatar_config %s)",
+        len(rows),
+        document_id,
+        avatar_configuration_id,
+    )
+    return len(rows)
+
+
+def ingest_avatar_knowledge_document_background(
+    document_id: uuid.UUID,
+    avatar_configuration_id: uuid.UUID,
+    file_content: bytes,
+    file_name: str,
+) -> None:
+    """Background-task wrapper for avatar knowledge document ingestion."""
+    db = SessionLocal()
+    try:
+        ingest_avatar_knowledge_document(
+            document_id, avatar_configuration_id, file_content, file_name, db
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception(
+            "Background RAG ingestion failed for knowledge document %s: %s",
+            document_id,
             exc,
         )
         db.rollback()
