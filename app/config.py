@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     # File Upload Configuration
     upload_dir: str = Field("./uploads", env="UPLOAD_DIR")
     static_dir: str = Field("./static", env="STATIC_DIR")
-    max_file_size: int = Field(52428800, env="MAX_FILE_SIZE")
+    max_file_size: int = Field(31457280, env="MAX_FILE_SIZE")  # 30 MB
     allowed_file_types: str = Field(".pptx,.ppt,.pdf,.docx", env="ALLOWED_FILE_TYPES")
     
     # Cloud Storage Configuration (AWS S3)
@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     
     # Security
     cors_origins: str = Field("http://localhost:3000,https://profsidekick.vercel.app,https://profsidekick-frontend-3il7.vercel.app", env="CORS_ORIGINS")
+    admin_secret: str = Field("", env="ADMIN_SECRET")
     credits_per_usd: int = Field(100, env="CREDITS_PER_USD")
     
     # Email Configuration

@@ -60,3 +60,6 @@ requests==2.31.0
 # RAG pipeline — vector embeddings and pgvector integration
 pgvector
 langchain-text-splitters
+
+# Document text extraction
+python-docx>=1.1.0

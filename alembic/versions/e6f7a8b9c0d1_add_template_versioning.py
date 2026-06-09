@@ -29,6 +29,25 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    existing_tables = inspector.get_table_names()
+
+    def get_cols(table):
+        if table not in existing_tables:
+            return []
+        return [c['name'] for c in inspector.get_columns(table)]
+
+    def get_fks(table):
+        if table not in existing_tables:
+            return []
+        return [f['name'] for f in inspector.get_foreign_keys(table)]
+
+    def get_indexes(table):
+        if table not in existing_tables:
+            return []
+        return [i['name'] for i in inspector.get_indexes(table)]
+
     # ── avatar_template_versions ─────────────────────────────────────────────
     # Must be created BEFORE the FK on avatar_templates.current_version_id
     op.create_table(
@@ -74,21 +93,24 @@ def upgrade() -> None:
                     "avatar_template_roles", ["template_id"])
 
     # ── modify avatar_templates ───────────────────────────────────────────────
-    op.add_column("avatar_templates", sa.Column("category", sa.String(100), nullable=True))
-    op.add_column("avatar_templates",
-                  sa.Column("current_version_id", postgresql.UUID(as_uuid=True),
-                            sa.ForeignKey("avatar_template_versions.id",
-                                         name="fk_avatar_templates_current_version",
-                                         use_alter=True),
-                            nullable=True))
+    if 'category' not in get_cols('avatar_templates'):
+        op.add_column("avatar_templates", sa.Column("category", sa.String(100), nullable=True))
+    if 'current_version_id' not in get_cols('avatar_templates'):
+        op.add_column("avatar_templates",
+                      sa.Column("current_version_id", postgresql.UUID(as_uuid=True),
+                                sa.ForeignKey("avatar_template_versions.id",
+                                             name="fk_avatar_templates_current_version",
+                                             use_alter=True),
+                                nullable=True))
 
     # ── modify avatars ────────────────────────────────────────────────────────
     # Nullable so pre-existing avatars remain valid (Option A — frozen at creation)
-    op.add_column("avatars",
-                  sa.Column("template_version_id", postgresql.UUID(as_uuid=True),
-                            sa.ForeignKey("avatar_template_versions.id",
-                                         name="fk_avatars_template_version"),
-                            nullable=True))
+    if 'template_version_id' not in get_cols('avatars'):
+        op.add_column("avatars",
+                      sa.Column("template_version_id", postgresql.UUID(as_uuid=True),
+                                sa.ForeignKey("avatar_template_versions.id",
+                                             name="fk_avatars_template_version"),
+                                nullable=True))
 
 
 def downgrade() -> None:

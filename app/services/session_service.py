@@ -86,6 +86,9 @@ class SessionService:
                 role_label = role_row.name
 
         # Create session in database
+        raw_runtime_mode = session_details.get('subscriberRuntimeMode') or 'avatar'
+        subscriber_runtime_mode = raw_runtime_mode if raw_runtime_mode in ('avatar', 'chat', 'choice') else 'avatar'
+
         db_session = SessionModel(
             session_id=session_id,
             user_id=user_id,
@@ -99,6 +102,7 @@ class SessionService:
             slides_details=slides_details,
             assistant_parameters=session_details.get('assistantParameters'),
             session_mode=session_mode,
+            subscriber_runtime_mode=subscriber_runtime_mode,
             avatar_id=avatar_id,
             selected_role_id=selected_role_id,
             role_label=role_label,
@@ -139,6 +143,12 @@ class SessionService:
         if not course:
             raise ValueError(f"Session '{session_id}' references a course that no longer exists")
 
+        slides = self._student_slides(db_session.slides_details)
+        # Backfill id for slides stored before the id field was added
+        for i, slide in enumerate(slides):
+            if slide.get('id') is None:
+                slide['id'] = slide.get('slideNumber', i + 1)
+
         session_data = {
             'sessionId': str(db_session.session_id),
             'userId': str(user.id),
@@ -152,9 +162,10 @@ class SessionService:
             'description': db_session.description,
             'duration': db_session.duration,
             'presentationDetails': db_session.presentation_details,
-            'slidesDetails': self._student_slides(db_session.slides_details),
+            'slidesDetails': slides,
             'assistantParameters': db_session.assistant_parameters,
             'sessionMode': getattr(db_session, 'session_mode', 'teaching') or 'teaching',
+            'subscriberRuntimeMode': getattr(db_session, 'subscriber_runtime_mode', 'avatar') or 'avatar',
         }
 
         return SessionDetails(**session_data)
@@ -246,12 +257,18 @@ class SessionService:
         return True
 
 
-    async def start_session_run(self, db: Session, session_id: str, user_id: str, assistant_parameters: AssistantParameters) -> SessionRun:
-        print("Starting session run")
+    async def start_session_run(
+        self,
+        db: Session,
+        session_id: str,
+        user_id: str,
+        assistant_parameters: AssistantParameters,
+        runtime_mode_used: Optional[str] = None,
+    ) -> SessionRun:
         db_session = db.query(SessionModel).filter(SessionModel.session_id == session_id).first()
         if not db_session:
             return False
-        print("Session ")
+
         session_run_id = self.generate_session_run_id()
 
         session_run = SessionRun(
@@ -259,9 +276,10 @@ class SessionService:
             session_id=db_session.session_id,
             user_id=user_id,
             session_run_metadata={},
-            assistant_parameters=assistant_parameters.model_dump(),  # Convert Pydantic object to dict
+            assistant_parameters=assistant_parameters.model_dump(),
             status=SessionRunStatus.ACTIVE,
-            end_time=None
+            end_time=None,
+            runtime_mode_used=runtime_mode_used,
         )
 
         db_session.session_runs.append(session_run)

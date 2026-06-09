@@ -14,6 +14,7 @@ RUN apt-get update \
         libpq-dev \
         curl \
         poppler-utils \
+        libreoffice \
     && rm -rf /var/lib/apt/lists/*
 
 # Create and set working directory
