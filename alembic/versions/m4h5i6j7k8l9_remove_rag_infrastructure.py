@@ -28,11 +28,32 @@ depends_on = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    existing_tables = inspector.get_table_names()
+
+    def get_cols(table):
+        if table not in existing_tables:
+            return []
+        return [c['name'] for c in inspector.get_columns(table)]
+
+    def get_fks(table):
+        if table not in existing_tables:
+            return []
+        return [f['name'] for f in inspector.get_foreign_keys(table)]
+
+    def get_indexes(table):
+        if table not in existing_tables:
+            return []
+        return [i['name'] for i in inspector.get_indexes(table)]
+
     # Drop the chunks table first (FK references knowledge_documents.id).
-    op.drop_table("knowledge_document_chunks")
+    if 'knowledge_document_chunks' in existing_tables:
+        op.drop_table("knowledge_document_chunks")
 
     # Drop the embedding column from user_memories.
-    op.drop_column("user_memories", "embedding")
+    if 'embedding' in get_cols('user_memories'):
+        op.drop_column("user_memories", "embedding")
 
 
 def downgrade() -> None:

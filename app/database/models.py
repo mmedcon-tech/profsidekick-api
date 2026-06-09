@@ -79,13 +79,15 @@ class Course(Base):
     is_active = Column(Boolean, default=True)
     is_deleted = Column(Boolean, default=False)
     is_public = Column(Boolean, default=False)
+    allow_subscriber_sessions = Column(Boolean, default=False, nullable=False, server_default="false")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
-    
+
     user = relationship("User", back_populates="courses_created")
     sessions = relationship("Session", back_populates="course", cascade="all, delete-orphan")
     students = relationship("User", secondary="course_students", back_populates="courses_enrolled")
     course_materials = relationship("CourseMaterial", back_populates="course", cascade="all, delete-orphan")
+    access_codes = relationship("CourseAccessCode", back_populates="course", cascade="all, delete-orphan")
 
 class CourseMaterial(Base):
     __tablename__ = "course_materials"
@@ -122,6 +124,23 @@ class CourseStudent(Base):
     course_id = Column(UUID(as_uuid=True), ForeignKey("courses.id"), nullable=False)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     enrollment_date = Column(DateTime, default=datetime.utcnow)
+
+
+class CourseAccessCode(Base):
+    __tablename__ = "course_access_codes"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    course_id = Column(UUID(as_uuid=True), ForeignKey("courses.id", ondelete="CASCADE"), nullable=False, index=True)
+    code = Column(String(32), nullable=False, unique=True, index=True)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    max_uses = Column(Integer, nullable=True)
+    uses_count = Column(Integer, nullable=False, default=0)
+    is_active = Column(Boolean, nullable=False, default=True)
+    expires_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    course = relationship("Course", back_populates="access_codes")
+    creator = relationship("User", foreign_keys=[created_by])
     
 class Session(Base):
     __tablename__ = "sessions"
@@ -147,6 +166,7 @@ class Session(Base):
                                nullable=True)
     role_label = Column(String(100), nullable=True)  # snapshot of role name
     session_mode = Column(String(20), nullable=False, default="teaching", server_default="teaching")  # teaching | examination
+    subscriber_runtime_mode = Column(String(20), nullable=False, default="avatar", server_default="avatar")  # avatar | chat | choice
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
@@ -174,6 +194,8 @@ class SessionRun(Base):
     ai_summary = Column(Text, nullable=True)
     # Snapshot of the role name when this run started (denormalized for history)
     role_at_start = Column(String(100), nullable=True)
+    # Which runtime was actually used for this run (avatar | chat)
+    runtime_mode_used = Column(String(20), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
 
@@ -313,6 +335,7 @@ class AvatarTemplate(Base):
     default_vision_prompt = Column(Text, nullable=True)
 
     is_active = Column(Boolean, default=True)
+    subscription_cost = Column(Numeric(12, 6), nullable=False, default=3, server_default="3")
     # Points to the currently published version; NULL until first publish
     current_version_id = Column(
         UUID(as_uuid=True),
@@ -408,6 +431,7 @@ class Avatar(Base):
     name = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
     is_published = Column(Boolean, default=False)
+    subscription_cost = Column(Numeric(12, 6), nullable=False, default=3, server_default="3")
     # Frozen at creation — NULL for pre-versioning avatars (they fall back to legacy prompts)
     template_version_id = Column(
         UUID(as_uuid=True),
@@ -719,6 +743,8 @@ class AvatarSubscription(Base):
         index=True,
     )
     subscribed_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    is_active = Column(Boolean, nullable=False, default=True, server_default="true")
+    expires_at = Column(DateTime, nullable=True)
 
     subscriber = relationship("User", foreign_keys=[subscriber_id])
     avatar = relationship("Avatar", foreign_keys=[avatar_id])
