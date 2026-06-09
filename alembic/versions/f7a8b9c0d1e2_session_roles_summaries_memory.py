@@ -37,24 +37,47 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    existing_tables = inspector.get_table_names()
+
+    def get_cols(table):
+        if table not in existing_tables:
+            return []
+        return [c['name'] for c in inspector.get_columns(table)]
+
+    def get_fks(table):
+        if table not in existing_tables:
+            return []
+        return [f['name'] for f in inspector.get_foreign_keys(table)]
+
+    def get_indexes(table):
+        if table not in existing_tables:
+            return []
+        return [i['name'] for i in inspector.get_indexes(table)]
+
     # pgvector: embedding columns are stored as Text (JSON-encoded float lists)
     # so this migration does NOT require the pgvector extension.
     # Vector similarity search can be layered on top later without a schema change.
 
     # ── sessions: role columns ────────────────────────────────────────────────
-    op.add_column("sessions",
-        sa.Column("selected_role_id", postgresql.UUID(as_uuid=True),
-                  sa.ForeignKey("avatar_template_roles.id", name="fk_sessions_selected_role",
-                                use_alter=True, ondelete="SET NULL"),
-                  nullable=True))
-    op.add_column("sessions",
-        sa.Column("role_label", sa.String(100), nullable=True))
+    if 'selected_role_id' not in get_cols('sessions'):
+        op.add_column("sessions",
+            sa.Column("selected_role_id", postgresql.UUID(as_uuid=True),
+                      sa.ForeignKey("avatar_template_roles.id", name="fk_sessions_selected_role",
+                                    use_alter=True, ondelete="SET NULL"),
+                      nullable=True))
+    if 'role_label' not in get_cols('sessions'):
+        op.add_column("sessions",
+            sa.Column("role_label", sa.String(100), nullable=True))
 
     # ── session_runs: summary + role snapshot ─────────────────────────────────
-    op.add_column("session_runs",
-        sa.Column("ai_summary", sa.Text, nullable=True))
-    op.add_column("session_runs",
-        sa.Column("role_at_start", sa.String(100), nullable=True))
+    if 'ai_summary' not in get_cols('session_runs'):
+        op.add_column("session_runs",
+            sa.Column("ai_summary", sa.Text, nullable=True))
+    if 'role_at_start' not in get_cols('session_runs'):
+        op.add_column("session_runs",
+            sa.Column("role_at_start", sa.String(100), nullable=True))
 
     # ── user_memories ─────────────────────────────────────────────────────────
     op.create_table(
