@@ -117,7 +117,7 @@ async def generate_options(
     """
     Generate N independent AI responses for the same prompt.
 
-    Calls gpt-4o N times in parallel (temperatures 0.7 / 0.85 / 1.0 …)
+    Calls gpt-4.1 N times in parallel (temperatures 0.7 / 0.85 / 1.0 …)
     to produce meaningfully different phrasings.
 
     Nothing is stored yet. The publisher calls POST /chat/select to

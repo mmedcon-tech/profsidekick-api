@@ -180,7 +180,7 @@ async def _call_llm(
     messages.append({"role": "user", "content": user_message})
 
     response = await _openai.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-4.1",
         messages=messages,
         max_tokens=1500,
         temperature=temperature,

@@ -131,7 +131,7 @@ Personality: {desc}
 
                 client = OpenAI(api_key=settings.openai_api_key)
                 response = client.chat.completions.create(
-                    model="gpt-4o-mini",
+                    model="gpt-4.1-mini",
                     messages=[
                         {
                             "role": "system",

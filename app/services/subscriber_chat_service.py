@@ -29,7 +29,7 @@ from app.database.models import (
 from app.services.context_builder import build_chat_system_prompt
 
 _openai = AsyncOpenAI(api_key=settings.openai_api_key)
-_CHAT_MODEL = "gpt-4o"
+_CHAT_MODEL = "gpt-4.1"
 _MAX_HISTORY = 30
 
 

@@ -52,7 +52,7 @@ Be concise and factual. Do not invent information not present in the input."""
 async def _call_llm(prompt: str) -> Optional[dict]:
     try:
         response = await _openai.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4.1-mini",
             messages=[
                 {"role": "system", "content": _SUMMARY_SYSTEM},
                 {"role": "user", "content": prompt},

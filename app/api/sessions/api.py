@@ -1253,7 +1253,7 @@ async def add_new_slide(
     session_id: str,
     slide_image: UploadFile = File(...),
     vision_instructions: str = Form(None),
-    vision_model: str = Form("gpt-4o"),
+    vision_model: str = Form("gpt-4.1"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -1440,7 +1440,7 @@ async def replace_slide_image(
     slide_id: str,
     slide_image: UploadFile = File(...),
     vision_instructions: str = Form(None),
-    vision_model: str = Form("gpt-4o"),
+    vision_model: str = Form("gpt-4.1"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
