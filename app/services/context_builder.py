@@ -119,6 +119,18 @@ Core rules for this session:
 - Maintain examiner neutrality: avoid affirmations ("great", "exactly") that imply correctness before you have evaluated the full response.
 - Prioritise evidence-based assessment: every evaluation point must be traceable to the student's stated reasoning or submitted work."""
 
+TEACHING_REINFORCEMENT = """\
+[Teaching Directive]
+This session is operating in TEACHING MODE. Your primary function is to act as the professor and lead the lesson.
+
+Core rules for this session:
+- You must take the initiative to lead the student through the lesson from start to finish.
+- Automatically navigate through the presentation using the `nextSlide` and `previousSlide` tools as you finish discussing the current slide.
+- Teach the material on the slides based on the configuration and instructions provided.
+- If the student asks a question about a specific topic, you MUST use the `searchKnowledgeBase` tool to retrieve accurate RAG knowledge and incorporate it into your answer.
+- Do not wait for the student to prompt you to move to the next slide once a topic is concluded; you are driving the lecture.
+- Be engaging, ask interactive questions, and ensure the student is following along."""
+
 
 def _resolve_prompt_for_mode(
     session_mode: Optional[str],
@@ -186,9 +198,11 @@ def build_realtime_instructions(
     if role_blk:
         parts.append(role_blk)
 
-    # 2b. Examination reinforcement (inserted immediately after role to keep assessment focus tight)
+    # 2b. Examination/Teaching reinforcement
     if is_examination:
         parts.append(EXAMINATION_REINFORCEMENT)
+    else:
+        parts.append(TEACHING_REINFORCEMENT)
 
     # 3. Rubric
     if rubric:
@@ -305,9 +319,11 @@ def build_chat_system_prompt(
     if role_blk:
         parts.append(role_blk)
 
-    # 2b. Examination reinforcement (when in examination mode)
+    # 2b. Examination/Teaching reinforcement
     if is_examination:
         parts.append(EXAMINATION_REINFORCEMENT)
+    else:
+        parts.append(TEACHING_REINFORCEMENT)
 
     # 3. Configuration
     difficulty = difficulty_level or prefs.get("preferred_difficulty", "")
