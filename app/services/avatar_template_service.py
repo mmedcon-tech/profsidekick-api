@@ -94,6 +94,7 @@ class AvatarTemplateService:
             description=data.description,
             category=data.category,
             is_active=True,
+            subscription_cost=data.subscription_cost if data.subscription_cost is not None else 3,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
         )

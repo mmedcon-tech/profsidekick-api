@@ -13,7 +13,8 @@ from sqlalchemy.orm import Session
 from app.database.connection import get_db
 from app.database.models import (
     Session, SessionRun, SessionRunStatus, User,
-    Avatar, AvatarTemplate, AvatarTemplateVersion, AvatarTemplateRole,
+    Avatar, AvatarSubscription, AvatarTemplate, AvatarTemplateVersion, AvatarTemplateRole,
+    Course, CourseStudent,
 )
 from app.services.summarization_service import (
     generate_run_summary, get_recent_session_summary, get_user_memories,
@@ -52,10 +53,11 @@ async def _process_upload(
     """
     Unified slide-extraction entry point.
 
-    - PDF  → convert to images → Vision API (existing pipeline)
-    - PPTX / DOCX → direct text extraction (no images, no Vision call)
+    All formats → convert to images → Vision API:
+      PDF               : pdf2image directly
+      PPTX / PPT / DOCX : LibreOffice → PDF → pdf2image
 
-    Both paths return a list of slide dicts:
+    Returns a list of slide dicts:
       { slideNumber, title, content, imagePath, thumbnailPath, source }
     """
     if fp.is_text_extraction_format(filename):
@@ -64,9 +66,27 @@ async def _process_upload(
         logger.info(f"✅ Extracted {len(slides)} sections from {filename}")
         return slides
 
-    # PDF path: image conversion + Vision API
+    # All other formats → LibreOffice (for DOCX/PPTX) or direct (for PDF) → images → Vision API
     logger.info(f"⚙️ Converting {filename} to images for Vision processing")
-    slide_images, images_paths = await fp.convert_presentation_to_images(file_path, session_id)
+    ext = Path(filename).suffix.lower()
+    try:
+        slide_images, images_paths = await fp.convert_presentation_to_images(file_path, session_id)
+    except Exception as exc:
+        # Any failure in the image-conversion pipeline (LibreOffice not installed,
+        # conversion error, poppler/pdf2image error) → fall back to text extraction
+        # for DOCX and PPTX so session creation still succeeds with slide text.
+        # .ppt (legacy binary OLE format) and .pdf cannot be text-extracted — re-raise.
+        if ext in (".docx", ".pptx"):
+            logger.warning(
+                "⚠️ Image conversion failed (%s: %s) — falling back to text extraction "
+                "for %s. Fix the pipeline to enable Vision AI slide analysis.",
+                type(exc).__name__, exc, filename,
+            )
+            slides = fp.extract_text_content(file_path, source=source)
+            slides = fp.render_slides_as_images(slides, session_id)
+            logger.info("✅ Rendered %d slide image(s) from text content", len(slides))
+            return slides
+        raise
     logger.info(f"✅ Converted {len(slide_images)} slides to images")
     slides = await ais.process_slides_with_vision(
         slide_images, images_paths, session_id, vision_instructions, vision_model
@@ -102,10 +122,41 @@ async def create_session(
                 detail="courseId is required in session details"
             )
 
+        # ── Subscriber session-creation gate (fail fast, before any file I/O) ──
+        if current_user.role == "subscriber":
+            course_id_str = session_details_dict['courseId']
+            gate_course = db.query(Course).filter(Course.course_id == course_id_str).first()
+            if not gate_course:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Course not found.",
+                )
+            if not gate_course.allow_subscriber_sessions:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="This course does not allow subscribers to create sessions.",
+                )
+            gate_enrollment = db.query(CourseStudent).filter(
+                CourseStudent.course_id == gate_course.id,
+                CourseStudent.user_id == current_user.id,
+            ).first()
+            if not gate_enrollment:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You must be enrolled in this course to create a session.",
+                )
+
         # Read student file content
         logger.info(f"📂 Reading file content: {presentation.filename}")
         file_content = await presentation.read()
         logger.info(f"✅ File read successfully, size: {len(file_content)} bytes")
+
+        # Enforce size cap before any processing
+        if len(file_content) > settings.max_file_size:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large. Maximum allowed size is {settings.max_file_size // (1024 * 1024)} MB. Your file is {len(file_content) / (1024 * 1024):.1f} MB."
+            )
 
         # Validate student file
         logger.info(f"🔍 Validating file: {presentation.filename}")
@@ -148,6 +199,11 @@ async def create_session(
         if solution_file and solution_file.filename:
             logger.info(f"📂 Reading solution file: {solution_file.filename}")
             sol_content = await solution_file.read()
+            if len(sol_content) > settings.max_file_size:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"Solution file too large. Maximum allowed size is {settings.max_file_size // (1024 * 1024)} MB. Your file is {len(sol_content) / (1024 * 1024):.1f} MB."
+                )
             sol_valid, sol_error = file_processor.validate_file(sol_content, solution_file.filename)
             if not sol_valid:
                 raise HTTPException(
@@ -218,6 +274,8 @@ async def create_session(
         
         logger.info(f"🎉 Returning successful response with {len(response_slides)} slides")
         return created_session
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"❌ Error creating session: {e}")
         raise HTTPException(
@@ -428,12 +486,94 @@ async def start_session_run(
 
         assistant_parameters = AssistantParameters(**assistant_parameters_dict)
 
-        session_run = await session_service.start_session_run(db, session_id, str(current_user.id), assistant_parameters)
+        # ── Subscriber session gate ────────────────────────────────────────────
+        db_session_raw = db.query(Session).filter(Session.session_id == session_id).first()
+        if current_user.role == "subscriber":
+            if not db_session_raw:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found.")
+
+            # Gate 1: course must exist and allow subscriber sessions
+            course = db.query(Course).filter(Course.id == db_session_raw.course_id).first()
+            if not course:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Session has no associated course.",
+                )
+            if not course.allow_subscriber_sessions:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="This course does not allow subscriber sessions.",
+                )
+
+            # Gate 2: subscriber must be enrolled
+            enrolled = db.query(CourseStudent).filter_by(
+                course_id=db_session_raw.course_id,
+                user_id=current_user.id,
+            ).first()
+            if not enrolled:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You must be enrolled in this course to start a session.",
+                )
+
+            # Gate 3: avatar subscription — only enforced when the session has an avatar
+            if db_session_raw.avatar_id:
+                from datetime import datetime as _dt
+                sub = db.query(AvatarSubscription).filter(
+                    AvatarSubscription.subscriber_id == current_user.id,
+                    AvatarSubscription.avatar_id == db_session_raw.avatar_id,
+                    AvatarSubscription.is_active.is_(True),
+                ).first()
+                if sub and sub.expires_at and sub.expires_at < _dt.utcnow():
+                    sub.is_active = False
+                    db.commit()
+                    sub = None
+                if not sub:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="You need an active subscription to this avatar to start a session.",
+                    )
+
+            # Pre-flight credit check: subscriber must have a positive balance to start
+            from app.services import billing_service as _billing
+            balance_info = _billing.get_active_balance(current_user.id, db)
+            if balance_info["balance"] <= 0:
+                raise HTTPException(
+                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                    detail="Insufficient credits. Redeem an access code to start a session.",
+                )
+        # ─────────────────────────────────────────────────────────────────────
+
+        # ── Resolve effective runtime mode ────────────────────────────────────
+        session_subscriber_runtime = "avatar"
+        if db_session_raw:
+            session_subscriber_runtime = getattr(db_session_raw, "subscriber_runtime_mode", "avatar") or "avatar"
+
+        chosen_mode = request_data.get("chosen_mode")
+        if session_subscriber_runtime == "choice":
+            if not chosen_mode or chosen_mode not in ("avatar", "chat"):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="chosen_mode ('avatar' or 'chat') is required when subscriber_runtime_mode is 'choice'.",
+                )
+            effective_runtime = chosen_mode
+        elif chosen_mode and chosen_mode != session_subscriber_runtime:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="chosen_mode does not match the session's subscriber_runtime_mode.",
+            )
+        else:
+            effective_runtime = session_subscriber_runtime
+        # ─────────────────────────────────────────────────────────────────────
+
+        session_run = await session_service.start_session_run(
+            db, session_id, str(current_user.id), assistant_parameters,
+            runtime_mode_used=effective_runtime,
+        )
         if not session_run:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
 
-        # Snapshot the role label from the session row into the run row
-        db_session_raw = db.query(Session).filter(Session.session_id == session_id).first()
+        # Snapshot the role label from the session row into the run row (reuse already-fetched object)
         if db_session_raw and db_session_raw.role_label:
             session_run.role_at_start = db_session_raw.role_label
             db.commit()
@@ -455,7 +595,8 @@ async def start_session_run(
             presentationDetails=session.presentationDetails,
             slidesDetails=session.slidesDetails,
             startTime=session_run.start_time,
-            endTime=session_run.end_time
+            endTime=session_run.end_time,
+            runtimeModeUsed=effective_runtime,
         )
     except HTTPException:
         raise
@@ -552,9 +693,17 @@ async def stop_session_run(
 ):
     """
     Stop a session run and trigger post-session summarization.
+
+    Optional billing fields in request body:
+      input_tokens  (int) — realtime input token count reported by the client
+      output_tokens (int) — realtime output token count reported by the client
+    If present and user is a subscriber, credits are deducted via charge_usage().
+    Billing failure is non-fatal: the run is still marked completed.
     """
     try:
         session_run_metadata = request_data.get("session_run_metadata")
+        input_tokens = int(request_data.get("input_tokens") or 0)
+        output_tokens = int(request_data.get("output_tokens") or 0)
 
         session = await session_service.get_session(db, session_id)
         if not session:
@@ -563,6 +712,31 @@ async def stop_session_run(
         session_run = await session_service.stop_session_run(db, session_id, session_run_id, session_run_metadata)
         if not session_run:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+        # ── Billing: charge actual token usage for subscribers ─────────────
+        if current_user.role == "subscriber" and (input_tokens > 0 or output_tokens > 0):
+            try:
+                from app.services import billing_service as _billing
+                _billing.charge_usage(
+                    user_id=current_user.id,
+                    operation_type="session_run",
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    db=db,
+                    session_run_id=session_run.id,
+                )
+                db.commit()
+            except HTTPException as billing_err:
+                logger.warning(
+                    f"⚠️ Billing charge failed for run {session_run_id} "
+                    f"(user={current_user.id}): {billing_err.detail}"
+                )
+            except Exception as billing_err:
+                logger.warning(
+                    f"⚠️ Billing charge error for run {session_run_id} "
+                    f"(user={current_user.id}): {billing_err}"
+                )
+        # ──────────────────────────────────────────────────────────────────
 
         # Trigger background summarization (non-blocking — errors are logged, not raised)
         try:
@@ -712,7 +886,8 @@ async def get_session_run(
             presentationDetails=session.presentationDetails,
             slidesDetails=session.slidesDetails,
             startTime=session_run.start_time,
-            endTime=session_run.end_time
+            endTime=session_run.end_time,
+            runtimeModeUsed=getattr(session_run, "runtime_mode_used", None),
         )
     except Exception as e:
         logger.error(f"❌ Error getting session run: {e}")

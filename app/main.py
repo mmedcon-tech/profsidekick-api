@@ -41,7 +41,9 @@ from app.api.avatar_templates.api import router as avatar_templates_router
 from app.api.avatars.api import router as avatars_router
 from app.api.publisher.api import router as publisher_router
 from app.api.subscriptions.api import router as subscriptions_router
-# from app.api.auth import router as users_router
+from app.api.billing.api import router as billing_router
+from app.api.admin.billing_api import router as admin_billing_router
+from app.api.subscriber.api import router as subscriber_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -176,6 +178,9 @@ app.include_router(avatar_templates_router)
 app.include_router(avatars_router)
 app.include_router(publisher_router)
 app.include_router(subscriptions_router)
+app.include_router(billing_router)
+app.include_router(admin_billing_router)
+app.include_router(subscriber_router)
 
 # Add middleware for request logging (optional)
 @app.middleware("http")

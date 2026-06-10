@@ -19,6 +19,7 @@ from app.dependencies.auth import require_admin, require_publisher
 from app.schemas.schemas import (
     AvatarTemplateCreate,
     AvatarTemplateDetailResponse,
+    AvatarTemplatePricingUpdate,
     AvatarTemplateResponse,
     AvatarTemplateRoleCreate,
     AvatarTemplateRoleResponse,
@@ -34,6 +35,7 @@ from app.schemas.schemas import (
     TemplateCourseRow,
     TemplateSessionRunRow,
 )
+from app.database.models import AvatarTemplate
 from app.services.avatar_template_service import AvatarTemplateService
 
 logger = logging.getLogger(__name__)
@@ -140,6 +142,35 @@ async def archive_template(
         raise
     except Exception as e:
         logger.error(f"archive_template error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ══════════════════════════════════════════════════════════════════
+# Admin — template pricing
+# ══════════════════════════════════════════════════════════════════
+
+@router.patch(
+    "/admin/avatar-templates/{template_id}/pricing",
+    response_model=AvatarTemplateResponse,
+)
+async def set_template_pricing(
+    template_id: UUID,
+    data: AvatarTemplatePricingUpdate,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Set the subscription cost on a template. Inherited by new avatars at creation time."""
+    try:
+        template = db.query(AvatarTemplate).filter(AvatarTemplate.id == template_id).first()
+        if not template:
+            raise HTTPException(status_code=404, detail="Template not found")
+        template.subscription_cost = data.subscription_cost
+        db.commit()
+        return await template_service.get_template(db, template_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"set_template_pricing error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
