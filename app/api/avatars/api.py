@@ -14,11 +14,11 @@ import logging
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
-from app.database.models import User
+from app.database.models import Avatar, User
 from app.dependencies.auth import require_admin, require_publisher, require_subscriber
 from app.schemas.schemas import (
     AvatarConfigurationCreate,
@@ -26,6 +26,7 @@ from app.schemas.schemas import (
     AvatarConfigurationUpdate,
     AvatarCreate,
     AvatarListResponse,
+    AvatarPricingUpdate,
     AvatarPublicListResponse,
     AvatarPublicResponse,
     AvatarResponse,
@@ -38,6 +39,7 @@ from app.schemas.schemas import (
 )
 from app.services.avatar_service import AvatarService
 from app.services.file_processor import FileProcessor
+from app.services.rag_service import ingest_avatar_knowledge_document_background
 
 logger = logging.getLogger(__name__)
 
@@ -337,6 +339,7 @@ async def delete_rubric(
     status_code=status.HTTP_201_CREATED,
 )
 async def add_knowledge_document(
+    background_tasks: BackgroundTasks,
     avatar_id: UUID,
     title: str = Form(...),
     content_text: Optional[str] = Form(None),
@@ -353,17 +356,18 @@ async def add_knowledge_document(
     try:
         file_path = file_name = file_type = None
         file_size = None
+        file_content_bytes: Optional[bytes] = None
 
         if file and file.filename:
-            file_content = await file.read()
+            file_content_bytes = await file.read()
             file_path = await file_processor.save_uploaded_file(
-                file_content, file.filename, f"avatar_{avatar_id}"
+                file_content_bytes, file.filename, f"avatar_{avatar_id}"
             )
             file_name = file.filename
-            file_size = len(file_content)
+            file_size = len(file_content_bytes)
             file_type = file.content_type
 
-        return await avatar_service.add_knowledge_document(
+        doc = await avatar_service.add_knowledge_document(
             db, avatar_id, current_user.id,
             title=title,
             content_text=content_text,
@@ -372,6 +376,18 @@ async def add_knowledge_document(
             file_size=file_size,
             file_type=file_type,
         )
+
+        # Trigger background RAG ingestion if a file was uploaded.
+        if file_content_bytes and file_name:
+            background_tasks.add_task(
+                ingest_avatar_knowledge_document_background,
+                doc.id,
+                doc.avatar_configuration_id,
+                file_content_bytes,
+                file_name,
+            )
+
+        return doc
     except HTTPException:
         raise
     except Exception as e:
@@ -586,3 +602,28 @@ async def admin_get_avatar(
     except Exception as e:
         logger.error(f"❌ admin_get_avatar error: {e}")
         raise HTTPException(status_code=500, detail=f"Error fetching avatar: {e}")
+
+
+@router.patch(
+    "/admin/avatars/{avatar_id}/pricing",
+    response_model=AvatarResponse,
+)
+async def admin_set_avatar_pricing(
+    avatar_id: UUID,
+    data: AvatarPricingUpdate,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Override the subscription cost on a specific avatar (admin only)."""
+    try:
+        avatar = db.query(Avatar).filter(Avatar.id == avatar_id).first()
+        if not avatar:
+            raise HTTPException(status_code=404, detail="Avatar not found")
+        avatar.subscription_cost = data.subscription_cost
+        db.commit()
+        return await avatar_service.get_avatar(db, avatar_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ admin_set_avatar_pricing error: {e}")
+        raise HTTPException(status_code=500, detail=f"Error updating pricing: {e}")

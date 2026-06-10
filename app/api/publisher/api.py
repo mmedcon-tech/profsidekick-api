@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
 from app.database.models import User
-from app.dependencies.auth import require_publisher
+from app.dependencies.auth import require_subscriber
 from app.schemas.schemas import (
     ChatRequest,
     ChatResponse,
@@ -55,7 +55,7 @@ router = APIRouter(prefix="/api/publisher", tags=["publisher-learning"])
 @router.post("/chat/start", response_model=ChatStartResponse, status_code=status.HTTP_201_CREATED)
 async def start_chat(
     request: ChatStartRequest,
-    current_user: User = Depends(require_publisher),
+    current_user: User = Depends(require_subscriber),
     db: Session = Depends(get_db),
 ):
     """
@@ -82,7 +82,7 @@ async def start_chat(
 @router.post("/chat", response_model=ChatResponse, status_code=status.HTTP_200_OK)
 async def chat(
     request: ChatRequest,
-    current_user: User = Depends(require_publisher),
+    current_user: User = Depends(require_subscriber),
     db: Session = Depends(get_db),
 ):
     """
@@ -111,7 +111,7 @@ async def chat(
 @router.post("/chat/options", response_model=ChatOptionsResponse)
 async def generate_options(
     request: ChatOptionsRequest,
-    current_user: User = Depends(require_publisher),
+    current_user: User = Depends(require_subscriber),
     db: Session = Depends(get_db),
 ):
     """
@@ -136,7 +136,7 @@ async def generate_options(
 @router.post("/chat/select", response_model=ChatSelectResponse, status_code=status.HTTP_201_CREATED)
 async def select_option(
     request: ChatSelectRequest,
-    current_user: User = Depends(require_publisher),
+    current_user: User = Depends(require_subscriber),
     db: Session = Depends(get_db),
 ):
     """
@@ -162,7 +162,7 @@ async def select_option(
 
 @router.get("/conversations", response_model=ConversationListResponse)
 def list_conversations(
-    current_user: User = Depends(require_publisher),
+    current_user: User = Depends(require_subscriber),
     db: Session = Depends(get_db),
 ):
     """Return all conversations for the authenticated publisher, newest first."""
@@ -178,7 +178,7 @@ def list_conversations(
 @router.get("/conversations/{conversation_id}", response_model=ConversationDetail)
 def get_conversation(
     conversation_id: UUID,
-    current_user: User = Depends(require_publisher),
+    current_user: User = Depends(require_subscriber),
     db: Session = Depends(get_db),
 ):
     """
@@ -200,7 +200,7 @@ def get_conversation(
 )
 def delete_conversation(
     conversation_id: UUID,
-    current_user: User = Depends(require_publisher),
+    current_user: User = Depends(require_subscriber),
     db: Session = Depends(get_db),
 ):
     """
@@ -226,7 +226,7 @@ def delete_conversation(
 def save_response_edit(
     message_id: UUID,
     data: ResponseEditCreate,
-    current_user: User = Depends(require_publisher),
+    current_user: User = Depends(require_subscriber),
     db: Session = Depends(get_db),
 ):
     """
@@ -252,7 +252,7 @@ def save_response_edit(
 
 @router.get("/preferences", response_model=PreferenceListResponse)
 def list_preferences(
-    current_user: User = Depends(require_publisher),
+    current_user: User = Depends(require_subscriber),
     db: Session = Depends(get_db),
 ):
     """
@@ -275,7 +275,7 @@ def list_preferences(
 @router.put("/preferences", response_model=PreferenceResponse)
 def upsert_preference(
     data: PreferenceUpsert,
-    current_user: User = Depends(require_publisher),
+    current_user: User = Depends(require_subscriber),
     db: Session = Depends(get_db),
 ):
     """

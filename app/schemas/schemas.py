@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from typing import List, Optional, Any
 from pydantic import BaseModel, Field, EmailStr
 import uuid
@@ -84,6 +85,7 @@ class SessionDetails(BaseModel):
     duration: int = Field(..., gt=0, le=480)  # Max 8 hours
     assistantParameters: Optional[AssistantParameters] = None
     sessionMode: Optional[str] = "teaching"   # 'teaching' | 'examination'
+    subscriberRuntimeMode: Optional[str] = "avatar"  # 'avatar' | 'chat' | 'choice'
 
 class SessionCreateRequest(BaseModel):
     courseId: str = Field(..., description="Course ID that this session belongs to")
@@ -99,6 +101,8 @@ class SessionCreateRequest(BaseModel):
     roleLabel: Optional[str] = None
     # Session mode: determines which template prompt is loaded
     sessionMode: Optional[str] = Field("teaching", pattern="^(teaching|examination)$")
+    # Subscriber runtime mode: determines what experience subscribers get
+    subscriberRuntimeMode: Optional[str] = Field("avatar", pattern="^(avatar|chat|choice)$")
 
 class SessionUpdateDetails(BaseModel):
     # courseName: str = Field(..., min_length=1, max_length=200)
@@ -129,6 +133,7 @@ class SessionRunDetails(BaseModel):
 
     startTime: datetime
     endTime: Optional[datetime] = None
+    runtimeModeUsed: Optional[str] = None  # 'avatar' | 'chat'
 
 # Authentication Schemas
 class UserRegistration(BaseModel):
@@ -301,6 +306,7 @@ class CourseDetails(BaseModel):
     username: Optional[str] = None
     owner_name: Optional[str] = None
     enrollment_count: Optional[int] = None
+    session_count: Optional[int] = None
     name: Optional[str] = None
     code: Optional[str] = None
     section: Optional[str] = None
@@ -312,6 +318,8 @@ class CourseDetails(BaseModel):
     is_active: Optional[bool] = None
     is_deleted: Optional[bool] = None
     is_public: Optional[bool] = None
+    allow_subscriber_sessions: Optional[bool] = None
+    enrolled: Optional[bool] = None   # subscriber-only: True if caller is enrolled
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -328,6 +336,7 @@ class CourseCreate(BaseModel):
     is_active: Optional[bool] = None
     is_deleted: Optional[bool] = None
     is_public: Optional[bool] = None
+    allow_subscriber_sessions: Optional[bool] = False
 
 class CourseUpdate(BaseModel):
     user_id: Optional[UUID] = None
@@ -342,6 +351,7 @@ class CourseUpdate(BaseModel):
     is_active: Optional[bool] = None
     is_deleted: Optional[bool] = None
     is_public: Optional[bool] = None
+    allow_subscriber_sessions: Optional[bool] = None
 
 class CourseEnrollment(BaseModel):
     email: str = Field(..., description="Email of the student to enroll")
@@ -544,12 +554,16 @@ class AvatarTemplateCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     description: Optional[str] = None
     category: Optional[str] = Field(None, max_length=100)
+    subscription_cost: Optional[Decimal] = Decimal("3")
 
 class AvatarTemplateUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=200)
     description: Optional[str] = None
     category: Optional[str] = Field(None, max_length=100)
     is_active: Optional[bool] = None
+
+class AvatarTemplatePricingUpdate(BaseModel):
+    subscription_cost: Decimal = Field(..., ge=0)
 
 class AvatarTemplateResponse(BaseModel):
     """Full admin-only response — includes current version prompts."""
@@ -559,6 +573,7 @@ class AvatarTemplateResponse(BaseModel):
     description: Optional[str] = None
     category: Optional[str] = None
     is_active: bool
+    subscription_cost: Decimal = Decimal("3")
     avatar_image_url: Optional[str] = None
     current_version_id: Optional[UUID] = None
     current_version: Optional[AvatarTemplateVersionResponse] = None
@@ -578,6 +593,7 @@ class AvatarTemplateSummary(BaseModel):
     description: Optional[str] = None
     category: Optional[str] = None
     is_active: bool
+    subscription_cost: Optional[Decimal] = None
     published_state: str = "unpublished"
     avatar_image_url: Optional[str] = None
     created_at: datetime
@@ -727,6 +743,7 @@ class AvatarSummary(BaseModel):
     name: str
     description: Optional[str] = None
     is_published: bool
+    subscription_cost: Optional[Decimal] = None
     template_image_url: Optional[str] = None   # inherited from AvatarTemplate.avatar_image_path
     template_name: Optional[str] = None        # inherited from AvatarTemplate.name
     profile: Optional[PublisherAvatarProfileResponse] = None
@@ -736,6 +753,9 @@ class AvatarSummary(BaseModel):
     class Config:
         from_attributes = True
 
+class AvatarPricingUpdate(BaseModel):
+    subscription_cost: Decimal = Field(..., ge=0)
+
 class AvatarResponse(BaseModel):
     """Single-avatar detail — includes configuration and profile."""
     id: UUID
@@ -744,6 +764,7 @@ class AvatarResponse(BaseModel):
     name: str
     description: Optional[str] = None
     is_published: bool
+    subscription_cost: Optional[Decimal] = None
     template_image_url: Optional[str] = None   # inherited from AvatarTemplate.avatar_image_path
     template_name: Optional[str] = None        # inherited from AvatarTemplate.name
     configuration: Optional[AvatarConfigurationResponse] = None
@@ -760,6 +781,7 @@ class AvatarPublicResponse(BaseModel):
     name: str
     description: Optional[str] = None
     is_published: bool
+    subscription_cost: Optional[Decimal] = None
     template_image_url: Optional[str] = None   # inherited from AvatarTemplate.avatar_image_path
     created_at: datetime
     updated_at: datetime
@@ -1009,6 +1031,8 @@ class SubscriptionResponse(BaseModel):
     subscriber_id: UUID
     avatar_id: UUID
     subscribed_at: datetime
+    is_active: bool = True
+    expires_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -1016,4 +1040,199 @@ class SubscriptionResponse(BaseModel):
 
 class SubscriptionListResponse(BaseModel):
     subscriptions: List[SubscriptionResponse]
+    total: int
+
+
+class SubscriptionStatusResponse(BaseModel):
+    subscribed: bool
+    subscription: Optional[SubscriptionResponse] = None
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Billing & Credits Schemas
+# ═══════════════════════════════════════════════════════════════════
+
+from decimal import Decimal
+
+
+class BalanceResponse(BaseModel):
+    source: str          # "access_code" | "purchased" | "none"
+    balance: Decimal
+    access_code: Optional[str] = None
+    issued_by: Optional[str] = None
+
+
+class RedeemCodeRequest(BaseModel):
+    code: str = Field(..., min_length=1, max_length=64)
+
+
+class RedeemCodeResponse(BaseModel):
+    success: bool
+    credits_available: Decimal
+    code: str
+    issued_by: Optional[str] = None
+    message: str
+
+
+class AddCreditsRequest(BaseModel):
+    amount_usd: Decimal = Field(..., gt=0)
+
+
+class AddCreditsResponse(BaseModel):
+    success: bool
+    credits_added: Decimal
+    new_balance: Decimal
+    message: str
+
+
+class UsageRecordResponse(BaseModel):
+    id: UUID
+    user_id: UUID
+    session_run_id: Optional[UUID] = None
+    operation_type: str
+    input_tokens: int
+    output_tokens: int
+    raw_cost_usd: Decimal
+    platform_fee_usd: Decimal
+    total_cost_usd: Decimal
+    credits_charged: Decimal
+    funded_by: str
+    access_code_id: Optional[UUID] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class UsageHistoryResponse(BaseModel):
+    records: List[UsageRecordResponse]
+    total: int
+    pagination: PaginationInfo
+
+
+# ── Admin billing ─────────────────────────────────────────────────
+
+class AccessCodeCreateRequest(BaseModel):
+    issued_by: str = Field(..., min_length=1, max_length=255)
+    total_credits: Decimal = Field(..., gt=0)
+    max_redemptions: int = Field(1, ge=1)
+    expires_at: Optional[datetime] = None
+    code: Optional[str] = Field(None, min_length=1, max_length=50)
+
+
+class AccessCodeResponse(BaseModel):
+    id: UUID
+    code: str
+    total_credits: Decimal
+    remaining_credits: Decimal
+    issued_by: str
+    max_redemptions: int
+    redemptions_used: int
+    expires_at: Optional[datetime] = None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AccessCodesListResponse(BaseModel):
+    codes: List[AccessCodeResponse]
+    total: int
+
+
+class PricingConfigResponse(BaseModel):
+    id: UUID
+    operation_type: str
+    cost_per_1k_input_tokens: Decimal
+    cost_per_1k_output_tokens: Decimal
+    platform_fee_multiplier: Decimal
+    minimum_charge_credits: Decimal
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class PricingConfigUpdate(BaseModel):
+    cost_per_1k_input_tokens: Optional[Decimal] = None
+    cost_per_1k_output_tokens: Optional[Decimal] = None
+    platform_fee_multiplier: Optional[Decimal] = None
+    minimum_charge_credits: Optional[Decimal] = None
+
+
+class AdminAdjustBalanceRequest(BaseModel):
+    delta_credits: Decimal  # positive = grant, negative = deduct
+    reason: str = Field(..., min_length=1, max_length=500)
+
+
+class AdminAdjustBalanceResponse(BaseModel):
+    previous_balance: Decimal
+    new_balance: Decimal
+    delta_credits: Decimal
+    reason: str
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Course Access Code (enrollment) Schemas
+# ═══════════════════════════════════════════════════════════════════
+
+class CourseAccessCodeCreate(BaseModel):
+    max_uses: Optional[int] = Field(None, ge=1)
+    expires_at: Optional[datetime] = None
+
+
+class CourseAccessCodeResponse(BaseModel):
+    id: UUID
+    course_id: UUID
+    code: str
+    created_by: UUID
+    max_uses: Optional[int] = None
+    uses_count: int
+    is_active: bool
+    expires_at: Optional[datetime] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CourseAccessCodesListResponse(BaseModel):
+    codes: List[CourseAccessCodeResponse]
+    total: int
+
+
+class CourseJoinRequest(BaseModel):
+    code: str = Field(..., min_length=1, max_length=32)
+
+
+class CourseJoinResponse(BaseModel):
+    course_id: str
+    course_name: Optional[str] = None
+    message: str
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Subscriber Chat Schemas
+# ═══════════════════════════════════════════════════════════════════
+
+class SubscriberChatMessageRequest(BaseModel):
+    session_run_id: str = Field(..., min_length=1)
+    message: str = Field(..., min_length=1, max_length=8000)
+
+
+class SubscriberChatMessage(BaseModel):
+    id: str
+    role: str   # "user" | "assistant"
+    content: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class SubscriberChatHistoryResponse(BaseModel):
+    session_run_id: str
+    messages: List[SubscriberChatMessage]
     total: int

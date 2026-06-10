@@ -1,8 +1,8 @@
-from typing import List
+from typing import List, Optional
 from sqlalchemy.orm import Session
 from datetime import datetime
 from app.database.models import Course, User, CourseStudent, Session as SessionModel
-from fastapi import HTTPException
+from fastapi import HTTPException, status
 from uuid import UUID
 from app.schemas.schemas import CourseDetails, CourseCreate, CourseUpdate, CourseStudent as CourseStudentSchema, CourseSessionSummary
 import uuid
@@ -46,6 +46,7 @@ class CourseService:
             is_active=course_data.is_active,
             is_deleted=course_data.is_deleted,
             is_public=course_data.is_public,
+            allow_subscriber_sessions=course_data.allow_subscriber_sessions if course_data.allow_subscriber_sessions is not None else False,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
         )
@@ -54,7 +55,12 @@ class CourseService:
         db.refresh(course)
         return CourseDetails(**course.__dict__)
 
-    async def get_courses(self, db: Session, user_id: UUID) -> List[CourseDetails]:
+    async def get_courses(
+        self,
+        db: Session,
+        user_id: UUID,
+        avatar_id: Optional[str] = None,
+    ) -> List[CourseDetails]:
         if user_id is None:
             return []
         user = db.query(User).filter(User.id == user_id).first()
@@ -62,34 +68,124 @@ class CourseService:
             raise HTTPException(status_code=404, detail="User not found")
 
         if user.role == "publisher":
-            # Publishers see only their own courses — unchanged
             courses = db.query(Course).filter(Course.user_id == user.id).all()
             for course in courses:
                 course.owner_name = f"{user.first_name} {user.last_name}"
                 course.enrollment_count = len(course.students)
+                course.session_count = db.query(SessionModel).filter(SessionModel.course_id == course.id).count()
+            return [CourseDetails(**course.__dict__) for course in courses]
 
         elif user.role in ("admin", "subscriber"):
-            # Admins and subscribers see every course on the platform
-            courses = db.query(Course).all()
+            if avatar_id:
+                # Return public courses that have at least one session using this avatar.
+                # Filter through the sessions table; no direct course→avatar FK exists.
+                try:
+                    avatar_uuid = UUID(avatar_id)
+                except ValueError:
+                    return []
+
+                linked_course_ids = [
+                    row[0]
+                    for row in db.query(SessionModel.course_id)
+                    .filter(SessionModel.avatar_id == avatar_uuid)
+                    .distinct()
+                    .all()
+                    if row[0] is not None
+                ]
+                if not linked_course_ids:
+                    return []
+
+                courses = (
+                    db.query(Course)
+                    .filter(
+                        Course.id.in_(linked_course_ids),
+                        Course.is_public == True,  # noqa: E712
+                    )
+                    .all()
+                )
+            elif user.role == "admin":
+                courses = db.query(Course).all()
+            else:
+                # Subscriber with no avatar filter: return only enrolled courses.
+                # Private courses are inaccessible without enrollment.
+                enrolled_course_ids = [
+                    row[0]
+                    for row in db.query(CourseStudent.course_id)
+                    .filter(CourseStudent.user_id == user.id)
+                    .all()
+                ]
+                courses = (
+                    db.query(Course)
+                    .filter(Course.id.in_(enrolled_course_ids))
+                    .all()
+                ) if enrolled_course_ids else []
+
+            result = []
             for course in courses:
                 owner = course.user
                 course.owner_name = (
                     f"{owner.first_name} {owner.last_name}" if owner else "Unknown"
                 )
                 course.enrollment_count = len(course.students)
+                course.session_count = db.query(SessionModel).filter(SessionModel.course_id == course.id).count()
+
+                enrolled: Optional[bool] = None
+                if user.role == "subscriber":
+                    enrollment = (
+                        db.query(CourseStudent)
+                        .filter(
+                            CourseStudent.course_id == course.id,
+                            CourseStudent.user_id == user.id,
+                        )
+                        .first()
+                    )
+                    enrolled = enrollment is not None
+
+                course_dict = {k: v for k, v in course.__dict__.items() if not k.startswith("_")}
+                course_dict["enrolled"] = enrolled
+                result.append(CourseDetails(**course_dict))
+
+            return result
 
         else:
             raise HTTPException(status_code=403, detail="Unrecognised role")
-
-        return [CourseDetails(**course.__dict__) for course in courses]
     
     async def get_course(self, db: Session, course_id: str, user_id: UUID) -> CourseDetails:
         course = db.query(Course).filter(Course.course_id == course_id).first()
         if course is None:
             raise HTTPException(status_code=404, detail="Course not found")
-        # if course.user_id != user_id:
-        #     raise HTTPException(status_code=403, detail="User is not the owner of the course")
-        return CourseDetails(**course.__dict__)
+
+        user = db.query(User).filter(User.id == user_id).first()
+        if user and user.role == "subscriber":
+            # Subscribers can only access a course if it is public or they are enrolled.
+            if not course.is_public:
+                enrolled = (
+                    db.query(CourseStudent)
+                    .filter(
+                        CourseStudent.course_id == course.id,
+                        CourseStudent.user_id == user_id,
+                    )
+                    .first()
+                )
+                if not enrolled:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="You must be enrolled in this course to access it.",
+                    )
+
+        course_dict = {k: v for k, v in course.__dict__.items() if not k.startswith("_")}
+        course_dict["session_count"] = db.query(SessionModel).filter(SessionModel.course_id == course.id).count()
+        if user and user.role == "subscriber":
+            enrollment = (
+                db.query(CourseStudent)
+                .filter(
+                    CourseStudent.course_id == course.id,
+                    CourseStudent.user_id == user_id,
+                )
+                .first()
+            )
+            course_dict["enrolled"] = enrollment is not None
+        return CourseDetails(**course_dict)
         
     async def update_course(self, db: Session, course_id: str, course_data: CourseUpdate) -> CourseDetails:
         if course_data.user_id is not None:
@@ -116,6 +212,8 @@ class CourseService:
         course.is_active = course_data.is_active
         course.is_deleted = course_data.is_deleted
         course.is_public = course_data.is_public
+        if course_data.allow_subscriber_sessions is not None:
+            course.allow_subscriber_sessions = course_data.allow_subscriber_sessions
         course.updated_at = datetime.utcnow()
         db.commit()
         db.refresh(course)
