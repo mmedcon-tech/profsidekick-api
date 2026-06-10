@@ -23,7 +23,11 @@ from app.schemas.schemas import SessionDetails, SlideData, PresentationData, Ass
 from app.services.file_processor import FileProcessor
 from app.services.openai_service import OpenAIService
 from app.services.session_service import SessionService
-from app.services.rag_service import ingest_session_document_background
+from app.services.rag_service import ingest_session_document_background, retrieve_context
+from pydantic import BaseModel
+class SearchRequest(BaseModel):
+    query: str
+    course_id: Optional[str] = None
 from app.dependencies.auth import get_current_user, get_optional_user
 from app.config import settings
 
@@ -1649,4 +1653,24 @@ async def ai_answer(request_data: dict):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"AI answer proxy failed: {str(e)}"
+        )
+
+@router.post("/sessions/{session_id}/search")
+async def search_session_knowledge(
+    session_id: str,
+    request: SearchRequest,
+    current_user: User = Depends(get_optional_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Search session slides and optionally course materials for relevant chunks.
+    """
+    try:
+        chunks = retrieve_context(session_id, request.query, top_k=5, db=db, course_id=request.course_id)
+        return {"results": chunks}
+    except Exception as e:
+        logger.error(f"Error searching knowledge: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error searching knowledge: {e}"
         )

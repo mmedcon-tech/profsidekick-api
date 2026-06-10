@@ -101,33 +101,25 @@ class OpenAIService:
             noise_reduction = ap.get('input_audio_noise_reduction')
             transcription = ap.get('input_audio_transcription')
 
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    "https://api.openai.com/v1/realtime/sessions",
-                    headers={
-                        "Authorization": f"Bearer {settings.openai_api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": model,
-                        "voice": ap.get("voice", "alloy"),
-                        "instructions": instructions,
-                        "input_audio_format": ap.get("input_audio_format", "pcm16"),
-                        "output_audio_format": ap.get("output_audio_format", "pcm16"),
-                        "temperature": ap.get("temperature", 0.8),
-                        "tool_choice": ap.get("tool_choice", "auto"),
-                        "tools": ap.get("tools") or [],
-                        "turn_detection": turn_detection,
-                        "input_audio_noise_reduction": noise_reduction if noise_reduction else None,
-                        "input_audio_transcription": transcription if transcription else None,
-                    },
-                )
+            response = await self.async_client.post(
+                "/realtime/sessions",
+                body={
+                    "model": model,
+                    "voice": ap.get("voice", "alloy"),
+                    "instructions": instructions,
+                    "input_audio_format": ap.get("input_audio_format", "pcm16"),
+                    "output_audio_format": ap.get("output_audio_format", "pcm16"),
+                    "temperature": ap.get("temperature", 0.8),
+                    "tool_choice": ap.get("tool_choice", "auto"),
+                    "tools": ap.get("tools") or [],
+                    "turn_detection": turn_detection,
+                    "input_audio_noise_reduction": noise_reduction if noise_reduction else None,
+                    "input_audio_transcription": transcription if transcription else None,
+                },
+                cast_to=dict
+            )
 
-            if response.status_code != 200:
-                print(response.text)
-                raise Exception(response.text)
-
-            return response.json()
+            return response
 
 
             # The SDK returns a typed object; convert to the dict shape the rest of the code expects

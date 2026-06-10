@@ -67,6 +67,34 @@ class SubscriptionService:
             subscribed_at=datetime.utcnow(),
         )
         db.add(sub)
+        
+        # Auto-enroll in courses associated with this avatar
+        from app.database.models import Course, Session, CourseStudent
+        associated_courses = (
+            db.query(Course)
+            .join(Session, Session.course_id == Course.id)
+            .filter(
+                Session.avatar_id == avatar_id,
+                Course.allow_subscriber_sessions == True,
+                Course.is_public == True
+            )
+            .distinct()
+            .all()
+        )
+        
+        for course in associated_courses:
+            existing_enrollment = (
+                db.query(CourseStudent)
+                .filter_by(course_id=course.id, user_id=subscriber.id)
+                .first()
+            )
+            if not existing_enrollment:
+                new_enrollment = CourseStudent(
+                    id=uuid.uuid4(),
+                    course_id=course.id,
+                    user_id=subscriber.id,
+                )
+                db.add(new_enrollment)
         db.commit()
         db.refresh(sub)
         return sub

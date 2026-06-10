@@ -56,15 +56,18 @@ def upgrade() -> None:
     )
     if 'email' not in get_cols('users'):
         op.add_column("users", sa.Column("email", sa.String(length=255), nullable=False))
-    op.add_column(
-        "users", sa.Column("password_hash", sa.String(length=255), nullable=False)
-    )
-    op.add_column(
-        "users", sa.Column("first_name", sa.String(length=100), nullable=False)
-    )
-    op.add_column(
-        "users", sa.Column("last_name", sa.String(length=100), nullable=False)
-    )
+    if 'password_hash' not in get_cols('users'):
+        op.add_column(
+            "users", sa.Column("password_hash", sa.String(length=255), nullable=False)
+        )
+    if 'first_name' not in get_cols('users'):
+        op.add_column(
+            "users", sa.Column("first_name", sa.String(length=100), nullable=False)
+        )
+    if 'last_name' not in get_cols('users'):
+        op.add_column(
+            "users", sa.Column("last_name", sa.String(length=100), nullable=False)
+        )
     if 'role' not in get_cols('users'):
         op.add_column("users", sa.Column("role", sa.String(length=50), nullable=False))
     op.create_unique_constraint(None, "users", ["email"])
