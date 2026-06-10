@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.database.connection import get_db
 from app.database.models import (
     Session, SessionRun, SessionRunStatus, User,
-    Avatar, AvatarSubscription, AvatarTemplate, AvatarTemplateVersion, AvatarTemplateRole,
+    Avatar, AvatarSubscription, AvatarTemplate, AvatarTemplateVersion, AvatarTemplateRole, AvatarConfiguration,
     Course, CourseStudent,
 )
 from app.services.summarization_service import (
@@ -492,6 +492,10 @@ async def start_session_run(
 
         # ── Subscriber session gate ────────────────────────────────────────────
         db_session_raw = db.query(Session).filter(Session.session_id == session_id).first()
+        if db_session_raw and db_session_raw.avatar_id:
+            avatar_config = db.query(AvatarConfiguration).filter(AvatarConfiguration.avatar_id == db_session_raw.avatar_id).first()
+            if avatar_config and avatar_config.voice:
+                assistant_parameters.voice = avatar_config.voice
         if current_user.role == "subscriber":
             if not db_session_raw:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found.")
