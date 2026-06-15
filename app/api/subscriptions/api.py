@@ -29,7 +29,7 @@ from app.schemas.schemas import (
     SubscriptionResponse,
     SubscriptionStatusResponse,
 )
-from app.services import billing_service
+from app.services import billing_service, enrollment_service
 from app.services.subscription_service import subscription_service
 
 logger = logging.getLogger(__name__)
@@ -106,6 +106,19 @@ def subscribe(
             db.flush()
 
         sub = subscription_service.subscribe(db, current_user, str(avatar_id))
+
+        # Auto-enroll in linked courses and programs (R51, R18, R57)
+        try:
+            enrollment_service.enroll_from_avatar(current_user.id, avatar_id, db)
+            db.commit()
+        except Exception as enroll_exc:
+            logger.warning(
+                "Enrollment failed after subscription for user %s, avatar %s: %s",
+                current_user.id,
+                avatar_id,
+                enroll_exc,
+            )
+
         return sub
     except HTTPException:
         raise

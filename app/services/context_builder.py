@@ -9,12 +9,15 @@ Two public functions:
   build_chat_system_prompt()    — for publisher / subscriber text chat
 
 Prompt hierarchy (realtime):
-  1. Template conversation_prompt  (from AvatarTemplateVersion, or legacy fallback)
-  2. Role context                  (role selected at session creation)
-  3. Session behaviour             (rubric, hints, professor instructions)
-  4. Session summary               (from previous completed runs on this session)
-  5. Slide content                 (Vision-extracted per-slide text)
-  6. Solution slides               (internal reference — never revealed)
+  1.  Core persona         (mode-resolved: teaching_prompt, examination_prompt, or conversation_prompt)
+  1b. Teaching persona     ([TEACHING PERSONA] from PublisherAvatarProfile.refined_prompt)
+  1c. Grounding policy     ([GROUNDING POLICY] default or caller-supplied)
+  2.  Role context         (role selected at session creation)
+  3.  Session behaviour    (rubric, hints, professor instructions)
+  4.  Session summary      (from previous completed runs on this session)
+  5.  Knowledge context    ([KNOWLEDGE CONTEXT] RAG-retrieved chunks)
+  6.  Slide content        (Vision-extracted per-slide text)
+  7.  Solution slides      (internal reference — never revealed)
 
 Prompt hierarchy (chat):
   1. Template conversation_prompt  (from AvatarTemplateVersion, or legacy fallback)
@@ -28,6 +31,12 @@ from __future__ import annotations
 
 import json
 from typing import Any, Dict, List, Optional
+
+GROUNDING_POLICY_DEFAULT = (
+    "Respond only from the provided course materials and session context. "
+    "If a question falls outside the provided materials, acknowledge the gap "
+    "rather than drawing on external knowledge."
+)
 
 # ── Legacy fallback (kept for avatars with no published version) ─────────────
 EXAMINER_BASE_PROMPT = """You are an AI oral examiner conducting structured academic assessments. You evaluate reasoning and understanding. You do NOT teach, lecture, or introduce external information beyond the assignment scope.
@@ -161,6 +170,12 @@ def build_realtime_instructions(
     session_summary: Optional[str] = None,
     # Long-term memories for this user+avatar
     memories: Optional[List[str]] = None,
+    # Publisher-configured teaching persona (from PublisherAvatarProfile.refined_prompt)
+    refined_prompt: Optional[str] = None,
+    # RAG-retrieved knowledge context
+    rag_context: Optional[str] = None,
+    # Grounding policy injected after the core persona
+    grounding_policy: str = GROUNDING_POLICY_DEFAULT,
 ) -> str:
     """
     Assemble the complete instruction string sent to the OpenAI Realtime API.
@@ -180,6 +195,14 @@ def build_realtime_instructions(
     # 1. Core persona — mode-resolved prompt
     resolved = _resolve_prompt_for_mode(session_mode, teaching_prompt, examination_prompt, conversation_prompt)
     parts.append(resolved if resolved else EXAMINER_BASE_PROMPT)
+
+    # 1b. Publisher teaching persona (from refined_prompt in PublisherAvatarProfile)
+    if refined_prompt and refined_prompt.strip():
+        parts.append(f"[TEACHING PERSONA]\n{refined_prompt.strip()}")
+
+    # 1c. Grounding policy
+    if grounding_policy and grounding_policy.strip():
+        parts.append(f"[GROUNDING POLICY]\n{grounding_policy.strip()}")
 
     # 2. Role context
     role_blk = _role_block(role_label, role_context)
@@ -228,6 +251,10 @@ def build_realtime_instructions(
         mem_block = "\n".join(f"- {m}" for m in memories if m.strip())
         if mem_block:
             parts.append(f"[Student Learning Profile]\n{mem_block}")
+
+    # 7b. RAG-retrieved knowledge context
+    if rag_context and rag_context.strip():
+        parts.append(f"[KNOWLEDGE CONTEXT]\n{rag_context.strip()}")
 
     # 8. Slide content
     slide_block = _slide_block(slides)

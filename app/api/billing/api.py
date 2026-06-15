@@ -16,7 +16,7 @@ from app.schemas.schemas import (
     PaginationInfo,
     UsageRecordResponse,
 )
-from app.services import billing_service
+from app.services import avatar_access_code_service, billing_service
 
 router = APIRouter(prefix="/api/billing", tags=["billing"])
 
@@ -41,6 +41,28 @@ def redeem_code(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    # Check if this is an avatar access code first (W3 — R48).
+    # try_redeem_avatar_code returns None when the code doesn't exist in
+    # avatar_access_codes, allowing fall-through to the standard billing flow.
+    avatar_result = avatar_access_code_service.try_redeem_avatar_code(
+        body.code, current_user, db
+    )
+    if avatar_result is not None:
+        info = billing_service.get_active_balance(current_user.id, db)
+        courses_msg = (
+            f" Enrolled in {len(avatar_result['courses_enrolled'])} course(s)."
+            if avatar_result["courses_enrolled"]
+            else ""
+        )
+        return RedeemCodeResponse(
+            success=True,
+            credits_available=info["balance"],
+            code=avatar_result["code"],
+            issued_by=None,
+            message=f"Avatar access code redeemed.{courses_msg}",
+        )
+
+    # Standard billing credit code
     redemption = billing_service.redeem_access_code(current_user.id, body.code, db)
     info = billing_service.get_active_balance(current_user.id, db)
     return RedeemCodeResponse(
