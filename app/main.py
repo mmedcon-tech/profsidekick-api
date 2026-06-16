@@ -44,6 +44,7 @@ from app.api.subscriptions.api import router as subscriptions_router
 from app.api.billing.api import router as billing_router
 from app.api.admin.billing_api import router as admin_billing_router
 from app.api.subscriber.api import router as subscriber_router
+from app.api.autograder.api import router as autograder_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -181,6 +182,7 @@ app.include_router(subscriptions_router)
 app.include_router(billing_router)
 app.include_router(admin_billing_router)
 app.include_router(subscriber_router)
+app.include_router(autograder_router)
 
 # Add middleware for request logging (optional)
 @app.middleware("http")

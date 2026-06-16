@@ -6,7 +6,8 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from pgvector.sqlalchemy import Vector
 from app.database.connection import Base
-
+import uuid
+from datetime import datetime
 
 class ProcessingStatus(str, Enum):
     PENDING = "pending"
@@ -773,3 +774,29 @@ class PublisherResponseEdit(Base):
     message = relationship("PublisherMessage")
     publisher = relationship("User", foreign_keys=[publisher_id])
     avatar = relationship("Avatar", foreign_keys=[avatar_id])
+
+class AutograderSubmission(Base):
+    __tablename__ = "autograder_submissions"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    # Link to logged-in account when available
+    student_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+    # Human-facing placement test identity
+    student_net_id = Column(String(100), nullable=False)
+    student_name = Column(String(255), nullable=False)
+
+    # Uploaded submission file, nullable for now
+    filename = Column(String(255), nullable=True)
+    file_path = Column(String(500), nullable=True)
+
+    # Summary fields for professor table
+    score = Column(Integer, nullable=True)
+    overall_confidence = Column(String(50), nullable=True)
+    review_required = Column(Boolean, default=False)
+
+    # Full AI grading result
+    result_json = Column(JSONB, nullable=False)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    student_user = relationship("User")
