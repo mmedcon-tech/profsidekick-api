@@ -302,7 +302,7 @@ class GeminiProvider(LLMProvider):
             overall_feedback=parsed.get("overall_feedback", ""),
             questions=questions,
             model_used=self._model,
-            source="gemini_pro" if self._use_file_cache else "gemini_free",
+            source=f"gemini_{self._tier}",
         )
 
     @staticmethod
