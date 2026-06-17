@@ -17,6 +17,16 @@ def _run_migrations() -> None:
     with the ORM models, eliminating 'column does not exist' or 'table does not exist'
     errors after new deployments add schema changes.
     """
+    from app.config import settings
+    db_url = settings.database_url
+    # Redact password for safe logging
+    try:
+        parts = db_url.split("@")
+        safe_url = parts[0].rsplit(":", 1)[0] + ":***@" + parts[1] if len(parts) > 1 else db_url
+    except Exception:
+        safe_url = "(could not parse URL)"
+    print(f"[STARTUP] Connecting to database: {safe_url}")
+
     try:
         from alembic.config import Config
         from alembic import command
@@ -45,6 +55,8 @@ from app.api.billing.api import router as billing_router
 from app.api.admin.billing_api import router as admin_billing_router
 from app.api.subscriber.api import router as subscriber_router
 from app.api.autograder.api import router as autograder_router
+from app.api.autograder.students import router as autograder_students_router
+from app.api.autograder.cache import load_autograder_cache
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -60,6 +72,9 @@ async def lifespan(app: FastAPI):
     os.makedirs(settings.static_dir, exist_ok=True)
     os.makedirs(f"{settings.static_dir}/slides", exist_ok=True)
     print("Upload and static directories created/verified")
+
+    # Load autograder static files into memory — raises RuntimeError if any file is missing
+    load_autograder_cache()
 
     yield
 
@@ -137,6 +152,8 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
     """Handle unexpected exceptions"""
+    import traceback
+    print(f"[UNHANDLED EXCEPTION] {request.method} {request.url}\n{traceback.format_exc()}", flush=True)
     return JSONResponse(
         status_code=500,
         content={
@@ -183,6 +200,7 @@ app.include_router(billing_router)
 app.include_router(admin_billing_router)
 app.include_router(subscriber_router)
 app.include_router(autograder_router)
+app.include_router(autograder_students_router)
 
 # Add middleware for request logging (optional)
 @app.middleware("http")
