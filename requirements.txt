@@ -11,8 +11,9 @@ alembic==1.12.1
 # Redis for caching and session management
 redis==5.0.1
 
-# OpenAI integration
-openai==1.3.6
+# OpenAI integration — Responses API (vision) requires >=1.66.0
+# 1.3.6 is missing client.responses; upgrade fixes AttributeError crash in OpenAIProvider
+openai>=1.66.0
 httpx==0.27.0
 
 # File processing and media handling

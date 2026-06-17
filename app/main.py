@@ -55,8 +55,9 @@ from app.api.billing.api import router as billing_router
 from app.api.admin.billing_api import router as admin_billing_router
 from app.api.subscriber.api import router as subscriber_router
 from app.api.autograder.api import router as autograder_router
+from app.api.autograder.events import router as autograder_events_router
 from app.api.autograder.students import router as autograder_students_router
-from app.api.autograder.cache import load_autograder_cache
+from app.services.gemini_file_cache import load_autograder_cache
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -200,6 +201,7 @@ app.include_router(billing_router)
 app.include_router(admin_billing_router)
 app.include_router(subscriber_router)
 app.include_router(autograder_router)
+app.include_router(autograder_events_router)
 app.include_router(autograder_students_router)
 
 # Add middleware for request logging (optional)
