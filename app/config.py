@@ -7,6 +7,10 @@ from pydantic import Field, field_validator
 class Settings(BaseSettings):
     # OpenAI Configuration
     openai_api_key: str = Field("", env="OPENAI_API_KEY")
+
+    # Gemini Configuration (used by the Math Autograder — direct Google API)
+    gemini_api_key: str = Field("", env="GEMINI_API_KEY")
+    gemini_model: str = Field("gemini-2.5-pro", env="GEMINI_MODEL")
     
     # Database Configuration
     database_url: str = Field("sqlite:///./profsidekick.db", env="DATABASE_URL")

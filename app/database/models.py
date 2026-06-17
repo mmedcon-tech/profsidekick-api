@@ -775,10 +775,39 @@ class PublisherResponseEdit(Base):
     publisher = relationship("User", foreign_keys=[publisher_id])
     avatar = relationship("Avatar", foreign_keys=[avatar_id])
 
+class Student(Base):
+    __tablename__ = "students"
+
+    id           = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    student_code = Column(String(20), unique=True, nullable=False, index=True)
+    display_name = Column(String(255), nullable=False)
+    created_by   = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    created_at   = Column(DateTime, default=datetime.utcnow)
+
+    creator = relationship("User", foreign_keys=[created_by])
+    submissions = relationship(
+        "AutograderSubmission",
+        back_populates="student",
+        foreign_keys="[AutograderSubmission.student_id]",
+        order_by="AutograderSubmission.version_number",
+    )
+
+
 class AutograderSubmission(Base):
     __tablename__ = "autograder_submissions"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
+    # ── New columns (Phase 3) ────────────────────────────────────────────────
+    student_id    = Column(UUID(as_uuid=True), ForeignKey("students.id", ondelete="RESTRICT"), nullable=True)
+    version_number = Column(Integer, nullable=True)
+    submitted_by  = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True)
+
+    handwritten_filename  = Column(String(255), nullable=True)
+    handwritten_file_path = Column(String(500), nullable=True)
+    webassign_filename    = Column(String(255), nullable=True)
+    webassign_file_path   = Column(String(500), nullable=True)
+
+    # ── Legacy columns (kept until Phase 5) ─────────────────────────────────
     # Link to logged-in account when available
     student_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
@@ -798,5 +827,12 @@ class AutograderSubmission(Base):
     # Full AI grading result
     result_json = Column(JSONB, nullable=False)
 
+    # Only the newest submission per student is active; older ones are False
+    is_active = Column(Boolean, nullable=False, default=True, server_default="true")
+
     created_at = Column(DateTime, default=datetime.utcnow)
-    student_user = relationship("User")
+
+    # ── Relationships ────────────────────────────────────────────────────────
+    student      = relationship("Student", foreign_keys=[student_id], back_populates="submissions")
+    student_user = relationship("User", foreign_keys=[student_user_id])
+    operator     = relationship("User", foreign_keys=[submitted_by])
