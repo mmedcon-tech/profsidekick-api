@@ -214,23 +214,27 @@ def get_fallback_provider() -> FallbackProvider:
             GeminiProvider(pro_key, settings.gemini_model, use_file_cache=True)
         )
 
-    # Free key — sends all PDFs inline (different Google project, cannot share URIs).
-    # Gets 2 attempts just like Pro; a single 503 under load shouldn't count as a failure.
+    # Free key — file-URI cache is shared when the Free key is the same Google project
+    # as Pro (same key value).  If the keys differ, fall back to inline base64 so we
+    # never send a URI that belongs to a different project.
     free_key = settings.gemini_free_api_key
+    free_can_use_cache = bool(free_key and free_key == pro_key)
     if free_key:
         providers.append(
-            GeminiProvider(free_key, settings.gemini_model, use_file_cache=False)
+            GeminiProvider(
+                free_key,
+                settings.gemini_model,
+                use_file_cache=free_can_use_cache,
+            )
         )
 
-    # Gemini Flash — uses same free key but a lighter model that is far less prone
-    # to 503 overload than 2.5-pro.  Inserted before OpenAI so we stay on Google
-    # infra as long as possible.  Single-shot (max_attempts=1 for tier="flash").
+    # Gemini Flash — same key as Free; inherits the same cache eligibility.
     if free_key:
         providers.append(
             GeminiProvider(
                 free_key,
                 settings.gemini_flash_model,
-                use_file_cache=False,
+                use_file_cache=free_can_use_cache,
                 tier="flash",
             )
         )

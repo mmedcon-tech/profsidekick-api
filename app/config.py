@@ -19,7 +19,6 @@ class Settings(BaseSettings):
     gemini_model: str = Field("gemini-2.5-pro", env="GEMINI_MODEL")
     # Flash model used as a third Gemini fallback before OpenAI (cheaper, faster, less prone to 503).
     gemini_flash_model: str = Field("gemini-2.0-flash", env="GEMINI_FLASH_MODEL")
-    
     # Database Configuration
     database_url: str = Field("sqlite:///./profsidekick.db", env="DATABASE_URL")
     
