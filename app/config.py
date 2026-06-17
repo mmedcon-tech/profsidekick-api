@@ -7,10 +7,18 @@ from pydantic import Field, field_validator
 class Settings(BaseSettings):
     # OpenAI Configuration
     openai_api_key: str = Field("", env="OPENAI_API_KEY")
+    openai_model: str = Field("gpt-4.1", env="OPENAI_MODEL")
 
     # Gemini Configuration (used by the Math Autograder — direct Google API)
+    # Primary (Pro) key — used for Files API uploads and Pro-tier inference.
+    gemini_pro_api_key: str = Field("", env="GEMINI_PRO_API_KEY")
+    # Free / demo key — fallback inference only; sends all PDFs inline.
+    gemini_free_api_key: str = Field("", env="GEMINI_FREE_API_KEY")
+    # Legacy key kept for deployments that have not yet renamed their env var.
     gemini_api_key: str = Field("", env="GEMINI_API_KEY")
     gemini_model: str = Field("gemini-2.5-pro", env="GEMINI_MODEL")
+    # Flash model used as a third Gemini fallback before OpenAI (cheaper, faster, less prone to 503).
+    gemini_flash_model: str = Field("gemini-2.0-flash", env="GEMINI_FLASH_MODEL")
     
     # Database Configuration
     database_url: str = Field("sqlite:///./profsidekick.db", env="DATABASE_URL")
