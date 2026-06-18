@@ -27,8 +27,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Create non-root user
+# Create non-root user and pre-create writable directories
 RUN useradd --create-home --shell /bin/bash app \
+    && mkdir -p /app/uploads/course_materials /app/static \
     && chown -R app:app /app
 USER app
 
