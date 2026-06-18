@@ -73,6 +73,28 @@ def create_code(
             status_code=status.HTTP_403_FORBIDDEN, detail="You do not own this avatar"
         )
 
+    # Deduct total credits from publisher balance upfront (publisher_id owns the credits)
+    total_credits = Decimal(str(credits_per_user)) * max_users
+    if total_credits > 0:
+        balance = (
+            db.query(CreditBalance)
+            .filter(CreditBalance.user_id == publisher_id)
+            .with_for_update()
+            .first()
+        )
+        available = Decimal(str(balance.balance_credits)) if balance else Decimal("0")
+        if available < total_credits:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail=(
+                    f"Insufficient credits. Need {total_credits}, have {available}. "
+                    "Add more credits before generating this code."
+                ),
+            )
+        if balance:
+            balance.balance_credits = available - total_credits
+            balance.updated_at = datetime.utcnow()
+
     # Collision-safe code generation (10 retries)
     code_str: Optional[str] = None
     for _ in range(10):

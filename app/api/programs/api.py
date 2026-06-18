@@ -50,9 +50,12 @@ def create_program(
 ):
     p = program_service.create_program(
         name=body.name,
+        slug=body.slug,
         publisher_id=current_user.id,
         db=db,
         description=body.description,
+        theme_config=body.theme_config,
+        is_public=body.is_public,
     )
     return ProgramResponse.model_validate(p)
 
@@ -91,7 +94,10 @@ def update_program(
         publisher_id=current_user.id,
         db=db,
         name=body.name,
+        slug=body.slug,
         description=body.description,
+        theme_config=body.theme_config,
+        is_public=body.is_public,
         is_active=body.is_active,
         requester_role=current_user.role,
     )

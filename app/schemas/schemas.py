@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Dict
 from pydantic import BaseModel, Field, EmailStr
 import uuid
 from uuid import UUID
@@ -337,6 +337,7 @@ class CourseCreate(BaseModel):
     is_deleted: Optional[bool] = None
     is_public: Optional[bool] = None
     allow_subscriber_sessions: Optional[bool] = False
+    program_id: Optional[UUID] = None
 
 class CourseUpdate(BaseModel):
     user_id: Optional[UUID] = None
@@ -743,6 +744,7 @@ class AvatarCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     description: Optional[str] = None
     teaching_preferences: Optional[TeachingPreferences] = None
+    program_id: Optional[UUID] = None
 
 class AvatarUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=200)
@@ -1340,20 +1342,29 @@ class AvatarVariantsListResponse(BaseModel):
 # ═══════════════════════════════════════════════════════════════════
 
 class ProgramCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=200)
-    description: Optional[str] = None
+    name: Dict[str, str] = Field(..., description="Program name in multiple languages, e.g. {'en': '...', 'ar': '...'}")
+    slug: str = Field(..., min_length=1, max_length=200)
+    description: Optional[Dict[str, str]] = None
+    theme_config: Optional[Dict[str, Any]] = None
+    is_public: Optional[bool] = False
 
 
 class ProgramUpdate(BaseModel):
-    name: Optional[str] = Field(None, min_length=1, max_length=200)
-    description: Optional[str] = None
+    name: Optional[Dict[str, str]] = None
+    slug: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[Dict[str, str]] = None
+    theme_config: Optional[Dict[str, Any]] = None
+    is_public: Optional[bool] = None
     is_active: Optional[bool] = None
 
 
 class ProgramResponse(BaseModel):
     id: UUID
-    name: str
-    description: Optional[str] = None
+    name: Dict[str, str]
+    slug: str
+    description: Optional[Dict[str, str]] = None
+    theme_config: Optional[Dict[str, Any]] = None
+    is_public: bool
     publisher_id: Optional[UUID] = None
     is_active: bool
     created_at: datetime
@@ -1630,6 +1641,23 @@ class AssessmentSummary(BaseModel):
     generated_at: datetime
 
 
+class MonthlyCompletion(BaseModel):
+    month: str
+    value: int
+
+
+class CoursePerformance(BaseModel):
+    name: dict[str, str]
+    completion: int
+    subscribers: int
+
+
+class AtRiskSubscriber(BaseModel):
+    name: dict[str, str]
+    course: dict[str, str]
+    progress: int
+
+
 class SubscriberAnalyticsResponse(BaseModel):
     user_id: UUID
     total_sessions_completed: int
@@ -1664,6 +1692,9 @@ class PublisherAnalyticsResponse(BaseModel):
     avatar_stats: List[AvatarAnalyticsSummary]
     course_stats: List[CourseAnalyticsSummary]
     total_credits_earned: float
+    monthly_completions: List[MonthlyCompletion] = []
+    course_performance: List[CoursePerformance] = []
+    at_risk_learners: List[AtRiskSubscriber] = []
 
 
 class AdminAnalyticsResponse(BaseModel):
@@ -1677,6 +1708,9 @@ class AdminAnalyticsResponse(BaseModel):
     total_credits_consumed: float
     sessions_last_7_days: int
     sessions_last_30_days: int
+    monthly_completions: List[MonthlyCompletion] = []
+    course_performance: List[CoursePerformance] = []
+    at_risk_learners: List[AtRiskSubscriber] = []
 
 
 # ── Wave 7: AI Navigation Assistant ──────────────────────────────────────────

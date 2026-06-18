@@ -19,6 +19,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database.models import Avatar, AvatarSubscription, User
+from app.services import enrollment_service
 
 
 class SubscriptionService:
@@ -67,6 +68,8 @@ class SubscriptionService:
             subscribed_at=datetime.utcnow(),
         )
         db.add(sub)
+        # Auto-enroll subscriber in linked courses and programs before commit
+        enrollment_service.enroll_from_avatar(subscriber.id, avatar_id, db)
         db.commit()
         db.refresh(sub)
         return sub
