@@ -116,7 +116,9 @@ app.add_middleware(
         "https://*.railway.app",
         "https://profsidekick.vercel.app",
         "https://*.vercel.app",
-        "https://profsidekick-frontend-3il7.vercel.app"
+        "https://profsidekick-frontend-3il7.vercel.app",
+        "https://profsidekick-ai.vercel.app",
+        "https://*.profsidekick-ai.vercel.app"
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
