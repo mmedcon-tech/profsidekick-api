@@ -16,7 +16,7 @@ from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
@@ -89,15 +89,17 @@ async def create_avatar(
     response_model=AvatarListResponse,
 )
 async def list_publisher_avatars(
+    program_id: Optional[UUID] = Query(None, description="Filter avatars to those associated with this program."),
     current_user: User = Depends(require_publisher),
     db: Session = Depends(get_db),
 ):
     """
     Who can call: Publisher or Admin.
     Returns: only avatars owned by the calling publisher.
+    If program_id is provided, returns only avatars linked to that program.
     """
     try:
-        avatars, total = await avatar_service.list_publisher_avatars(db, current_user.id)
+        avatars, total = await avatar_service.list_publisher_avatars(db, current_user.id, program_id=program_id)
         return AvatarListResponse(
             avatars=[AvatarSummary.model_validate(a) for a in avatars],
             total=total,

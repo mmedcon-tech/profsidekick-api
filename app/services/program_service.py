@@ -25,12 +25,22 @@ def list_programs(db: Session, publisher_id: Optional[UUID] = None) -> list[Prog
 
 
 def create_program(
-    name: str,
+    name: dict,
+    slug: str,
     publisher_id: UUID,
     db: Session,
-    description: Optional[str] = None,
+    description: Optional[dict] = None,
+    theme_config: Optional[dict] = None,
+    is_public: Optional[bool] = False,
 ) -> Program:
-    p = Program(name=name, description=description, publisher_id=publisher_id)
+    p = Program(
+        name=name,
+        slug=slug,
+        description=description,
+        theme_config=theme_config,
+        is_public=is_public,
+        publisher_id=publisher_id
+    )
     db.add(p)
     db.commit()
     db.refresh(p)
@@ -41,8 +51,11 @@ def update_program(
     program_id: UUID,
     publisher_id: UUID,
     db: Session,
-    name: Optional[str] = None,
-    description: Optional[str] = None,
+    name: Optional[dict] = None,
+    slug: Optional[str] = None,
+    description: Optional[dict] = None,
+    theme_config: Optional[dict] = None,
+    is_public: Optional[bool] = None,
     is_active: Optional[bool] = None,
     requester_role: str = "publisher",
 ) -> Program:
@@ -50,8 +63,14 @@ def update_program(
     _assert_ownership(p, publisher_id, requester_role)
     if name is not None:
         p.name = name
+    if slug is not None:
+        p.slug = slug
     if description is not None:
         p.description = description
+    if theme_config is not None:
+        p.theme_config = theme_config
+    if is_public is not None:
+        p.is_public = is_public
     if is_active is not None:
         p.is_active = is_active
     p.updated_at = datetime.utcnow()
