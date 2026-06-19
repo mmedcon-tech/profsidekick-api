@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     gemini_model: str = Field("gemini-2.5-pro", env="GEMINI_MODEL")
     # Flash model used as a third Gemini fallback before OpenAI (cheaper, faster, less prone to 503).
     gemini_flash_model: str = Field("gemini-2.0-flash", env="GEMINI_FLASH_MODEL")
+    # LLM provider routing. "default" = full chain. "openai_only" = OpenAI only (debug).
+    llm_provider_mode: str = Field("default", env="LLM_PROVIDER_MODE")
     # Database Configuration
     database_url: str = Field("sqlite:///./profsidekick.db", env="DATABASE_URL")
     

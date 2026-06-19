@@ -44,9 +44,9 @@ class GeminiProvider(LLMProvider):
 
     @property
     def max_attempts(self) -> int:
-        # Pro and Free both get 2 attempts — a single 503 is common under load
-        # and one retry is cheap.  Flash is a fast last-resort; 1 shot is enough.
-        return 1 if self._tier == "flash" else 2
+        # Pro gets 2 attempts (503s under load are common, one retry is cheap).
+        # Flash and Free are lightweight last-resorts — 1 shot each.
+        return 2 if self._tier == "pro" else 1
 
     async def grade(self, student_files: StudentFiles) -> GradingResult:
         url = (
@@ -59,7 +59,7 @@ class GeminiProvider(LLMProvider):
 
         print(
             f"[TRACE] gemini_request_start "
-            f"model={self._model} tier={'pro' if self._use_file_cache else 'free'} "
+            f"model={self._model} tier={self._tier} "
             f"use_file_cache={self._use_file_cache} "
             f"parts_count={len(parts)} "
             f"part_types={[list(p.keys())[0] for p in parts]}"
@@ -73,7 +73,7 @@ class GeminiProvider(LLMProvider):
             print(
                 f"[TRACE] gemini_response_status={resp.status_code} "
                 f"elapsed_ms={elapsed_ms} "
-                f"model={self._model} tier={'pro' if self._use_file_cache else 'free'}"
+                f"model={self._model} tier={self._tier}"
             )
 
             # Recovery path: expired/deleted file URI → re-upload once and retry.
