@@ -207,46 +207,74 @@ def get_fallback_provider() -> FallbackProvider:
 
     providers: list[LLMProvider] = []
 
-    # Pro key — uses Gemini Files API for static PDFs (cached URIs).
-    pro_key = settings.gemini_pro_api_key or settings.gemini_api_key
-    if pro_key:
-        providers.append(
-            GeminiProvider(pro_key, settings.gemini_model, use_file_cache=True)
-        )
+    if settings.llm_provider_mode == "openai_only":
+        # Debug mode: bypass all Gemini providers, use OpenAI only.
+        print("[LLM MODE] OpenAI-only mode enabled")
+        if settings.openai_api_key:
+            providers.append(OpenAIProvider(settings.openai_api_key))
+        else:
+            raise RuntimeError("openai_only mode requires OPENAI_API_KEY to be set.")
+    else:
+        # ── Full fallback chain (production order) ───────────────────────────
+        # 1. OpenAI  ×2  — tried first; fast and reliable when Gemini is overloaded
+        # 2. Gemini Pro ×2  — high-quality; uses Files API URI cache
+        # 3. Gemini Flash ×1  — lightweight last-resort on Gemini infra
+        # 4. Gemini Free ×1  — final Gemini fallback before giving up
 
-    # Free key — file-URI cache is shared when the Free key is the same Google project
-    # as Pro (same key value).  If the keys differ, fall back to inline base64 so we
-    # never send a URI that belongs to a different project.
-    free_key = settings.gemini_free_api_key
-    free_can_use_cache = bool(free_key and free_key == pro_key)
-    if free_key:
-        providers.append(
-            GeminiProvider(
-                free_key,
-                settings.gemini_model,
-                use_file_cache=free_can_use_cache,
+        # 1. OpenAI
+        if settings.openai_api_key:
+            providers.append(OpenAIProvider(settings.openai_api_key))
+            print("[TRACE] openai_enabled=True")
+        else:
+            print("[TRACE] openai_disabled reason='missing OPENAI_API_KEY'")
+
+        # 2. Gemini Pro
+        pro_key = settings.gemini_pro_api_key or settings.gemini_api_key
+        if pro_key:
+            providers.append(
+                GeminiProvider(pro_key, settings.gemini_model, use_file_cache=True, tier="pro")
             )
-        )
+            print("[TRACE] gemini_pro_enabled=True")
+        else:
+            print("[TRACE] gemini_pro_disabled reason='missing GEMINI_PRO_API_KEY'")
 
-    # Gemini Flash — same key as Free; inherits the same cache eligibility.
-    if free_key:
-        providers.append(
-            GeminiProvider(
-                free_key,
-                settings.gemini_flash_model,
-                use_file_cache=free_can_use_cache,
-                tier="flash",
+        # URI-cache eligibility for Free/Flash: only when they share the Pro key
+        # (same Google project).  If keys differ, inline base64 is used instead.
+        free_key = settings.gemini_free_api_key
+        free_can_use_cache = bool(free_key and free_key == pro_key)
+
+        # 3. Gemini Flash
+        if free_key:
+            providers.append(
+                GeminiProvider(
+                    free_key,
+                    settings.gemini_flash_model,
+                    use_file_cache=free_can_use_cache,
+                    tier="flash",
+                )
             )
-        )
+            print("[TRACE] gemini_flash_enabled=True")
+        else:
+            print("[TRACE] gemini_flash_disabled reason='missing GEMINI_FREE_API_KEY'")
 
-    # OpenAI — stateless vision provider, full input each request.  Single shot.
-    if settings.openai_api_key:
-        providers.append(OpenAIProvider(settings.openai_api_key))
+        # 4. Gemini Free
+        if free_key:
+            providers.append(
+                GeminiProvider(
+                    free_key,
+                    settings.gemini_model,
+                    use_file_cache=free_can_use_cache,
+                    tier="free",  # explicit — prevents tier defaulting to "pro" when use_file_cache=True
+                )
+            )
+            print("[TRACE] gemini_free_enabled=True")
+        else:
+            print("[TRACE] gemini_free_disabled reason='missing GEMINI_FREE_API_KEY'")
 
     if not providers:
         raise RuntimeError(
             "No LLM providers configured. Set at least one of: "
-            "GEMINI_PRO_API_KEY, GEMINI_FREE_API_KEY, OPENAI_API_KEY."
+            "OPENAI_API_KEY, GEMINI_PRO_API_KEY, GEMINI_FREE_API_KEY."
         )
 
     print(f"[TRACE] fallback_provider_initialized providers={[p.name for p in providers]}")
