@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 from typing import List, Optional, Any, Dict
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, field_validator
 import uuid
 from uuid import UUID
 from enum import Enum
@@ -1361,14 +1361,28 @@ class ProgramUpdate(BaseModel):
 class ProgramResponse(BaseModel):
     id: UUID
     name: Dict[str, str]
-    slug: str
+    slug: Optional[str] = None
     description: Optional[Dict[str, str]] = None
     theme_config: Optional[Dict[str, Any]] = None
-    is_public: bool
+    is_public: Optional[bool] = False
     publisher_id: Optional[UUID] = None
     is_active: bool
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def coerce_name(cls, v: Any) -> Dict[str, str]:
+        if isinstance(v, str):
+            return {"en": v, "ar": v}
+        return v
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def coerce_description(cls, v: Any) -> Optional[Dict[str, str]]:
+        if isinstance(v, str):
+            return {"en": v, "ar": v}
+        return v
 
     class Config:
         from_attributes = True
