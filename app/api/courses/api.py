@@ -1,7 +1,9 @@
 import logging
 from uuid import UUID
 
+# pyrefly: ignore [missing-import]
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+# pyrefly: ignore [missing-import]
 from sqlalchemy.orm import Session
 from typing import List, Optional
 
@@ -70,11 +72,13 @@ async def create_course(
         course_data.user_id = current_user.id
         course = await course_service.create_course(db, course_data)
         return course
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"❌ Error creating course: {e}")
+        logger.error(f"❌ Error creating course: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error creating course",
+            detail=f"Error creating course: {e}",
         )
 
 
