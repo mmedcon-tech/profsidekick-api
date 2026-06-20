@@ -6,37 +6,29 @@ import httpx
 
 from app.llm.errors import FatalError, RetryableError
 from app.llm.provider import GradingResult, LLMProvider, StudentFiles
-from app.services.gemini_file_cache import autograder_cache, refresh_static_uris
+from app.services.gemini_file_cache import autograder_cache, refresh_static_uris_for_tier
 
 
 class GeminiProvider(LLMProvider):
     """
     Calls the Gemini generateContent REST API.
 
-    use_file_cache=True  (Pro tier):
-        Static reference PDFs are sent as Gemini Files API URIs cached at startup.
-        Student PDFs are always inline_data.
-
-    use_file_cache=False (Free tier fallback):
-        All 5 PDFs are sent as inline_data — no Files API dependency.
-        Required because Free-tier API keys belong to a different Google project
-        and cannot access URIs uploaded under the Pro key.
+    Each tier (pro / flash / free) uploads static reference PDFs under its own
+    API key at startup and stores the resulting Files API URIs in
+    autograder_cache.gemini_uris[tier].  At request time _build_parts() reads
+    those URIs — if the tier has no URIs (key not configured) it falls back to
+    inline base64 automatically.
     """
 
     def __init__(
         self,
         api_key: str,
         model: str,
-        use_file_cache: bool = True,
-        tier: str | None = None,
+        tier: str,
     ):
         self._api_key = api_key
         self._model = model
-        self._use_file_cache = use_file_cache
-        # tier label drives both the SSE provider name and max_attempts logic.
-        # Callers can override (e.g. "flash") so that a distinct model on the
-        # free key produces a distinct name rather than colliding with "free".
-        self._tier = tier or ("pro" if use_file_cache else "free")
+        self._tier = tier
 
     @property
     def name(self) -> str:
@@ -44,8 +36,6 @@ class GeminiProvider(LLMProvider):
 
     @property
     def max_attempts(self) -> int:
-        # Pro gets 2 attempts (503s under load are common, one retry is cheap).
-        # Flash and Free are lightweight last-resorts — 1 shot each.
         return 2 if self._tier == "pro" else 1
 
     async def grade(self, student_files: StudentFiles) -> GradingResult:
@@ -57,10 +47,11 @@ class GeminiProvider(LLMProvider):
         payload = self._make_payload(student_files)
         parts = payload["contents"][0]["parts"]
 
+        has_uris = bool(autograder_cache.gemini_uris.get(self._tier))
         print(
             f"[TRACE] gemini_request_start "
             f"model={self._model} tier={self._tier} "
-            f"use_file_cache={self._use_file_cache} "
+            f"using_file_uris={has_uris} "
             f"parts_count={len(parts)} "
             f"part_types={[list(p.keys())[0] for p in parts]}"
         )
@@ -77,26 +68,28 @@ class GeminiProvider(LLMProvider):
             )
 
             # Recovery path: expired/deleted file URI → re-upload once and retry.
+            # Triggers on 400/403/404 when this tier has Files API URIs configured.
             if (
-                resp.status_code in (400, 404)
-                and self._use_file_cache
+                resp.status_code in (400, 403, 404)
+                and bool(autograder_cache.gemini_uris.get(self._tier))
                 and self._is_file_not_found(resp.json() if resp.content else {})
             ):
                 error_body = resp.json() if resp.content else {}
                 print(
                     f"[TRACE] gemini_file_not_found_recovery "
+                    f"tier={self._tier} "
                     f"status={resp.status_code} "
                     f"error_status={error_body.get('error', {}).get('status')} "
                     f"refreshing_uris=True"
                 )
-                await asyncio.to_thread(refresh_static_uris, self._api_key)
+                await asyncio.to_thread(refresh_static_uris_for_tier, self._api_key, self._tier)
                 t1 = time.monotonic()
                 resp = await client.post(url, json=self._make_payload(student_files), headers=headers)
                 elapsed_ms = int((time.monotonic() - t1) * 1000)
                 print(
                     f"[TRACE] gemini_response_status={resp.status_code} "
                     f"elapsed_ms={elapsed_ms} "
-                    f"after_uri_refresh=True"
+                    f"after_uri_refresh=True tier={self._tier}"
                 )
 
         if resp.status_code != 200:
@@ -129,29 +122,17 @@ class GeminiProvider(LLMProvider):
         }
 
     def _build_parts(self, student_files: StudentFiles) -> list:
-        if self._use_file_cache:
+        tier_uris = autograder_cache.gemini_uris.get(self._tier, {})
+
+        if tier_uris.get("rubric"):
+            # Use Gemini Files API URIs uploaded at startup for this tier.
             static_parts = [
-                {
-                    "file_data": {
-                        "mime_type": "application/pdf",
-                        "file_uri": autograder_cache.rubric_uri,
-                    }
-                },
-                {
-                    "file_data": {
-                        "mime_type": "application/pdf",
-                        "file_uri": autograder_cache.webassign_solution_uri,
-                    }
-                },
-                {
-                    "file_data": {
-                        "mime_type": "application/pdf",
-                        "file_uri": autograder_cache.solution_uri,
-                    }
-                },
+                {"file_data": {"mime_type": "application/pdf", "file_uri": tier_uris["rubric"]}},
+                {"file_data": {"mime_type": "application/pdf", "file_uri": tier_uris["webassign_solution"]}},
+                {"file_data": {"mime_type": "application/pdf", "file_uri": tier_uris["solution"]}},
             ]
         else:
-            # Free tier — use pre-encoded b64 cached at startup (no disk I/O per request).
+            # No URIs for this tier (key not configured) — send inline base64.
             static_parts = [
                 {"inline_data": {"mime_type": "application/pdf", "data": autograder_cache.rubric_b64}},
                 {"inline_data": {"mime_type": "application/pdf", "data": autograder_cache.webassign_solution_b64}},
@@ -185,9 +166,12 @@ class GeminiProvider(LLMProvider):
     @staticmethod
     def _is_file_not_found(error_data: dict) -> bool:
         error = error_data.get("error", {})
-        return error.get("status") == "NOT_FOUND" or (
-            error.get("status") == "INVALID_ARGUMENT"
-            and "not found" in error.get("message", "").lower()
+        status = error.get("status", "")
+        message = error.get("message", "").lower()
+        return (
+            status == "NOT_FOUND"
+            or status == "PERMISSION_DENIED"  # cross-project stale URI
+            or (status == "INVALID_ARGUMENT" and "not found" in message)
         )
 
     # ------------------------------------------------------------------

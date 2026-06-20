@@ -57,6 +57,9 @@ from app.api.subscriber.api import router as subscriber_router
 from app.api.autograder.api import router as autograder_router
 from app.api.autograder.events import router as autograder_events_router
 from app.api.autograder.students import router as autograder_students_router
+from app.api.sae.invite import router as sae_invite_router
+from app.api.sae.publisher import router as sae_publisher_router
+from app.api.sae.student import router as sae_student_router
 from app.services.gemini_file_cache import load_autograder_cache
 
 @asynccontextmanager
@@ -203,6 +206,10 @@ app.include_router(subscriber_router)
 app.include_router(autograder_router)
 app.include_router(autograder_events_router)
 app.include_router(autograder_students_router)
+# Self Assessment Exam — isolated from the Math Placement autograder
+app.include_router(sae_invite_router)
+app.include_router(sae_publisher_router)
+app.include_router(sae_student_router)
 
 # Add middleware for request logging (optional)
 @app.middleware("http")

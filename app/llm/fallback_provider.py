@@ -94,7 +94,13 @@ class FallbackProvider:
                 if request_id and attempt == 1:
                     await event_bus.publish(
                         request_id,
-                        _evt("provider_started", request_id, provider.name, attempt=1),
+                        _evt(
+                            "provider_started",
+                            request_id,
+                            provider.name,
+                            attempt=1,
+                            max_attempts=max_att,
+                        ),
                     )
 
                 try:
@@ -215,58 +221,58 @@ def get_fallback_provider() -> FallbackProvider:
         else:
             raise RuntimeError("openai_only mode requires OPENAI_API_KEY to be set.")
     else:
-        # ── Full fallback chain (production order) ───────────────────────────
-        # 1. OpenAI  ×2  — tried first; fast and reliable when Gemini is overloaded
-        # 2. Gemini Pro ×2  — high-quality; uses Files API URI cache
-        # 3. Gemini Flash ×1  — lightweight last-resort on Gemini infra
-        # 4. Gemini Free ×1  — final Gemini fallback before giving up
+        # ── Full fallback chain (production order) ────────────────────────────
+        # 1. Vertex AI  ×1 — primary; ADC auth, no Files API, GCS optional
+        # 2. Gemini Pro ×2 — Files API URIs uploaded at startup under pro key
+        # 3. OpenAI     ×1 — inline PDFs, no file caching
+        # 4. Gemini Flash 2.5 ×1 — Files API URIs uploaded under flash key
+        # 5. Gemini Free ×1 — Files API URIs uploaded under free key
 
-        # 1. OpenAI
+        # 1. Vertex AI
+        if settings.google_cloud_project:
+            from app.llm.vertex_provider import VertexAIProvider
+            providers.append(
+                VertexAIProvider(
+                    project=settings.google_cloud_project,
+                    location=settings.vertex_ai_location,
+                    model=settings.vertex_ai_model,
+                )
+            )
+            print(
+                f"[TRACE] vertex_ai_enabled=True "
+                f"project={settings.google_cloud_project} "
+                f"model={settings.vertex_ai_model}"
+            )
+        else:
+            print("[TRACE] vertex_ai_disabled reason='missing GOOGLE_CLOUD_PROJECT'")
+
+        # 2. Gemini Pro
+        pro_key = settings.gemini_pro_api_key or settings.gemini_api_key
+        if pro_key:
+            providers.append(GeminiProvider(pro_key, settings.gemini_model, tier="pro"))
+            print("[TRACE] gemini_pro_enabled=True")
+        else:
+            print("[TRACE] gemini_pro_disabled reason='missing GEMINI_PRO_API_KEY'")
+
+        # 3. OpenAI
         if settings.openai_api_key:
             providers.append(OpenAIProvider(settings.openai_api_key))
             print("[TRACE] openai_enabled=True")
         else:
             print("[TRACE] openai_disabled reason='missing OPENAI_API_KEY'")
 
-        # 2. Gemini Pro
-        pro_key = settings.gemini_pro_api_key or settings.gemini_api_key
-        if pro_key:
-            providers.append(
-                GeminiProvider(pro_key, settings.gemini_model, use_file_cache=True, tier="pro")
-            )
-            print("[TRACE] gemini_pro_enabled=True")
-        else:
-            print("[TRACE] gemini_pro_disabled reason='missing GEMINI_PRO_API_KEY'")
-
-        # URI-cache eligibility for Free/Flash: only when they share the Pro key
-        # (same Google project).  If keys differ, inline base64 is used instead.
-        free_key = settings.gemini_free_api_key
-        free_can_use_cache = bool(free_key and free_key == pro_key)
-
-        # 3. Gemini Flash
-        if free_key:
-            providers.append(
-                GeminiProvider(
-                    free_key,
-                    settings.gemini_flash_model,
-                    use_file_cache=free_can_use_cache,
-                    tier="flash",
-                )
-            )
+        # 4. Gemini Flash 2.5
+        flash_key = settings.gemini_flash_api_key or settings.gemini_free_api_key
+        if flash_key:
+            providers.append(GeminiProvider(flash_key, settings.gemini_flash_model, tier="flash"))
             print("[TRACE] gemini_flash_enabled=True")
         else:
-            print("[TRACE] gemini_flash_disabled reason='missing GEMINI_FREE_API_KEY'")
+            print("[TRACE] gemini_flash_disabled reason='missing GEMINI_FLASH_API_KEY'")
 
-        # 4. Gemini Free
+        # 5. Gemini Free
+        free_key = settings.gemini_free_api_key
         if free_key:
-            providers.append(
-                GeminiProvider(
-                    free_key,
-                    settings.gemini_model,
-                    use_file_cache=free_can_use_cache,
-                    tier="free",  # explicit — prevents tier defaulting to "pro" when use_file_cache=True
-                )
-            )
+            providers.append(GeminiProvider(free_key, settings.gemini_model, tier="free"))
             print("[TRACE] gemini_free_enabled=True")
         else:
             print("[TRACE] gemini_free_disabled reason='missing GEMINI_FREE_API_KEY'")
@@ -274,7 +280,8 @@ def get_fallback_provider() -> FallbackProvider:
     if not providers:
         raise RuntimeError(
             "No LLM providers configured. Set at least one of: "
-            "OPENAI_API_KEY, GEMINI_PRO_API_KEY, GEMINI_FREE_API_KEY."
+            "GOOGLE_CLOUD_PROJECT, GEMINI_PRO_API_KEY, OPENAI_API_KEY, "
+            "GEMINI_FLASH_API_KEY, GEMINI_FREE_API_KEY."
         )
 
     print(f"[TRACE] fallback_provider_initialized providers={[p.name for p in providers]}")

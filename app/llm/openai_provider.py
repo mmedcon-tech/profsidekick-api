@@ -48,7 +48,7 @@ class OpenAIProvider(LLMProvider):
 
     @property
     def max_attempts(self) -> int:
-        return 2
+        return 1
 
     async def grade(self, student_files: StudentFiles) -> GradingResult:
         sdk_version = getattr(openai, "VERSION", getattr(openai, "version", "unknown"))
