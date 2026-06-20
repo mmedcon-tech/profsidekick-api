@@ -1,14 +1,16 @@
 {
-  "rubric": {
-    "uri": "https://generativelanguage.googleapis.com/v1beta/files/76obevsjnfma",
-    "expires_at": "2026-06-19T13:05:59.139972985Z"
-  },
-  "solution": {
-    "uri": "https://generativelanguage.googleapis.com/v1beta/files/zlc1587cpj7y",
-    "expires_at": "2026-06-19T13:06:02.139151818Z"
-  },
-  "webassign_solution": {
-    "uri": "https://generativelanguage.googleapis.com/v1beta/files/k72p7p3mpmvf",
-    "expires_at": "2026-06-19T13:06:09.023535288Z"
+  "pro": {
+    "rubric": {
+      "uri": "https://generativelanguage.googleapis.com/v1beta/files/igfm9f15qzoj",
+      "expires_at": "2026-06-22T18:44:05.033908530Z"
+    },
+    "solution": {
+      "uri": "https://generativelanguage.googleapis.com/v1beta/files/b742m4mdhnp2",
+      "expires_at": "2026-06-22T18:44:11.632389445Z"
+    },
+    "webassign_solution": {
+      "uri": "https://generativelanguage.googleapis.com/v1beta/files/636y86y6biy3",
+      "expires_at": "2026-06-22T18:44:15.163750478Z"
+    }
   }
 }
