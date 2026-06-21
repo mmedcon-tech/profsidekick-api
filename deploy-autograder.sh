@@ -26,7 +26,7 @@ if [ ! -d "/opt/profsidekick" ]; then
 fi
 
 # Configuration
-AUTOGRADER_DIR="/opt/profsidekick/autograder/profsidekick-api"
+AUTOGRADER_DIR="~/myos/autograder/profsidekick-api"
 BRANCH="feature/math-autograder-frontend"
 COMPOSE_FILE="docker-compose.autograder.yml"
 
@@ -41,9 +41,16 @@ if [ -d "$AUTOGRADER_DIR" ]; then
     echo -e "${GREEN}✓${NC} Found autograder directory"
     cd "$AUTOGRADER_DIR"
 else
-    echo -e "${RED}✗${NC} Autograder directory not found at $AUTOGRADER_DIR"
-    echo "Please run the initial setup first (see VPS_DUAL_DEPLOYMENT.md)"
-    exit 1
+    # Try expanding tilde
+    AUTOGRADER_DIR_EXPANDED="${AUTOGRADER_DIR/#\~/$HOME}"
+    if [ -d "$AUTOGRADER_DIR_EXPANDED" ]; then
+        echo -e "${GREEN}✓${NC} Found autograder directory"
+        cd "$AUTOGRADER_DIR_EXPANDED"
+    else
+        echo -e "${RED}✗${NC} Autograder directory not found at $AUTOGRADER_DIR"
+        echo "Please ensure the directory exists"
+        exit 1
+    fi
 fi
 
 # Check if docker-compose file exists

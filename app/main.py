@@ -171,12 +171,15 @@ async def general_exception_handler(request: Request, exc: Exception):
 
 # Health check endpoint
 @app.get("/health")
-async def health_check():
+async def health_check(request: Request):
     """Health check endpoint"""
     return {
         "status": "healthy",
         "version": settings.app_version,
-        "app": settings.app_name
+        "app": settings.app_name,
+        "instance": os.getenv("BACKEND_INSTANCE", "unknown"),
+        "origin": request.headers.get("origin", "no-origin"),
+        "host": request.headers.get("host", "no-host")
     }
 
 @app.get("/")

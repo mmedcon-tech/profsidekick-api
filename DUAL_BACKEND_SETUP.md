@@ -7,7 +7,7 @@ This setup allows you to run two backend branches concurrently on your Contabo V
 ```
 api.eliteflex.app (nginx)
     ├─→ Port 8000: Main Backend      → profsidekick-ai.vercel.app
-    └─→ Port 8001: Autograder Backend → profsidekick-autograder.app
+    └─→ Port 8001: Autograder Backend → profsidekick-autograder.vercel.app
 ```
 
 ## Files Created
@@ -55,10 +55,10 @@ Edit the `.env` files for both backends:
 
 ```bash
 # Main backend
-nano /opt/profsidekick/main/profsidekick-api/.env
+nano ~/myos/profsidekick-api/.env
 
 # Autograder backend
-nano /opt/profsidekick/autograder/profsidekick-api/.env
+nano ~/myos/autograder/profsidekick-api/.env
 ```
 
 ### 3. Setup SSL Certificate
@@ -71,18 +71,18 @@ sudo certbot --nginx -d api.eliteflex.app
 
 ```bash
 # Start main backend
-cd /opt/profsidekick/main/profsidekick-api
+cd ~/myos/profsidekick-api
 docker-compose up -d
 
 # Start autograder backend
-cd /opt/profsidekick/autograder/profsidekick-api
+cd ~/myos/autograder/profsidekick-api
 docker-compose -f docker-compose.autograder.yml up -d
 ```
 
 ### 5. Check Status
 
 ```bash
-bash /opt/profsidekick/main/profsidekick-api/check-status.sh
+bash ~/myos/profsidekick-api/check-status.sh
 ```
 
 ## Daily Operations
@@ -90,14 +90,14 @@ bash /opt/profsidekick/main/profsidekick-api/check-status.sh
 ### Update Autograder Backend
 
 ```bash
-cd /opt/profsidekick/autograder/profsidekick-api
+cd ~/myos/autograder/profsidekick-api
 bash deploy-autograder.sh
 ```
 
 ### Update Main Backend
 
 ```bash
-cd /opt/profsidekick/main/profsidekick-api
+cd ~/myos/profsidekick-api
 git pull origin main
 docker-compose down
 docker-compose build
@@ -140,7 +140,7 @@ curl -H "Origin: https://profsidekick-ai.vercel.app" \
 
 ### Test Autograder Backend
 ```bash
-curl -H "Origin: https://profsidekick-autograder.app" \
+curl -H "Origin: https://profsidekick-autograder.vercel.app" \
      https://api.eliteflex.app/docs
 ```
 
@@ -211,7 +211,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://profsidekick-ai.vercel.app",
-        "https://profsidekick-autograder.app",
+        "https://profsidekick-autograder.vercel.app",
         "http://localhost:3000",
     ],
     allow_credentials=True,
@@ -248,8 +248,8 @@ docker exec profsidekick-postgres-autograder pg_dump -U profsidekick profsidekic
 
 - Full Documentation: `VPS_DUAL_DEPLOYMENT.md`
 - Nginx Config: `/etc/nginx/sites-available/api.eliteflex.app`
-- Main Backend: `/opt/profsidekick/main/profsidekick-api`
-- Autograder Backend: `/opt/profsidekick/autograder/profsidekick-api`
+- Main Backend: `~/myos/profsidekick-api`
+- Autograder Backend: `~/myos/autograder/profsidekick-api`
 
 ## Support
 

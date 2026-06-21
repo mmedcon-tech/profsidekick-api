@@ -1,6 +1,6 @@
 # Deployment Guide: Running Two Backend Branches Concurrently on VPS
 
-This guide explains how to run both the **main backend** (for profsidekick-ai.vercel.app) and the **autograder backend** (for profsidekick-autograder.app) on the same Contabo VPS, routed through nginx based on the frontend origin.
+This guide explains how to run both the **main backend** (for profsidekick-ai.vercel.app) and the **autograder backend** (for profsidekick-autograder.vercel.app) on the same Contabo VPS, routed through nginx based on the frontend origin.
 
 ## Architecture Overview
 
@@ -33,20 +33,17 @@ This guide explains how to run both the **main backend** (for profsidekick-ai.ve
 ## Directory Structure on VPS
 
 ```
-/opt/profsidekick/
-├── main/                           # Main production backend
-│   ├── profsidekick-api/
-│   │   ├── docker-compose.yml
-│   │   ├── .env
-│   │   └── ...
-│   └── profsidekick-frontend/
+~/myos/
+├── profsidekick-api/               # Main production backend
+│   ├── docker-compose.yml
+│   ├── .env
+│   └── ...
 │
 └── autograder/                     # Autograder feature branch
-    ├── profsidekick-api/
-    │   ├── docker-compose.autograder.yml
-    │   ├── .env
-    │   └── ...
-    └── profsidekick-frontend/
+    └── profsidekick-api/
+        ├── docker-compose.autograder.yml
+        ├── .env
+        └── ...
 ```
 
 ## Step-by-Step Setup
@@ -58,14 +55,14 @@ This guide explains how to run both the **main backend** (for profsidekick-ai.ve
 ssh user@your-vps-ip
 
 # Create directory structure
-sudo mkdir -p /opt/profsidekick/{main,autograder}
-sudo chown -R $USER:$USER /opt/profsidekick
+mkdir -p ~/myos/autograder
+cd ~/myos
 ```
 
 ### 2. Clone/Update Main Branch
 
 ```bash
-cd /opt/profsidekick/main
+cd ~/myos
 git clone https://github.com/yourusername/profsidekick-api.git
 cd profsidekick-api
 git checkout main  # or your production branch
@@ -79,7 +76,7 @@ nano .env
 ### 3. Clone/Update Autograder Branch
 
 ```bash
-cd /opt/profsidekick/autograder
+cd ~/myos/autograder
 git clone https://github.com/yourusername/profsidekick-api.git
 cd profsidekick-api
 git checkout feature/math-autograder-frontend
@@ -98,7 +95,7 @@ sudo apt update
 sudo apt install nginx -y
 
 # Copy the nginx configuration
-sudo cp /opt/profsidekick/main/profsidekick-api/nginx-dual-backend.conf \
+sudo cp ~/myos/profsidekick-api/nginx-dual-backend.conf \
     /etc/nginx/sites-available/api.eliteflex.app
 
 # Enable the site
@@ -127,7 +124,7 @@ sudo certbot --nginx -d api.eliteflex.app
 ### 6. Start Main Backend
 
 ```bash
-cd /opt/profsidekick/main/profsidekick-api
+cd ~/myos/profsidekick-api
 
 # Start the main backend stack
 docker-compose up -d
@@ -139,7 +136,7 @@ docker-compose logs -f backend
 ### 7. Start Autograder Backend
 
 ```bash
-cd /opt/profsidekick/autograder/profsidekick-api
+cd ~/myos/autograder/profsidekick-api
 
 # Start the autograder backend stack
 docker-compose -f docker-compose.autograder.yml up -d
@@ -158,7 +155,7 @@ curl -H "Origin: https://profsidekick-ai.vercel.app" \
 
 ### Test Autograder Backend
 ```bash
-curl -H "Origin: https://profsidekick-autograder.app" \
+curl -H "Origin: https://profsidekick-autograder.vercel.app" \
      https://api.eliteflex.app/health
 ```
 
@@ -178,7 +175,7 @@ async def log_requests(request: Request, call_next):
 
 ### Update Main Backend
 ```bash
-cd /opt/profsidekick/main/profsidekick-api
+cd ~/myos/profsidekick-api
 git pull origin main
 docker-compose down
 docker-compose build
@@ -187,7 +184,7 @@ docker-compose up -d
 
 ### Update Autograder Backend
 ```bash
-cd /opt/profsidekick/autograder/profsidekick-api
+cd ~/myos/autograder/profsidekick-api
 git pull origin feature/math-autograder-frontend
 docker-compose -f docker-compose.autograder.yml down
 docker-compose -f docker-compose.autograder.yml build
@@ -209,11 +206,11 @@ sudo tail -f /var/log/nginx/api.eliteflex.app.access.log
 ### Stop Services
 ```bash
 # Stop main backend
-cd /opt/profsidekick/main/profsidekick-api
+cd ~/myos/profsidekick-api
 docker-compose down
 
 # Stop autograder backend
-cd /opt/profsidekick/autograder/profsidekick-api
+cd ~/myos/autograder/profsidekick-api
 docker-compose -f docker-compose.autograder.yml down
 ```
 
@@ -227,7 +224,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://profsidekick-ai.vercel.app",
-        "https://profsidekick-autograder.app",
+        "https://profsidekick-autograder.vercel.app",
         "http://localhost:3000",  # For local development
     ],
     allow_credentials=True,
