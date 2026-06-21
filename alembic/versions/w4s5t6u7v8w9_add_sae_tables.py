@@ -60,8 +60,8 @@ def upgrade() -> None:
         sa.Column("expires_at", sa.DateTime(), nullable=True),
         sa.Column("created_at", sa.DateTime(), server_default=sa.text("NOW()")),
     )
-    op.create_unique_index("ux_sae_invitation_tokens_token",
-                           "sae_invitation_tokens", ["token"])
+    op.create_index("ux_sae_invitation_tokens_token",
+                    "sae_invitation_tokens", ["token"], unique=True)
     op.create_index("ix_sae_invitation_tokens_student_id",
                     "sae_invitation_tokens", ["student_id"])
 

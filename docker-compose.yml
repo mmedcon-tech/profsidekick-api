@@ -4,6 +4,7 @@ services:
   # FastAPI Backend
   backend:
     build: .
+    image: profsidekick-api:main
     container_name: profsidekick-backend
     ports:
       - "8000:8000"
