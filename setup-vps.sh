@@ -59,8 +59,7 @@ fi
 # Create directory structure
 echo ""
 echo -e "${YELLOW}Creating directory structure...${NC}"
-sudo mkdir -p /opt/profsidekick/{main,autograder}
-sudo chown -R $USER:$USER /opt/profsidekick
+mkdir -p ~/myos/autograder
 echo -e "${GREEN}✓${NC} Directories created"
 
 # Prompt for Git repository URL
@@ -74,7 +73,7 @@ fi
 # Clone main branch
 echo ""
 echo -e "${YELLOW}Cloning main branch...${NC}"
-cd /opt/profsidekick/main
+cd ~/myos
 if [ ! -d "profsidekick-api" ]; then
     git clone "$GIT_REPO" profsidekick-api
     cd profsidekick-api
@@ -89,7 +88,7 @@ fi
 # Clone autograder branch
 echo ""
 echo -e "${YELLOW}Cloning autograder branch...${NC}"
-cd /opt/profsidekick/autograder
+cd ~/myos/autograder
 if [ ! -d "profsidekick-api" ]; then
     git clone "$GIT_REPO" profsidekick-api
     cd profsidekick-api
@@ -106,9 +105,9 @@ echo ""
 echo -e "${YELLOW}Setting up environment files...${NC}"
 
 # Main backend
-if [ ! -f "/opt/profsidekick/main/profsidekick-api/.env" ]; then
-    if [ -f "/opt/profsidekick/main/profsidekick-api/.env.example" ]; then
-        cp /opt/profsidekick/main/profsidekick-api/.env.example /opt/profsidekick/main/profsidekick-api/.env
+if [ ! -f "~/myos/profsidekick-api/.env" ]; then
+    if [ -f "~/myos/profsidekick-api/.env.example" ]; then
+        cp ~/myos/profsidekick-api/.env.example ~/myos/profsidekick-api/.env
         echo -e "${YELLOW}⚠${NC} Created .env for main backend - please edit it with your settings"
     else
         echo -e "${RED}No .env.example found for main backend${NC}"
@@ -118,9 +117,9 @@ else
 fi
 
 # Autograder backend
-if [ ! -f "/opt/profsidekick/autograder/profsidekick-api/.env" ]; then
-    if [ -f "/opt/profsidekick/autograder/profsidekick-api/.env.example" ]; then
-        cp /opt/profsidekick/autograder/profsidekick-api/.env.example /opt/profsidekick/autograder/profsidekick-api/.env
+if [ ! -f "~/myos/autograder/profsidekick-api/.env" ]; then
+    if [ -f "~/myos/autograder/profsidekick-api/.env.example" ]; then
+        cp ~/myos/autograder/profsidekick-api/.env.example ~/myos/autograder/profsidekick-api/.env
         echo -e "${YELLOW}⚠${NC} Created .env for autograder backend - please edit it with your settings"
     else
         echo -e "${RED}No .env.example found for autograder backend${NC}"
@@ -132,8 +131,8 @@ fi
 # Setup Nginx configuration
 echo ""
 echo -e "${YELLOW}Setting up Nginx configuration...${NC}"
-if [ -f "/opt/profsidekick/main/profsidekick-api/nginx-dual-backend.conf" ]; then
-    sudo cp /opt/profsidekick/main/profsidekick-api/nginx-dual-backend.conf /etc/nginx/sites-available/api.eliteflex.app
+if [ -f "~/myos/profsidekick-api/nginx-dual-backend.conf" ]; then
+    sudo cp ~/myos/profsidekick-api/nginx-dual-backend.conf /etc/nginx/sites-available/api.eliteflex.app
     
     # Enable site
     if [ ! -L "/etc/nginx/sites-enabled/api.eliteflex.app" ]; then
@@ -166,9 +165,9 @@ fi
 # Setup systemd services
 echo ""
 echo -e "${YELLOW}Setting up systemd services for auto-start...${NC}"
-if [ -f "/opt/profsidekick/main/profsidekick-api/systemd/profsidekick-main.service" ]; then
-    sudo cp /opt/profsidekick/main/profsidekick-api/systemd/profsidekick-main.service /etc/systemd/system/
-    sudo cp /opt/profsidekick/main/profsidekick-api/systemd/profsidekick-autograder.service /etc/systemd/system/
+if [ -f "~/myos/profsidekick-api/systemd/profsidekick-main.service" ]; then
+    sudo cp ~/myos/profsidekick-api/systemd/profsidekick-main.service /etc/systemd/system/
+    sudo cp ~/myos/profsidekick-api/systemd/profsidekick-autograder.service /etc/systemd/system/
     sudo systemctl daemon-reload
     sudo systemctl enable profsidekick-main.service
     sudo systemctl enable profsidekick-autograder.service
@@ -180,8 +179,8 @@ fi
 # Make scripts executable
 echo ""
 echo -e "${YELLOW}Making helper scripts executable...${NC}"
-chmod +x /opt/profsidekick/autograder/profsidekick-api/deploy-autograder.sh 2>/dev/null || true
-chmod +x /opt/profsidekick/main/profsidekick-api/check-status.sh 2>/dev/null || true
+chmod +x ~/myos/autograder/profsidekick-api/deploy-autograder.sh 2>/dev/null || true
+chmod +x ~/myos/profsidekick-api/check-status.sh 2>/dev/null || true
 
 # Summary
 echo ""
@@ -192,22 +191,22 @@ echo ""
 echo "Next steps:"
 echo ""
 echo "1. Edit environment files:"
-echo "   nano /opt/profsidekick/main/profsidekick-api/.env"
-echo "   nano /opt/profsidekick/autograder/profsidekick-api/.env"
+echo "   nano ~/myos/profsidekick-api/.env"
+echo "   nano ~/myos/autograder/profsidekick-api/.env"
 echo ""
 echo "2. Setup SSL certificate (if not done):"
 echo "   sudo certbot --nginx -d api.eliteflex.app"
 echo ""
 echo "3. Start main backend:"
-echo "   cd /opt/profsidekick/main/profsidekick-api"
+echo "   cd ~/myos/profsidekick-api"
 echo "   docker-compose up -d"
 echo ""
 echo "4. Start autograder backend:"
-echo "   cd /opt/profsidekick/autograder/profsidekick-api"
+echo "   cd ~/myos/autograder/profsidekick-api"
 echo "   docker-compose -f docker-compose.autograder.yml up -d"
 echo ""
 echo "5. Check status:"
-echo "   bash /opt/profsidekick/main/profsidekick-api/check-status.sh"
+echo "   bash ~/myos/profsidekick-api/check-status.sh"
 echo ""
-echo "Documentation: /opt/profsidekick/main/profsidekick-api/VPS_DUAL_DEPLOYMENT.md"
+echo "Documentation: ~/myos/profsidekick-api/VPS_DUAL_DEPLOYMENT.md"
 echo ""

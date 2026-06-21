@@ -6,7 +6,7 @@ After=docker.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-WorkingDirectory=/opt/profsidekick/autograder/profsidekick-api
+WorkingDirectory=/root/myos/autograder/profsidekick-api
 ExecStart=/usr/bin/docker-compose -f docker-compose.autograder.yml up -d
 ExecStop=/usr/bin/docker-compose -f docker-compose.autograder.yml down
 TimeoutStartSec=0
