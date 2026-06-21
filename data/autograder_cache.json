@@ -1,0 +1,16 @@
+{
+  "pro": {
+    "rubric": {
+      "uri": "https://generativelanguage.googleapis.com/v1beta/files/igfm9f15qzoj",
+      "expires_at": "2026-06-22T18:44:05.033908530Z"
+    },
+    "solution": {
+      "uri": "https://generativelanguage.googleapis.com/v1beta/files/b742m4mdhnp2",
+      "expires_at": "2026-06-22T18:44:11.632389445Z"
+    },
+    "webassign_solution": {
+      "uri": "https://generativelanguage.googleapis.com/v1beta/files/636y86y6biy3",
+      "expires_at": "2026-06-22T18:44:15.163750478Z"
+    }
+  }
+}

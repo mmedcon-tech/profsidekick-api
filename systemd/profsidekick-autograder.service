@@ -1,0 +1,15 @@
+[Unit]
+Description=ProfSidekick Autograder Backend
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/profsidekick/autograder/profsidekick-api
+ExecStart=/usr/bin/docker-compose -f docker-compose.autograder.yml up -d
+ExecStop=/usr/bin/docker-compose -f docker-compose.autograder.yml down
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
