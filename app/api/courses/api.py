@@ -52,7 +52,10 @@ async def get_courses(
     except HTTPException:
         raise  # pass 403 / 404 through unchanged so the message is readable
     except Exception as e:
-        logger.error(f"❌ Error getting courses: {e}")
+        import traceback
+        tb = traceback.format_exc()
+        print(f"[GET /courses ERROR] {e}\n{tb}", flush=True)
+        logger.error(f"❌ Error getting courses: {e}\n{tb}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error getting courses",
@@ -70,7 +73,10 @@ async def create_course(
         course = await course_service.create_course(db, course_data)
         return course
     except Exception as e:
-        logger.error(f"❌ Error creating course: {e}")
+        import traceback
+        tb = traceback.format_exc()
+        print(f"[POST /courses ERROR] {e}\n{tb}", flush=True)
+        logger.error(f"❌ Error creating course: {e}\n{tb}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error creating course",

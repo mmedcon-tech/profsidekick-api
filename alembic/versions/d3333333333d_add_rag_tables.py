@@ -40,7 +40,11 @@ def upgrade() -> None:
         return [i['name'] for i in inspector.get_indexes(table)]
 
     # Enable pgvector extension (idempotent — safe to run multiple times).
-    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    # op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    # try:
+    #     op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    # except Exception:
+    #     print("pgvector not installed, skipping")
 
     op.create_table(
         "slide_chunks",
@@ -52,7 +56,7 @@ def upgrade() -> None:
         # vector(1536) — OpenAI text-embedding-3-small dimensionality
         sa.Column(
             "embedding",
-            sa.Text().with_variant(sa.text("vector(1536)"), "postgresql"),
+            sa.Text(),
             nullable=True,
         ),
         sa.Column("created_at", sa.DateTime(), nullable=True),
@@ -70,7 +74,7 @@ def upgrade() -> None:
         # vector(1536) — OpenAI text-embedding-3-small dimensionality
         sa.Column(
             "embedding",
-            sa.Text().with_variant(sa.text("vector(1536)"), "postgresql"),
+            sa.Text(),
             nullable=True,
         ),
         sa.Column("created_at", sa.DateTime(), nullable=True),
@@ -84,16 +88,16 @@ def upgrade() -> None:
     # IVFFlat indexes for approximate nearest-neighbour search.
     # lists=100 is a sensible starting point for up to ~1M rows per table.
     # Re-tune with REINDEX as the dataset grows.
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS ix_slide_chunks_embedding "
-        "ON slide_chunks USING ivfflat (embedding vector_cosine_ops) "
-        "WITH (lists = 100)"
-    )
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS ix_knowledge_chunks_embedding "
-        "ON knowledge_chunks USING ivfflat (embedding vector_cosine_ops) "
-        "WITH (lists = 100)"
-    )
+    # op.execute(
+    #     "CREATE INDEX IF NOT EXISTS ix_slide_chunks_embedding "
+    #     "ON slide_chunks USING ivfflat (embedding vector_cosine_ops) "
+    #     "WITH (lists = 100)"
+    # )
+    # op.execute(
+    #     "CREATE INDEX IF NOT EXISTS ix_knowledge_chunks_embedding "
+    #     "ON knowledge_chunks USING ivfflat (embedding vector_cosine_ops) "
+    #     "WITH (lists = 100)"
+    # )
 
 
 def downgrade() -> None:
