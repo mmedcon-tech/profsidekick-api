@@ -1,7 +1,7 @@
 """merge all heads into a single linear chain
 
 Revision ID: t1p2q3r4s5t6
-Revises: ecce5a45cff0, s0n1o2p3q4r5
+Revises: ecce5a45cff0, ag002_add_is_active
 Create Date: 2026-06-16 00:00:00.000000
 
 Merges two divergent heads:
@@ -16,7 +16,7 @@ works again and startup migrations proceed without error.
 from typing import Sequence, Union
 
 revision: str = "t1p2q3r4s5t6"
-down_revision: Union[str, tuple] = ("ecce5a45cff0", "s0n1o2p3q4r5")
+down_revision: Union[str, tuple] = ("ecce5a45cff0", "ag002_add_is_active")
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
