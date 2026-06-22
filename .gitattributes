@@ -1,0 +1,4 @@
+# Ensure shell scripts and SQL always use LF on checkout (never CRLF)
+# — prevents "exec /entrypoint.sh: no such file or directory" on Linux containers
+*.sh    text eol=lf
+*.sql   text eol=lf
