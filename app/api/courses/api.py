@@ -1,7 +1,9 @@
 import logging
 from uuid import UUID
 
+# pyrefly: ignore [missing-import]
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+# pyrefly: ignore [missing-import]
 from sqlalchemy.orm import Session
 from typing import List, Optional
 
@@ -43,16 +45,20 @@ logging.basicConfig(level=logging.INFO)
 @router.get("/courses", response_model=List[CourseDetails])
 async def get_courses(
     avatar_id: Optional[str] = Query(None, description="Filter to courses that have sessions using this avatar (subscriber marketplace use-case)."),
+    program_id: Optional[UUID] = Query(None, description="Filter publisher courses to those associated with this program."),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     try:
-        courses = await course_service.get_courses(db, current_user.id, avatar_id=avatar_id)
+        courses = await course_service.get_courses(db, current_user.id, avatar_id=avatar_id, program_id=program_id)
         return courses
     except HTTPException:
         raise  # pass 403 / 404 through unchanged so the message is readable
     except Exception as e:
-        logger.error(f"❌ Error getting courses: {e}")
+        import traceback
+        tb = traceback.format_exc()
+        print(f"[GET /courses ERROR] {e}\n{tb}", flush=True)
+        logger.error(f"❌ Error getting courses: {e}\n{tb}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error getting courses",
@@ -69,11 +75,13 @@ async def create_course(
         course_data.user_id = current_user.id
         course = await course_service.create_course(db, course_data)
         return course
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"❌ Error creating course: {e}")
+        logger.error(f"❌ Error creating course: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error creating course",
+            detail=f"Error creating course: {e}",
         )
 
 

@@ -1,7 +1,7 @@
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from datetime import datetime
-from app.database.models import Course, User, CourseStudent, Session as SessionModel
+from app.database.models import Course, User, CourseStudent, Session as SessionModel, ProgramCourse
 from fastapi import HTTPException, status
 from uuid import UUID
 from app.schemas.schemas import CourseDetails, CourseCreate, CourseUpdate, CourseStudent as CourseStudentSchema, CourseSessionSummary
@@ -53,6 +53,19 @@ class CourseService:
         db.add(course)
         db.commit()
         db.refresh(course)
+
+        # Link to program if program_id was supplied
+        if course_data.program_id:
+            db.add(
+                ProgramCourse(
+                    id=uuid.uuid4(),
+                    program_id=course_data.program_id,
+                    course_id=course.id,
+                    added_at=datetime.utcnow(),
+                )
+            )
+            db.commit()
+
         return CourseDetails(**course.__dict__)
 
     async def get_courses(
@@ -60,6 +73,7 @@ class CourseService:
         db: Session,
         user_id: UUID,
         avatar_id: Optional[str] = None,
+        program_id: Optional[UUID] = None,
     ) -> List[CourseDetails]:
         if user_id is None:
             return []
@@ -68,7 +82,12 @@ class CourseService:
             raise HTTPException(status_code=404, detail="User not found")
 
         if user.role == "publisher":
-            courses = db.query(Course).filter(Course.user_id == user.id).all()
+            query = db.query(Course).filter(Course.user_id == user.id)
+            if program_id:
+                query = query.join(ProgramCourse, ProgramCourse.course_id == Course.id).filter(
+                    ProgramCourse.program_id == program_id
+                )
+            courses = query.all()
             for course in courses:
                 course.owner_name = f"{user.first_name} {user.last_name}"
                 course.enrollment_count = len(course.students)

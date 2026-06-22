@@ -17,6 +17,16 @@ def _run_migrations() -> None:
     with the ORM models, eliminating 'column does not exist' or 'table does not exist'
     errors after new deployments add schema changes.
     """
+    from app.config import settings
+    db_url = settings.database_url
+    # Redact password for safe logging
+    try:
+        parts = db_url.split("@")
+        safe_url = parts[0].rsplit(":", 1)[0] + ":***@" + parts[1] if len(parts) > 1 else db_url
+    except Exception:
+        safe_url = "(could not parse URL)"
+    print(f"[STARTUP] Connecting to database: {safe_url}")
+
     try:
         from alembic.config import Config
         from alembic import command
@@ -50,6 +60,13 @@ from app.api.avatars.courses import router as avatar_courses_router             
 from app.api.avatar_access_codes.api import publisher_router as avatar_codes_publisher_router  # W3
 from app.api.avatar_access_codes.api import subscriber_router as avatar_codes_subscriber_router  # W3
 from app.api.subscriber.api import router as subscriber_router
+from app.api.autograder.api import router as autograder_router
+from app.api.autograder.events import router as autograder_events_router
+from app.api.autograder.students import router as autograder_students_router
+from app.api.sae.invite import router as sae_invite_router
+from app.api.sae.publisher import router as sae_publisher_router
+from app.api.sae.student import router as sae_student_router
+from app.services.gemini_file_cache import load_autograder_cache
 from app.api.webhooks.wix import router as wix_router
 from app.api.analytics.api import router as analytics_router              # W6
 from app.api.assistant.api import router as assistant_router              # W7
@@ -68,6 +85,9 @@ async def lifespan(app: FastAPI):
     os.makedirs(settings.static_dir, exist_ok=True)
     os.makedirs(f"{settings.static_dir}/slides", exist_ok=True)
     print("Upload and static directories created/verified")
+
+    # Load autograder static files into memory — raises RuntimeError if any file is missing
+    load_autograder_cache()
 
     yield
 
@@ -116,7 +136,10 @@ app.add_middleware(
         "https://*.railway.app",
         "https://profsidekick.vercel.app",
         "https://*.vercel.app",
-        "https://profsidekick-frontend-3il7.vercel.app"
+        "https://profsidekick-frontend-3il7.vercel.app",
+        "https://profsidekick-autograder.vercel.app",
+        "https://profsidekick-ai.vercel.app",
+        "https://*.profsidekick-ai.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
@@ -145,6 +168,8 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
     """Handle unexpected exceptions"""
+    import traceback
+    print(f"[UNHANDLED EXCEPTION] {request.method} {request.url}\n{traceback.format_exc()}", flush=True)
     return JSONResponse(
         status_code=500,
         content={
@@ -157,12 +182,15 @@ async def general_exception_handler(request: Request, exc: Exception):
 
 # Health check endpoint
 @app.get("/health")
-async def health_check():
+async def health_check(request: Request):
     """Health check endpoint"""
     return {
         "status": "healthy",
         "version": settings.app_version,
-        "app": settings.app_name
+        "app": settings.app_name,
+        "instance": os.getenv("BACKEND_INSTANCE", "unknown"),
+        "origin": request.headers.get("origin", "no-origin"),
+        "host": request.headers.get("host", "no-host")
     }
 
 @app.get("/")
@@ -196,6 +224,13 @@ app.include_router(avatar_courses_router)             # W3: publisher avatar-cou
 app.include_router(avatar_codes_publisher_router)     # W3: publisher avatar access code CRUD
 app.include_router(avatar_codes_subscriber_router)    # W3: subscriber avatar code redemption
 app.include_router(subscriber_router)
+app.include_router(autograder_router)
+app.include_router(autograder_events_router)
+app.include_router(autograder_students_router)
+# Self Assessment Exam — isolated from the Math Placement autograder
+app.include_router(sae_invite_router)
+app.include_router(sae_publisher_router)
+app.include_router(sae_student_router)
 app.include_router(wix_router)
 app.include_router(analytics_router)            # W6: subscriber, publisher, admin analytics
 app.include_router(assistant_router)            # W7: multi-role AI navigation assistant

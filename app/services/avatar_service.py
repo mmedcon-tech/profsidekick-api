@@ -1,12 +1,14 @@
 import uuid
 from datetime import datetime
 from typing import List, Optional, Tuple
+from uuid import UUID
 from sqlalchemy.orm import Session, joinedload
 from fastapi import HTTPException, status
 from app.database.models import (
     Avatar, AvatarTemplate, AvatarConfiguration,
     PublisherAvatarProfile,
     Rubric, KnowledgeDocument, ReferenceSolution,
+    ProgramAvatar,
 )
 from app.services.prompt_generator import generate_teaching_persona_prompt
 from app.schemas.schemas import (
@@ -127,20 +129,36 @@ class AvatarService:
             db.add(profile)
             db.commit()
 
+        # Link to program if program_id was supplied
+        if data.program_id:
+            db.add(
+                ProgramAvatar(
+                    id=uuid.uuid4(),
+                    program_id=data.program_id,
+                    avatar_id=avatar.id,
+                    added_at=datetime.utcnow(),
+                )
+            )
+            db.commit()
+
         return self._load_one(db, avatar.id)
 
     async def get_avatar(self, db: Session, avatar_id) -> Optional[Avatar]:
         return self._load_one(db, avatar_id)
 
     async def list_publisher_avatars(
-        self, db: Session, publisher_id
+        self, db: Session, publisher_id, program_id: Optional[UUID] = None
     ) -> Tuple[List[Avatar], int]:
-        avatars = self._load_many(
+        query = (
             db.query(Avatar)
             .options(joinedload(Avatar.template))
             .filter(Avatar.publisher_id == publisher_id)
-            .order_by(Avatar.created_at.desc())
         )
+        if program_id:
+            query = query.join(ProgramAvatar, ProgramAvatar.avatar_id == Avatar.id).filter(
+                ProgramAvatar.program_id == program_id
+            )
+        avatars = self._load_many(query.order_by(Avatar.created_at.desc()))
         return avatars, len(avatars)
 
     async def list_published_avatars(

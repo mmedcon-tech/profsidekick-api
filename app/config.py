@@ -7,7 +7,34 @@ from pydantic import Field, field_validator
 class Settings(BaseSettings):
     # OpenAI Configuration
     openai_api_key: str = Field("", env="OPENAI_API_KEY")
-    
+    openai_model: str = Field("gpt-4.1", env="OPENAI_MODEL")
+
+    # Gemini Configuration (used by the Math Autograder — direct Google API)
+    # Each tier has its own API key so each can upload static PDFs under its own
+    # Google project and reference them via Files API URIs without cross-project 403s.
+    gemini_pro_api_key: str = Field("", env="GEMINI_PRO_API_KEY")
+    gemini_flash_api_key: str = Field("", env="GEMINI_FLASH_API_KEY")
+    gemini_free_api_key: str = Field("", env="GEMINI_FREE_API_KEY")
+    # Legacy key kept for deployments that have not yet renamed their env var.
+    gemini_api_key: str = Field("", env="GEMINI_API_KEY")
+    gemini_model: str = Field("gemini-2.5-pro", env="GEMINI_MODEL")
+    gemini_flash_model: str = Field("gemini-2.5-flash", env="GEMINI_FLASH_MODEL")
+    # LLM provider routing. "default" = full chain. "openai_only" = OpenAI only (debug).
+    llm_provider_mode: str = Field("default", env="LLM_PROVIDER_MODE")
+
+    # Vertex AI Configuration — uses Application Default Credentials (no API key).
+    # Local dev: run `gcloud auth application-default login` once.
+    # CI/prod: set GOOGLE_APPLICATION_CREDENTIALS to a service-account JSON path,
+    #          or use Workload Identity (GKE / Cloud Run).
+    google_cloud_project: str = Field("", env="GOOGLE_CLOUD_PROJECT")
+    vertex_ai_location: str = Field("us-central1", env="VERTEX_AI_LOCATION")
+    vertex_ai_model: str = Field("gemini-2.5-pro", env="VERTEX_AI_MODEL")
+    # Optional GCS bucket for caching static PDFs in Vertex AI requests.
+    # If set: static PDFs are uploaded once to gs://<bucket>/autograder/ and
+    # referenced via Part.from_uri() — cheaper than inline base64 on large PDFs.
+    # If unset or upload fails: falls back to inline base64 (always works).
+    gcs_static_bucket: str = Field("", env="GCS_STATIC_BUCKET")
+
     # Database Configuration
     database_url: str = Field("sqlite:///./profsidekick.db", env="DATABASE_URL")
     
