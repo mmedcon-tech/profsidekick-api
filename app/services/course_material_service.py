@@ -21,6 +21,8 @@ class CourseMaterialService:
     def __init__(self):
         self.file_processor = FileProcessor()
         self.materials_dir = Path(settings.upload_dir) / "course_materials"
+
+    def _ensure_materials_dir(self) -> None:
         self.materials_dir.mkdir(parents=True, exist_ok=True)
 
     async def create_course_material(

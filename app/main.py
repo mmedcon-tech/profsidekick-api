@@ -53,6 +53,12 @@ from app.api.publisher.api import router as publisher_router
 from app.api.subscriptions.api import router as subscriptions_router
 from app.api.billing.api import router as billing_router
 from app.api.admin.billing_api import router as admin_billing_router
+from app.api.admin.models_api import router as admin_3d_models_router  # W2A
+from app.api.avatars.variants import router as avatar_variants_router  # W2A
+from app.api.programs.api import router as programs_router            # W2B
+from app.api.avatars.courses import router as avatar_courses_router                          # W3
+from app.api.avatar_access_codes.api import publisher_router as avatar_codes_publisher_router  # W3
+from app.api.avatar_access_codes.api import subscriber_router as avatar_codes_subscriber_router  # W3
 from app.api.subscriber.api import router as subscriber_router
 from app.api.autograder.api import router as autograder_router
 from app.api.autograder.events import router as autograder_events_router
@@ -61,6 +67,9 @@ from app.api.sae.invite import router as sae_invite_router
 from app.api.sae.publisher import router as sae_publisher_router
 from app.api.sae.student import router as sae_student_router
 from app.services.gemini_file_cache import load_autograder_cache
+from app.api.webhooks.wix import router as wix_router
+from app.api.analytics.api import router as analytics_router              # W6
+from app.api.assistant.api import router as assistant_router              # W7
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -128,7 +137,9 @@ app.add_middleware(
         "https://profsidekick.vercel.app",
         "https://*.vercel.app",
         "https://profsidekick-frontend-3il7.vercel.app",
-        "https://profsidekick-autograder.vercel.app"
+        "https://profsidekick-autograder.vercel.app",
+        "https://profsidekick-ai.vercel.app",
+        "https://*.profsidekick-ai.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
@@ -206,6 +217,12 @@ app.include_router(publisher_router)
 app.include_router(subscriptions_router)
 app.include_router(billing_router)
 app.include_router(admin_billing_router)
+app.include_router(admin_3d_models_router)   # W2A: admin 3D model catalog
+app.include_router(avatar_variants_router)   # W2A: publisher avatar variants
+app.include_router(programs_router)          # W2B: programs system
+app.include_router(avatar_courses_router)             # W3: publisher avatar-course links
+app.include_router(avatar_codes_publisher_router)     # W3: publisher avatar access code CRUD
+app.include_router(avatar_codes_subscriber_router)    # W3: subscriber avatar code redemption
 app.include_router(subscriber_router)
 app.include_router(autograder_router)
 app.include_router(autograder_events_router)
@@ -214,6 +231,9 @@ app.include_router(autograder_students_router)
 app.include_router(sae_invite_router)
 app.include_router(sae_publisher_router)
 app.include_router(sae_student_router)
+app.include_router(wix_router)
+app.include_router(analytics_router)            # W6: subscriber, publisher, admin analytics
+app.include_router(assistant_router)            # W7: multi-role AI navigation assistant
 
 # Add middleware for request logging (optional)
 @app.middleware("http")

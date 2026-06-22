@@ -54,23 +54,29 @@ def upgrade() -> None:
         type_=sa.String(length=50),
         existing_nullable=False,
     )
-    if 'email' not in get_cols('users'):
+    user_cols = get_cols('users')
+    if 'email' not in user_cols:
         op.add_column("users", sa.Column("email", sa.String(length=255), nullable=False))
-    if 'password_hash' not in get_cols('users'):
+    if 'password_hash' not in user_cols:
         op.add_column(
             "users", sa.Column("password_hash", sa.String(length=255), nullable=False)
         )
-    if 'first_name' not in get_cols('users'):
+    if 'first_name' not in user_cols:
         op.add_column(
             "users", sa.Column("first_name", sa.String(length=100), nullable=False)
         )
-    if 'last_name' not in get_cols('users'):
+    if 'last_name' not in user_cols:
         op.add_column(
             "users", sa.Column("last_name", sa.String(length=100), nullable=False)
         )
-    if 'role' not in get_cols('users'):
+    if 'role' not in user_cols:
         op.add_column("users", sa.Column("role", sa.String(length=50), nullable=False))
-    op.create_unique_constraint(None, "users", ["email"])
+    email_unique_exists = any(
+        'email' in c.get('column_names', [])
+        for c in inspector.get_unique_constraints('users')
+    )
+    if not email_unique_exists:
+        op.create_unique_constraint(None, "users", ["email"])
     if 'password' in get_cols('users'):
         op.drop_column("users", "password")
     # ### end Alembic commands ###

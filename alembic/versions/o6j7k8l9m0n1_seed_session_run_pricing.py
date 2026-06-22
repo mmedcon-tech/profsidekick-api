@@ -11,7 +11,7 @@ Rates are based on OpenAI Realtime API audio token pricing with a 20%
 platform fee. These can be updated at any time via the admin billing API
 without a migration.
 """
-
+import sqlalchemy as sa
 import uuid
 from alembic import op
 import sqlalchemy as sa
@@ -22,6 +22,25 @@ branch_labels = None
 depends_on = None
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    existing_tables = inspector.get_table_names()
+
+    def get_cols(table):
+        if table not in existing_tables:
+            return []
+        return [c['name'] for c in inspector.get_columns(table)]
+
+    def get_fks(table):
+        if table not in existing_tables:
+            return []
+        return [f['name'] for f in inspector.get_foreign_keys(table)]
+
+    def get_indexes(table):
+        if table not in existing_tables:
+            return []
+        return [i['name'] for i in inspector.get_indexes(table)]
+
     from datetime import datetime
 
     bind = op.get_bind()

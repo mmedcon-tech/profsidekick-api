@@ -1,11 +1,16 @@
+import logging
+import secrets
 from typing import Optional
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+from app.config import settings
 from app.database.connection import get_db
 from app.services.auth_service import AuthService
 from app.database.models import User
+
+logger = logging.getLogger(__name__)
 
 # Required auth: raises 403 immediately when no Authorization header is present.
 security = HTTPBearer()
@@ -63,14 +68,17 @@ async def get_optional_user(
 
 
 async def require_admin(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ) -> User:
-    """Require the authenticated user to have the admin role"""
+    """
+    Require admin role.
+    """
     if current_user.role != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required"
+            detail="Admin access required",
         )
+
     return current_user
 
 

@@ -7,7 +7,11 @@ from datetime import datetime, timedelta
 import openai
 from openai import OpenAI, AsyncOpenAI
 from app.config import settings
-from app.services.context_builder import build_realtime_instructions, resolve_vision_prompt
+from app.services.context_builder import (
+    build_realtime_instructions,
+    resolve_vision_prompt,
+    GROUNDING_POLICY_DEFAULT,
+)
 from PIL import Image
 import traceback
 import io
@@ -51,6 +55,12 @@ class OpenAIService:
         role_context: Optional[str] = None,
         session_summary: Optional[str] = None,
         memories: Optional[List[str]] = None,
+        # Publisher teaching persona (from PublisherAvatarProfile.refined_prompt)
+        refined_prompt: Optional[str] = None,
+        # RAG-retrieved knowledge context
+        rag_context: Optional[str] = None,
+        # Grounding policy override
+        grounding_policy: str = GROUNDING_POLICY_DEFAULT,
     ) -> Dict[str, Any]:
         """
         Generate ephemeral token for OpenAI Realtime API using the SDK.
@@ -77,6 +87,9 @@ class OpenAIService:
                 role_context=role_context,
                 session_summary=session_summary,
                 memories=memories,
+                refined_prompt=refined_prompt,
+                rag_context=rag_context,
+                grounding_policy=grounding_policy,
             )
 
             # Build turn_detection in the shape the SDK expects
@@ -142,6 +155,39 @@ class OpenAIService:
             print("❌ generate_ephemeral_token FAILED")
             print(traceback.format_exc())
             raise
+
+    async def refine_persona_prompt(
+        self,
+        draft: str,
+        additional_context: Optional[str] = None,
+    ) -> str:
+        """Call gpt-4o-mini to condense a draft teaching-persona into a compact directive."""
+        extra = (
+            f"\n\nAdditional context from the publisher:\n{additional_context.strip()}"
+            if additional_context and additional_context.strip()
+            else ""
+        )
+        completion = await self.async_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a prompt engineer for an educational AI platform. "
+                        "Your task is to rewrite the draft teaching persona below into a concise, "
+                        "natural, first-person instructional style directive (max 200 words). "
+                        "Preserve all teaching preferences. Remove template headers and bullet formatting. "
+                        "Output only the refined persona text — no preamble, no labels."
+                    ),
+                },
+                {"role": "user", "content": f"Draft:\n{draft}{extra}"},
+            ],
+            max_tokens=400,
+            temperature=0.4,
+        )
+        if not completion.choices:
+            raise ValueError("OpenAI returned no choices for persona refinement")
+        return completion.choices[0].message.content.strip()
 
     async def process_slides_with_vision(
         self,

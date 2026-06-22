@@ -187,8 +187,8 @@ class AuthService:
         )
     
     async def get_user_by_id(self, db: Session, user_id: str) -> Optional[User]:
-        """Get user by ID"""
-        return db.query(User).filter(User.id == user_id).first()
+        """Get user by ID — excludes soft-deleted (GDPR-erased) accounts."""
+        return db.query(User).filter(User.id == user_id, User.is_deleted.is_(False)).first()
     
     async def update_user_profile(self, db: Session, user_id: str, update_data: Dict[str, Any]) -> Optional[User]:
         """Update user profile"""
