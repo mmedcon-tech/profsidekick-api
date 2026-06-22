@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 
 from app.database.connection import Base
@@ -13,8 +13,11 @@ class Program(Base):
     __tablename__ = "programs"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name = Column(String(200), nullable=False)
-    description = Column(Text, nullable=True)
+    name = Column(JSONB, nullable=False) # e.g. {"en": "...", "ar": "..."}
+    slug = Column(String(200), unique=True, nullable=False, index=True)
+    description = Column(JSONB, nullable=True)
+    theme_config = Column(JSONB, nullable=True)
+    is_public = Column(Boolean, default=False)
     publisher_id = Column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),

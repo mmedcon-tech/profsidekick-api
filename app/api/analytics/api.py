@@ -6,7 +6,10 @@ Routes:
   GET /api/admin/analytics        — platform-wide metrics
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Optional
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
@@ -52,11 +55,15 @@ def get_subscriber_analytics(
 
 @router.get("/publisher/analytics", response_model=PublisherAnalyticsResponse)
 def get_publisher_analytics(
+    program_id: Optional[UUID] = Query(None, description="Scope metrics to a specific program."),
     current_user: User = Depends(_require_publisher),
     db: Session = Depends(get_db),
 ):
-    """Return per-avatar and per-course performance metrics for the requesting publisher (R102)."""
-    data = analytics_service.get_publisher_analytics(publisher_id=current_user.id, db=db)
+    """Return per-avatar and per-course performance metrics for the requesting publisher (R102).
+    When program_id is supplied, all counts are scoped to that program."""
+    data = analytics_service.get_publisher_analytics(
+        publisher_id=current_user.id, db=db, program_id=program_id
+    )
     return PublisherAnalyticsResponse(**data)
 
 

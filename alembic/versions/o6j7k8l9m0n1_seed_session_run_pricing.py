@@ -14,12 +14,12 @@ without a migration.
 import sqlalchemy as sa
 import uuid
 from alembic import op
+import sqlalchemy as sa
 
 revision = "o6j7k8l9m0n1"
 down_revision = "n5i6j7k8l9m0"
 branch_labels = None
 depends_on = None
-
 
 def upgrade() -> None:
     bind = op.get_bind()
@@ -43,6 +43,13 @@ def upgrade() -> None:
 
     from datetime import datetime
 
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    existing_tables = inspector.get_table_names()
+
+    if 'pricing_configs' not in existing_tables:
+        return
+
     now = datetime.utcnow()
     op.execute(
         f"""
@@ -55,7 +62,6 @@ def upgrade() -> None:
         )
         """
     )
-
 
 def downgrade() -> None:
     op.execute("DELETE FROM pricing_configs WHERE operation_type = 'session_run'")

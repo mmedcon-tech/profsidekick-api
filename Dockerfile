@@ -15,6 +15,7 @@ RUN apt-get update \
         curl \
         poppler-utils \
         libreoffice \
+        gosu \
     && rm -rf /var/lib/apt/lists/*
 
 # Create and set working directory
@@ -27,10 +28,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Create non-root user
+# Create non-root user and pre-create writable directories
 RUN useradd --create-home --shell /bin/bash app \
+    && mkdir -p /app/uploads/course_materials /app/static \
     && chown -R app:app /app
-USER app
 
 # Expose port
 EXPOSE 8000
@@ -39,5 +40,8 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Run migrations then start the application
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1 --limit-concurrency 100 --timeout-keep-alive 30 --proxy-headers --forwarded-allow-ips=*"]
+# Entrypoint: fix bind-mount ownership (host may have created dirs as root),
+# then drop to the app user and start.
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN sed -i 's/\r//' /entrypoint.sh && chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]

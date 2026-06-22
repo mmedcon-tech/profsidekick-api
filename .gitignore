@@ -8,6 +8,7 @@ static"venv/"
 "QA_REPORT.md" 
 "__pycache__/" 
 "*.pyc" 
-
+.env.*
+!.env.example
 venv/
 static/
