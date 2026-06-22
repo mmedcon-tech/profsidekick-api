@@ -78,6 +78,14 @@ class Settings(BaseSettings):
     cors_origins: str = Field("http://localhost:3000,https://profsidekick.vercel.app,https://profsidekick-frontend-3il7.vercel.app", env="CORS_ORIGINS")
     admin_secret: str = Field("", env="ADMIN_SECRET")
     credits_per_usd: int = Field(100, env="CREDITS_PER_USD")
+
+    # Wix payment webhook
+    # WIX_WEBHOOK_SECRET: shared secret set in your Wix Automation action header.
+    # Leave empty in dev to skip secret verification (logs a warning).
+    wix_webhook_secret: str = Field("", env="WIX_WEBHOOK_SECRET")
+    # WIX_PRODUCT_CREDIT_MAP: JSON mapping Wix product IDs → credit amounts.
+    # Example: {"prod_abc123": 500, "prod_def456": 1000}
+    wix_product_credit_map: str = Field("{}", env="WIX_PRODUCT_CREDIT_MAP")
     
     # Email Configuration
     # For production, use EMAIL_SERVICE=sendgrid or resend (API-based, no SMTP ports)

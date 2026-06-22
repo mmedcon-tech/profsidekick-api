@@ -37,23 +37,25 @@ def upgrade() -> None:
             return []
         return [i['name'] for i in inspector.get_indexes(table)]
 
-    op.add_column(
-        "sessions",
-        sa.Column(
-            "subscriber_runtime_mode",
-            sa.String(20),
-            nullable=False,
-            server_default="avatar",
-        ),
-    )
-    op.add_column(
-        "session_runs",
-        sa.Column(
-            "runtime_mode_used",
-            sa.String(20),
-            nullable=True,
-        ),
-    )
+    if "subscriber_runtime_mode" not in get_cols("sessions"):
+        op.add_column(
+            "sessions",
+            sa.Column(
+                "subscriber_runtime_mode",
+                sa.String(20),
+                nullable=False,
+                server_default="avatar",
+            ),
+        )
+    if "runtime_mode_used" not in get_cols("session_runs"):
+        op.add_column(
+            "session_runs",
+            sa.Column(
+                "runtime_mode_used",
+                sa.String(20),
+                nullable=True,
+            ),
+        )
 
 
 def downgrade() -> None:

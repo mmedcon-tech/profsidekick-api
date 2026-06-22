@@ -11,14 +11,16 @@ Prompt fields NEVER appear in any response from this router.
 All AI prompts live in AvatarTemplate and are resolved at session-run time.
 """
 import logging
+import uuid
+from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
-from app.database.models import Avatar, User
+from app.database.models import Avatar, User, PublisherAvatarProfile
 from app.dependencies.auth import require_admin, require_publisher, require_subscriber
 from app.schemas.schemas import (
     AvatarConfigurationCreate,
@@ -33,12 +35,16 @@ from app.schemas.schemas import (
     AvatarSummary,
     AvatarUpdate,
     KnowledgeDocumentResponse,
+    ProfileRefineRequest,
+    PublisherAvatarProfileResponse,
     ReferenceSolutionResponse,
     RubricCreate,
     RubricResponse,
 )
 from app.services.avatar_service import AvatarService
 from app.services.file_processor import FileProcessor
+from app.services.openai_service import OpenAIService
+from app.services.prompt_generator import generate_teaching_persona_prompt
 from app.services.rag_service import ingest_avatar_knowledge_document_background
 
 logger = logging.getLogger(__name__)
@@ -47,6 +53,7 @@ router = APIRouter(prefix="/api", tags=["avatars"])
 
 avatar_service = AvatarService()
 file_processor = FileProcessor()
+openai_service = OpenAIService()
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -82,15 +89,17 @@ async def create_avatar(
     response_model=AvatarListResponse,
 )
 async def list_publisher_avatars(
+    program_id: Optional[UUID] = Query(None, description="Filter avatars to those associated with this program."),
     current_user: User = Depends(require_publisher),
     db: Session = Depends(get_db),
 ):
     """
     Who can call: Publisher or Admin.
     Returns: only avatars owned by the calling publisher.
+    If program_id is provided, returns only avatars linked to that program.
     """
     try:
-        avatars, total = await avatar_service.list_publisher_avatars(db, current_user.id)
+        avatars, total = await avatar_service.list_publisher_avatars(db, current_user.id, program_id=program_id)
         return AvatarListResponse(
             avatars=[AvatarSummary.model_validate(a) for a in avatars],
             total=total,
@@ -491,6 +500,120 @@ async def delete_reference_solution(
     except Exception as e:
         logger.error(f"❌ delete_reference_solution error: {e}")
         raise HTTPException(status_code=500, detail=f"Error deleting reference solution: {e}")
+
+
+# ══════════════════════════════════════════════════════════════════
+# Publisher — Persona Refinement
+# ══════════════════════════════════════════════════════════════════
+
+@router.post(
+    "/publisher/avatars/{avatar_id}/profile/refine",
+    response_model=PublisherAvatarProfileResponse,
+)
+async def refine_avatar_persona(
+    avatar_id: UUID,
+    data: ProfileRefineRequest,
+    current_user: User = Depends(require_publisher),
+    db: Session = Depends(get_db),
+):
+    """
+    Who can call: Publisher (or Admin).
+    What it does:
+      1. Validates the publisher owns this avatar.
+      2. Builds a draft teaching-persona prompt from teaching_preferences.
+      3. Calls gpt-4o-mini to refine the draft into a concise, instructional persona.
+      4. Upserts PublisherAvatarProfile with the refined prompt and preferences.
+      5. Returns the updated profile.
+    """
+    try:
+        # ── Ownership check ────────────────────────────────────────────────────
+        avatar = db.query(Avatar).filter(Avatar.id == avatar_id).first()
+        if not avatar:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Avatar not found")
+        if current_user.role != "admin" and str(avatar.publisher_id) != str(current_user.id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not own this avatar",
+            )
+
+        prefs = data.teaching_preferences
+
+        # ── Validate enum values ───────────────────────────────────────────────
+        from app.schemas.schemas import (
+            VALID_TEACHING_PACE, VALID_QUESTIONING_STYLE, VALID_FORMALITY_LEVEL,
+            VALID_DEPTH_LEVEL, VALID_ENCOURAGEMENT_LEVEL, VALID_LANGUAGE_LEVEL,
+        )
+        validation_errors = []
+        if prefs.teaching_pace and prefs.teaching_pace not in VALID_TEACHING_PACE:
+            validation_errors.append(f"teaching_pace must be one of {sorted(VALID_TEACHING_PACE)}")
+        if prefs.questioning_style and prefs.questioning_style not in VALID_QUESTIONING_STYLE:
+            validation_errors.append(f"questioning_style must be one of {sorted(VALID_QUESTIONING_STYLE)}")
+        if prefs.formality_level and prefs.formality_level not in VALID_FORMALITY_LEVEL:
+            validation_errors.append(f"formality_level must be one of {sorted(VALID_FORMALITY_LEVEL)}")
+        if prefs.depth_level and prefs.depth_level not in VALID_DEPTH_LEVEL:
+            validation_errors.append(f"depth_level must be one of {sorted(VALID_DEPTH_LEVEL)}")
+        if prefs.encouragement_level and prefs.encouragement_level not in VALID_ENCOURAGEMENT_LEVEL:
+            validation_errors.append(f"encouragement_level must be one of {sorted(VALID_ENCOURAGEMENT_LEVEL)}")
+        if prefs.language_level and prefs.language_level not in VALID_LANGUAGE_LEVEL:
+            validation_errors.append(f"language_level must be one of {sorted(VALID_LANGUAGE_LEVEL)}")
+        if validation_errors:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=validation_errors)
+
+        # ── Build draft prompt from preferences ────────────────────────────────
+        draft = generate_teaching_persona_prompt(
+            avatar_name=avatar.name,
+            avatar_description=avatar.description,
+            teaching_pace=prefs.teaching_pace,
+            questioning_style=prefs.questioning_style,
+            formality_level=prefs.formality_level,
+            depth_level=prefs.depth_level,
+            encouragement_level=prefs.encouragement_level,
+            language_level=prefs.language_level,
+        )
+
+        # ── Refine with gpt-4o-mini ────────────────────────────────────────────
+        refined_prompt = await openai_service.refine_persona_prompt(draft, data.additional_context)
+
+        # ── Upsert PublisherAvatarProfile ──────────────────────────────────────
+        profile = (
+            db.query(PublisherAvatarProfile)
+            .filter(PublisherAvatarProfile.publisher_avatar_id == avatar_id)
+            .first()
+        )
+        if profile:
+            profile.teaching_pace = prefs.teaching_pace
+            profile.questioning_style = prefs.questioning_style
+            profile.formality_level = prefs.formality_level
+            profile.depth_level = prefs.depth_level
+            profile.encouragement_level = prefs.encouragement_level
+            profile.language_level = prefs.language_level
+            profile.refined_prompt = refined_prompt
+            profile.updated_at = datetime.utcnow()
+        else:
+            profile = PublisherAvatarProfile(
+                id=uuid.uuid4(),
+                publisher_avatar_id=avatar.id,
+                teaching_pace=prefs.teaching_pace,
+                questioning_style=prefs.questioning_style,
+                formality_level=prefs.formality_level,
+                depth_level=prefs.depth_level,
+                encouragement_level=prefs.encouragement_level,
+                language_level=prefs.language_level,
+                refined_prompt=refined_prompt,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow(),
+            )
+            db.add(profile)
+
+        db.commit()
+        db.refresh(profile)
+        return PublisherAvatarProfileResponse.model_validate(profile)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ refine_avatar_persona error: {e}")
+        raise HTTPException(status_code=500, detail=f"Error refining persona: {e}")
 
 
 # ══════════════════════════════════════════════════════════════════

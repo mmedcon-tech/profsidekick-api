@@ -201,7 +201,7 @@ class PublisherChatService:
             db.query(PublisherConversation)
             .filter(
                 PublisherConversation.id == conversation_id,
-                PublisherConversation.publisher_id == publisher_id,
+                PublisherConversation.user_id == publisher_id,
             )
             .first()
         )
@@ -304,8 +304,9 @@ class PublisherChatService:
             avatar_id = request.avatar_id
             conv = PublisherConversation(
                 id=uuid.uuid4(),
-                publisher_id=publisher_id,
+                user_id=publisher_id,
                 avatar_id=avatar_id,
+                context_type="publisher",
                 title=self._title_from_message(request.message),
                 created_at=datetime.utcnow(),
                 updated_at=datetime.utcnow(),
@@ -453,8 +454,9 @@ class PublisherChatService:
         else:
             conv = PublisherConversation(
                 id=uuid.uuid4(),
-                publisher_id=publisher_id,
+                user_id=publisher_id,
                 avatar_id=request.avatar_id,
+                context_type="publisher",
                 title=self._title_from_message(request.message),
                 created_at=datetime.utcnow(),
                 updated_at=datetime.utcnow(),
@@ -593,7 +595,10 @@ class PublisherChatService:
     def list_conversations(self, db: Session, publisher_id) -> dict:
         convs = (
             db.query(PublisherConversation)
-            .filter(PublisherConversation.publisher_id == publisher_id)
+            .filter(
+                PublisherConversation.user_id == publisher_id,
+                PublisherConversation.context_type == "publisher",
+            )
             .order_by(PublisherConversation.updated_at.desc())
             .all()
         )
@@ -654,8 +659,9 @@ class PublisherChatService:
         avatar_id = request.avatar_id
         conv = PublisherConversation(
             id=uuid.uuid4(),
-            publisher_id=publisher_id,
+            user_id=publisher_id,
             avatar_id=avatar_id,
+            context_type="publisher",
             title="Session",
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),

@@ -1,13 +1,23 @@
 import logging
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from uuid import UUID
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 from app.database.connection import get_db
 from app.database.models import User, Session as SessionModel
 from app.dependencies.auth import get_current_user, require_admin, auth_service
 from app.schemas.schemas import (
-    UserResponse, UserProfileUpdate, UserSessionsResponse, UserSessionSummary
+    AdminSetUserRoleRequest,
+    SetUserProgramRequest,
+    UserAgreementCreate,
+    UserAgreementResponse,
+    UserDataExportResponse,
+    UserResponse,
+    UserProfileUpdate,
+    UserSessionsResponse,
+    UserSessionSummary,
 )
+from app.services import gdpr_service, program_service
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -163,3 +173,83 @@ async def admin_delete_user(
     except Exception as e:
         logger.error(f"❌ admin_delete_user error: {e}")
         raise HTTPException(status_code=500, detail="Error deleting user")
+
+
+@router.put("/admin/users/{user_id}/role", response_model=UserResponse)
+async def admin_set_user_role(
+    user_id: UUID,
+    body: AdminSetUserRoleRequest,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Admin: change any user's role."""
+    from datetime import datetime
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if str(user.id) == str(current_user.id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot change your own role")
+    user.role = body.role
+    user.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(user)
+    return auth_service.user_to_response(user)
+
+
+# ══════════════════════════════════════════════════════════════════
+# W2B — User program context
+# ══════════════════════════════════════════════════════════════════
+
+
+@router.put("/me/program", response_model=UserResponse)
+async def set_my_program(
+    body: SetUserProgramRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Set (or clear) the active program context for the calling user."""
+    updated = program_service.set_user_program(current_user, body.program_id, db)
+    return auth_service.user_to_response(updated)
+
+
+# ══════════════════════════════════════════════════════════════════
+# W2C — GDPR
+# ══════════════════════════════════════════════════════════════════
+
+
+@router.post("/me/agreements", response_model=UserAgreementResponse, status_code=status.HTTP_201_CREATED)
+async def record_agreement(
+    body: UserAgreementCreate,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Record acceptance of a legal agreement (terms, privacy, gdpr, marketing)."""
+    ip = request.client.host if request.client else None
+    ua = request.headers.get("user-agent")
+    agreement = gdpr_service.record_agreement(
+        user=current_user,
+        agreement_type=body.agreement_type,
+        db=db,
+        ip_address=ip,
+        user_agent=ua,
+    )
+    return UserAgreementResponse.model_validate(agreement)
+
+
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+async def erase_my_account(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """GDPR erasure: soft-delete and anonymise the calling user's account."""
+    gdpr_service.erase_user(current_user, db)
+
+
+@router.get("/me/data-export", response_model=UserDataExportResponse)
+async def export_my_data(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """GDPR data portability: export all personal data for the calling user."""
+    return gdpr_service.export_user_data(current_user, db)

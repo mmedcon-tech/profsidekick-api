@@ -14,16 +14,28 @@ from app.database.connection import get_db
 from app.database.models import (
     Session, SessionRun, SessionRunStatus, User,
     Avatar, AvatarSubscription, AvatarTemplate, AvatarTemplateVersion, AvatarTemplateRole,
-    Course, CourseStudent,
+    Course, CourseStudent, PublisherAvatarProfile,
 )
+from app.database.models.feedback import SessionPersonaSwitch
 from app.services.summarization_service import (
     generate_run_summary, get_recent_session_summary, get_user_memories,
 )
-from app.schemas.schemas import SessionDetails, SlideData, PresentationData, AssistantParameters, SessionRunDetails, EphemeralTokenResponse, SessionUpdateDetails, SessionsListResponse, SessionRunsListResponse, SessionCreateRequest
+from app.schemas.schemas import (
+    SessionDetails, SlideData, PresentationData, AssistantParameters,
+    SessionRunDetails, EphemeralTokenResponse, SessionUpdateDetails,
+    SessionsListResponse, SessionRunsListResponse, SessionCreateRequest,
+    SearchKnowledgeRequest, SearchKnowledgeResponse, KnowledgeChunk,
+    FlagTopicRequest, FlagTopicResponse,
+    PatchSessionRoleRequest,
+    SessionFeedbackRequest, SessionFeedbackResponse,
+    TranscriptFeedbackRequest, TranscriptFeedbackResponse,
+)
 from app.services.file_processor import FileProcessor
 from app.services.openai_service import OpenAIService
 from app.services.session_service import SessionService
-from app.services.rag_service import ingest_session_document_background
+from app.services.rag_service import ingest_session_document_background, retrieve_context
+from app.services import session_resolution_service
+from app.services.avatar_variant_service import resolve_default_variant, build_variant_snapshot
 from app.dependencies.auth import get_current_user, get_optional_user
 from app.config import settings
 
@@ -410,42 +422,208 @@ async def delete_session(
 @router.patch("/sessions/{session_id}/role")
 async def update_session_role(
     session_id: str,
-    request_data: dict,
+    request_data: PatchSessionRoleRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
-    Update the selected role on a session.
-    Validates the role exists, is enabled, and belongs to the session's avatar's template.
+    Update the selected role and/or active variant on a session (Wave 4 — R76).
+
+    Accepts:
+      role_id    (str, optional) — AvatarTemplateRole UUID; updates session.selected_role_id
+      variant_id (str, optional) — AvatarVariant UUID; switches the active persona and
+                                   logs a SessionPersonaSwitch row when session_run_id is
+                                   also supplied
+      session_run_id (str, optional) — active run ID; required to log persona switch
+
+    At least one of role_id or variant_id must be provided.
     """
     try:
         db_session = db.query(Session).filter(Session.session_id == session_id).first()
         if not db_session:
             raise HTTPException(status_code=404, detail="Session not found")
-        if str(db_session.user_id) != str(current_user.id):
+        if current_user.role != "admin" and str(db_session.user_id) != str(current_user.id):
             raise HTTPException(status_code=403, detail="Not authorised")
 
-        role_id = request_data.get("role_id")
-        if not role_id:
-            raise HTTPException(status_code=400, detail="role_id is required")
+        role_id = request_data.role_id
+        variant_id = request_data.variant_id  # UUID | None — validated by Pydantic
+        session_run_id_str = request_data.session_run_id
 
-        role_row = db.query(AvatarTemplateRole).filter(
-            AvatarTemplateRole.id == role_id,
-            AvatarTemplateRole.is_enabled == True,
-        ).first()
-        if not role_row:
-            raise HTTPException(status_code=404, detail="Role not found or disabled")
+        if not role_id and not variant_id:
+            raise HTTPException(status_code=400, detail="role_id or variant_id is required")
 
-        db_session.selected_role_id = role_row.id
-        db_session.role_label = role_row.name
+        response: dict = {"sessionId": session_id}
+
+        # ── Template role update (existing behaviour, backward compatible) ──────
+        if role_id:
+            role_row = db.query(AvatarTemplateRole).filter(
+                AvatarTemplateRole.id == role_id,
+                AvatarTemplateRole.is_enabled == True,
+            ).first()
+            if not role_row:
+                raise HTTPException(status_code=404, detail="Role not found or disabled")
+            db_session.selected_role_id = role_row.id
+            db_session.role_label = role_row.name
+            response["roleId"] = str(role_row.id)
+            response["roleLabel"] = role_row.name
+
+        # ── Variant switch (Wave 4 — R76) ────────────────────────────────────────
+        if variant_id:
+            if not db_session.avatar_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Session has no avatar — variant switching requires an avatar.",
+                )
+
+            # Subscribers may be restricted from switching variants
+            if current_user.role == "subscriber":
+                avatar_row = db.query(Avatar).filter(Avatar.id == db_session.avatar_id).first()
+                if avatar_row and not avatar_row.allow_subscriber_variant_switch:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Variant switching is not permitted for subscribers on this avatar.",
+                    )
+
+            from app.services.avatar_variant_service import get_variant
+            variant = get_variant(
+                avatar_id=db_session.avatar_id,
+                variant_id=variant_id,
+                db=db,
+            )
+
+            # Log persona switch when an active run is supplied
+            if session_run_id_str:
+                run = db.query(SessionRun).filter(
+                    SessionRun.session_id == db_session.id,
+                    SessionRun.session_run_id == session_run_id_str,
+                ).first()
+                if run:
+                    from datetime import datetime as _dt
+                    switch = SessionPersonaSwitch(
+                        session_run_id=run.id,
+                        user_id=current_user.id,
+                        from_persona=db_session.role_label or None,
+                        to_persona=variant.name,
+                        switched_at=_dt.utcnow(),
+                    )
+                    db.add(switch)
+
+            response["variantId"] = str(variant.id)
+            response["variantName"] = variant.name
+            response["variantLanguage"] = variant.language
+            response["variantSnapshot"] = build_variant_snapshot(variant)
+
         db.commit()
+        return response
 
-        return {"sessionId": session_id, "roleId": str(role_row.id), "roleLabel": role_row.name}
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Error updating session role: {e}")
+        logger.error(f"❌ Error updating session role/variant: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post(
+    "/sessions/{session_id}/runs/{session_run_id}/search-knowledge",
+    response_model=SearchKnowledgeResponse,
+)
+async def search_knowledge(
+    session_id: str,
+    session_run_id: str,
+    body: SearchKnowledgeRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Live RAG knowledge retrieval during an active session run (Wave 4 — R67).
+
+    Queries the session's embedded slide content and any indexed course materials.
+    The caller must own the session run (or be an admin).
+    """
+    try:
+        session_run = await session_service.get_session_run(db, session_id, session_run_id)
+        if not session_run:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session run not found")
+
+        if current_user.role != "admin" and str(session_run.user_id) != str(current_user.id):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorised")
+
+        db_session_raw = db.query(Session).filter(Session.session_id == session_id).first()
+        if not db_session_raw:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+        chunks = retrieve_context(
+            session_id=db_session_raw.id,
+            query=body.query,
+            top_k=body.top_k,
+            db=db,
+            course_id=db_session_raw.course_id,
+        )
+
+        results = [
+            KnowledgeChunk(
+                slide_number=c.get("slide_number"),
+                chunk_index=c.get("chunk_index"),
+                content=c.get("content", ""),
+                score=float(c.get("score", 0.0)),
+                source=c.get("source", "slide"),
+            )
+            for c in chunks
+        ]
+
+        return SearchKnowledgeResponse(query=body.query, results=results, total=len(results))
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error searching knowledge: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.post(
+    "/sessions/{session_id}/runs/{session_run_id}/flag-topic",
+    response_model=FlagTopicResponse,
+)
+async def flag_topic(
+    session_id: str,
+    session_run_id: str,
+    body: FlagTopicRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Flag a topic encountered during a session run for publisher review (Wave 4 — R75).
+
+    The caller must own the session run (or be an admin).
+    """
+    try:
+        session_run = await session_service.get_session_run(db, session_id, session_run_id)
+        if not session_run:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session run not found")
+
+        if current_user.role != "admin" and str(session_run.user_id) != str(current_user.id):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorised")
+
+        from datetime import datetime as _dt
+        flagged_at = _dt.utcnow()
+
+        logger.info(
+            "Topic flagged for review — session=%s run=%s user=%s topic=%r",
+            session_id, session_run_id, current_user.id, body.topic,
+        )
+
+        return FlagTopicResponse(
+            session_run_id=session_run_id,
+            topic=body.topic,
+            flagged_at=flagged_at,
+            message="Topic flagged for review.",
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error flagging topic: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
 @router.post("/sessions/{session_id}/run/start", response_model=SessionRunDetails)
@@ -488,6 +666,8 @@ async def start_session_run(
 
         # ── Subscriber session gate ────────────────────────────────────────────
         db_session_raw = db.query(Session).filter(Session.session_id == session_id).first()
+        _avatar_resolution = None  # populated below for subscribers (Wave 4 — R52)
+
         if current_user.role == "subscriber":
             if not db_session_raw:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found.")
@@ -516,25 +696,21 @@ async def start_session_run(
                     detail="You must be enrolled in this course to start a session.",
                 )
 
-            # Gate 3: avatar subscription — only enforced when the session has an avatar
-            if db_session_raw.avatar_id:
-                from datetime import datetime as _dt
-                sub = db.query(AvatarSubscription).filter(
-                    AvatarSubscription.subscriber_id == current_user.id,
-                    AvatarSubscription.avatar_id == db_session_raw.avatar_id,
-                    AvatarSubscription.is_active.is_(True),
-                ).first()
-                if sub and sub.expires_at and sub.expires_at < _dt.utcnow():
-                    sub.is_active = False
-                    db.commit()
-                    sub = None
-                if not sub:
-                    raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail="You need an active subscription to this avatar to start a session.",
-                    )
+            # Gate 3 (Wave 4 — R73): session must be published before subscribers can run it
+            if not getattr(db_session_raw, "is_published", False):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="This session has not been published and is not yet accessible to subscribers.",
+                )
 
-            # Pre-flight credit check: subscriber must have a positive balance to start
+            # Gate 4 (Wave 4 — R52): resolve avatar via course-linked subscriptions.
+            # Raises 403 if avatars are configured but subscriber has no active subscription.
+            # Returns None when the session has no avatar requirement.
+            _avatar_resolution = session_resolution_service.resolve_session_avatar(
+                db_session_raw, current_user.id, db
+            )
+
+            # Gate 5: pre-flight credit check — subscriber must have a positive balance
             from app.services import billing_service as _billing
             balance_info = _billing.get_active_balance(current_user.id, db)
             if balance_info["balance"] <= 0:
@@ -577,6 +753,23 @@ async def start_session_run(
         if db_session_raw and db_session_raw.role_label:
             session_run.role_at_start = db_session_raw.role_label
             db.commit()
+
+        # R72 (Wave 4): write default avatar variant to the run row.
+        # For subscribers, use the pre-resolved result from Gate 4.
+        # For publishers/admins, resolve fresh from session.avatar_id.
+        try:
+            if _avatar_resolution and _avatar_resolution.get("variant_id"):
+                session_run.avatar_variant_id = _avatar_resolution["variant_id"]
+                session_run.variant_snapshot = _avatar_resolution["variant_snapshot"]
+                db.commit()
+            elif not _avatar_resolution and db_session_raw and db_session_raw.avatar_id:
+                _dv = resolve_default_variant(db_session_raw.avatar_id, db)
+                if _dv:
+                    session_run.avatar_variant_id = _dv.id
+                    session_run.variant_snapshot = build_variant_snapshot(_dv)
+                    db.commit()
+        except Exception as _ve:
+            logger.warning("Could not snapshot avatar variant for run %s: %s", session_run.session_run_id, _ve)
 
         return SessionRunDetails(
             sessionRunId=str(session_run.session_run_id),
@@ -692,7 +885,7 @@ async def stop_session_run(
     db: Session = Depends(get_db)
 ):
     """
-    Stop a session run and trigger post-session summarization.
+    Stop a session run. Dispatches Celery tasks for summary, progress, and quiz (W6).
 
     Optional billing fields in request body:
       input_tokens  (int) — realtime input token count reported by the client
@@ -713,48 +906,22 @@ async def stop_session_run(
         if not session_run:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
 
-        # ── Billing: charge actual token usage for subscribers ─────────────
-        if current_user.role == "subscriber" and (input_tokens > 0 or output_tokens > 0):
+        # W6: delegate billing + all async post-session tasks to lifecycle service
+        db_session_raw = db.query(Session).filter(Session.session_id == session_id).first()
+        if db_session_raw:
             try:
-                from app.services import billing_service as _billing
-                _billing.charge_usage(
+                from app.services.session_lifecycle_service import run_post_session_tasks
+                run_post_session_tasks(
+                    db=db,
+                    session=db_session_raw,
+                    session_run=session_run,
                     user_id=current_user.id,
-                    operation_type="session_run",
                     input_tokens=input_tokens,
                     output_tokens=output_tokens,
-                    db=db,
-                    session_run_id=session_run.id,
+                    is_subscriber=(current_user.role == "subscriber"),
                 )
-                db.commit()
-            except HTTPException as billing_err:
-                logger.warning(
-                    f"⚠️ Billing charge failed for run {session_run_id} "
-                    f"(user={current_user.id}): {billing_err.detail}"
-                )
-            except Exception as billing_err:
-                logger.warning(
-                    f"⚠️ Billing charge error for run {session_run_id} "
-                    f"(user={current_user.id}): {billing_err}"
-                )
-        # ──────────────────────────────────────────────────────────────────
-
-        # Trigger background summarization (non-blocking — errors are logged, not raised)
-        try:
-            db_session_raw = db.query(Session).filter(Session.session_id == session_id).first()
-            if db_session_raw:
-                import asyncio as _asyncio
-                _asyncio.create_task(
-                    generate_run_summary(
-                        db=db,
-                        session=db_session_raw,
-                        session_run=session_run,
-                        slides_details=db_session_raw.slides_details or [],
-                        user_id=current_user.id,
-                        avatar_id=db_session_raw.avatar_id,
-                    )
-                )
-        except Exception:
-            pass  # Summarization is best-effort
+            except Exception as lifecycle_err:
+                logger.warning("Post-session lifecycle error for run %s: %s", session_run_id, lifecycle_err)
 
         return SessionRunDetails(
             sessionRunId=str(session_run.session_run_id),
@@ -838,7 +1005,180 @@ async def stop_session_run(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error stopping session run: {e}"
         )
-    
+
+
+# ── W6: Feedback endpoints (R84, R85) ────────────────────────────────────────
+
+@router.post(
+    "/sessions/{session_id}/runs/{session_run_id}/feedback",
+    response_model=SessionFeedbackResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def submit_session_feedback(
+    session_id: str,
+    session_run_id: str,
+    body: SessionFeedbackRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Submit end-of-session feedback for a completed run (R84).
+
+    One feedback record per session run per user (unique constraint on session_run_id).
+    A second submission returns the existing record without error.
+    """
+    import uuid as _uuid
+    from sqlalchemy.exc import IntegrityError
+    from app.database.models.feedback import SessionFeedback
+
+    session_run = (
+        db.query(SessionRun)
+        .filter(SessionRun.session_run_id == session_run_id)
+        .first()
+    )
+    if not session_run:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session run not found")
+
+    # Validate that the run belongs to the session named in the path
+    parent_session = db.query(Session).filter(Session.id == session_run.session_id).first()
+    if not parent_session or parent_session.session_id != session_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session run not found")
+
+    # Idempotent: return existing if already submitted
+    existing = (
+        db.query(SessionFeedback)
+        .filter(SessionFeedback.session_run_id == session_run.id)
+        .first()
+    )
+    if existing:
+        return SessionFeedbackResponse(
+            id=existing.id,
+            session_run_id=existing.session_run_id,
+            user_id=existing.user_id,
+            overall_rating=existing.overall_rating,
+            clarity_rating=existing.clarity_rating,
+            helpfulness_rating=existing.helpfulness_rating,
+            engagement_rating=existing.engagement_rating,
+            comments=existing.comments,
+            tags=existing.tags,
+            created_at=existing.created_at,
+        )
+
+    feedback = SessionFeedback(
+        id=_uuid.uuid4(),
+        session_run_id=session_run.id,
+        user_id=current_user.id,
+        avatar_id=parent_session.avatar_id,
+        overall_rating=body.overall_rating,
+        clarity_rating=body.clarity_rating,
+        helpfulness_rating=body.helpfulness_rating,
+        engagement_rating=body.engagement_rating,
+        comments=body.comments,
+        tags=body.tags,
+    )
+    db.add(feedback)
+    try:
+        db.commit()
+        db.refresh(feedback)
+    except IntegrityError:
+        db.rollback()
+        # Concurrent insert won the race — return the existing row
+        existing = (
+            db.query(SessionFeedback)
+            .filter(SessionFeedback.session_run_id == session_run.id)
+            .first()
+        )
+        if not existing:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Feedback already submitted")
+        feedback = existing
+
+    return SessionFeedbackResponse(
+        id=feedback.id,
+        session_run_id=feedback.session_run_id,
+        user_id=feedback.user_id,
+        overall_rating=feedback.overall_rating,
+        clarity_rating=feedback.clarity_rating,
+        helpfulness_rating=feedback.helpfulness_rating,
+        engagement_rating=feedback.engagement_rating,
+        comments=feedback.comments,
+        tags=feedback.tags,
+        created_at=feedback.created_at,
+    )
+
+
+@router.post(
+    "/sessions/{session_id}/runs/{session_run_id}/transcript-feedback",
+    response_model=TranscriptFeedbackResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def submit_transcript_feedback(
+    session_id: str,
+    session_run_id: str,
+    body: TranscriptFeedbackRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Submit inline per-turn transcript feedback (R85).
+
+    Multiple turns can be flagged per run; turn_index identifies the specific turn.
+    A subscriber can update an existing rating for the same turn by submitting again —
+    the existing row is updated in place.
+    """
+    from app.database.models.feedback import TranscriptFeedback
+
+    session_run = (
+        db.query(SessionRun)
+        .filter(SessionRun.session_run_id == session_run_id)
+        .first()
+    )
+    if not session_run:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session run not found")
+
+    # Validate that the run belongs to the session named in the path
+    parent_session = db.query(Session).filter(Session.id == session_run.session_id).first()
+    if not parent_session or parent_session.session_id != session_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session run not found")
+
+    existing = (
+        db.query(TranscriptFeedback)
+        .filter(
+            TranscriptFeedback.session_run_id == session_run.id,
+            TranscriptFeedback.user_id == current_user.id,
+            TranscriptFeedback.turn_index == body.turn_index,
+        )
+        .first()
+    )
+
+    if existing:
+        existing.rating = body.rating
+        existing.comment = body.comment
+        db.commit()
+        db.refresh(existing)
+        row = existing
+    else:
+        import uuid as _uuid
+        row = TranscriptFeedback(
+            id=_uuid.uuid4(),
+            session_run_id=session_run.id,
+            user_id=current_user.id,
+            turn_index=body.turn_index,
+            rating=body.rating,
+            comment=body.comment,
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+
+    return TranscriptFeedbackResponse(
+        id=row.id,
+        session_run_id=row.session_run_id,
+        user_id=row.user_id,
+        turn_index=row.turn_index,
+        rating=row.rating,
+        comment=row.comment,
+        created_at=row.created_at,
+    )
+
+
 @router.get("/sessions/{session_id}/run/{session_run_id}", response_model=SessionRunDetails)
 async def get_session_run(
     session_id: str,
@@ -1017,6 +1357,17 @@ async def get_ephemeral_token(
                 teaching_prompt = (getattr(version, "teaching_prompt", None) or "").strip() or None
                 examination_prompt = (getattr(version, "examination_prompt", None) or "").strip() or None
 
+        # ── Publisher teaching persona ─────────────────────────────────────────
+        refined_prompt: str | None = None
+        if db_session_raw and db_session_raw.avatar_id:
+            avatar_profile = (
+                db.query(PublisherAvatarProfile)
+                .filter(PublisherAvatarProfile.publisher_avatar_id == db_session_raw.avatar_id)
+                .first()
+            )
+            if avatar_profile and avatar_profile.refined_prompt:
+                refined_prompt = avatar_profile.refined_prompt.strip() or None
+
         # ── Session summary + memories ────────────────────────────────────────
         session_summary = get_recent_session_summary(
             db, session_id, exclude_run_id=session_run_id
@@ -1041,6 +1392,7 @@ async def get_ephemeral_token(
             role_context=role_context,
             session_summary=session_summary,
             memories=memories,
+            refined_prompt=refined_prompt,
         )
         return EphemeralTokenResponse(client_secret=token_data["client_secret"])
 

@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import List, Optional, Any
-from pydantic import BaseModel, Field, EmailStr
+from typing import List, Optional, Any, Dict
+from pydantic import BaseModel, Field, EmailStr, field_validator
 import uuid
 from uuid import UUID
 from enum import Enum
@@ -306,6 +306,7 @@ class CourseDetails(BaseModel):
     username: Optional[str] = None
     owner_name: Optional[str] = None
     enrollment_count: Optional[int] = None
+    session_count: Optional[int] = None
     name: Optional[str] = None
     code: Optional[str] = None
     section: Optional[str] = None
@@ -336,6 +337,7 @@ class CourseCreate(BaseModel):
     is_deleted: Optional[bool] = None
     is_public: Optional[bool] = None
     allow_subscriber_sessions: Optional[bool] = False
+    program_id: Optional[UUID] = None
 
 class CourseUpdate(BaseModel):
     user_id: Optional[UUID] = None
@@ -538,6 +540,11 @@ class AvatarTemplateRoleResponse(BaseModel):
     prompt_context: Optional[str] = None
     is_enabled: bool
     sort_order: int
+    # W2A additions — HeyGen overrides and 3-D model suggestion
+    heygen_avatar_id: Optional[str] = None
+    heygen_voice_id: Optional[str] = None
+    default_language: Optional[str] = None
+    suggested_3d_model_id: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime
 
@@ -715,11 +722,19 @@ class PublisherAvatarProfileResponse(BaseModel):
     encouragement_level: Optional[str] = None
     language_level:      Optional[str] = None
     refined_prompt:      Optional[str] = None
+    post_session_quiz_enabled: bool = False
     created_at: datetime
     updated_at: datetime
 
     class Config:
         from_attributes = True
+
+
+class ProfileRefineRequest(BaseModel):
+    teaching_preferences: TeachingPreferences
+    additional_context: Optional[str] = Field(
+        None, max_length=1000, description="Optional freeform context the publisher wants included in the persona."
+    )
 
 
 # ── Avatar ───────────────────────────────────────────────────────
@@ -729,6 +744,7 @@ class AvatarCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     description: Optional[str] = None
     teaching_preferences: Optional[TeachingPreferences] = None
+    program_id: Optional[UUID] = None
 
 class AvatarUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=200)
@@ -1235,3 +1251,544 @@ class SubscriberChatHistoryResponse(BaseModel):
     session_run_id: str
     messages: List[SubscriberChatMessage]
     total: int
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Wave 2A — 3-D Model Catalog & Avatar Variants
+# ═══════════════════════════════════════════════════════════════════
+
+class Avatar3DModelCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = None
+    file_path: Optional[str] = Field(None, max_length=500)
+    preview_image_path: Optional[str] = Field(None, max_length=500)
+
+
+class Avatar3DModelUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[str] = None
+    file_path: Optional[str] = Field(None, max_length=500)
+    preview_image_path: Optional[str] = Field(None, max_length=500)
+    is_active: Optional[bool] = None
+
+
+class Avatar3DModelResponse(BaseModel):
+    id: UUID
+    name: str
+    description: Optional[str] = None
+    file_path: Optional[str] = None
+    preview_image_path: Optional[str] = None
+    is_active: bool
+    created_by: Optional[UUID] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class Avatar3DModelsListResponse(BaseModel):
+    models: List[Avatar3DModelResponse]
+    total: int
+
+
+class AvatarVariantCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = None
+    model_3d_id: Optional[UUID] = None
+    heygen_avatar_id: Optional[str] = Field(None, max_length=200)
+    heygen_voice_id: Optional[str] = Field(None, max_length=200)
+    language: Optional[str] = Field("en", max_length=50)
+    is_default: bool = False
+    sort_order: int = Field(0, ge=0)
+
+
+class AvatarVariantUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[str] = None
+    model_3d_id: Optional[UUID] = None
+    heygen_avatar_id: Optional[str] = Field(None, max_length=200)
+    heygen_voice_id: Optional[str] = Field(None, max_length=200)
+    language: Optional[str] = Field(None, max_length=50)
+    is_default: Optional[bool] = None
+    sort_order: Optional[int] = Field(None, ge=0)
+
+
+class AvatarVariantResponse(BaseModel):
+    id: UUID
+    avatar_id: UUID
+    name: str
+    description: Optional[str] = None
+    model_3d_id: Optional[UUID] = None
+    heygen_avatar_id: Optional[str] = None
+    heygen_voice_id: Optional[str] = None
+    language: Optional[str] = None
+    is_default: bool
+    sort_order: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AvatarVariantsListResponse(BaseModel):
+    variants: List[AvatarVariantResponse]
+    total: int
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Wave 2B — Programs System
+# ═══════════════════════════════════════════════════════════════════
+
+class ProgramCreate(BaseModel):
+    name: Dict[str, str] = Field(..., description="Program name in multiple languages, e.g. {'en': '...', 'ar': '...'}")
+    slug: str = Field(..., min_length=1, max_length=200)
+    description: Optional[Dict[str, str]] = None
+    theme_config: Optional[Dict[str, Any]] = None
+    is_public: Optional[bool] = False
+
+
+class ProgramUpdate(BaseModel):
+    name: Optional[Dict[str, str]] = None
+    slug: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[Dict[str, str]] = None
+    theme_config: Optional[Dict[str, Any]] = None
+    is_public: Optional[bool] = None
+    is_active: Optional[bool] = None
+
+
+class ProgramResponse(BaseModel):
+    id: UUID
+    name: Dict[str, str]
+    slug: Optional[str] = None
+    description: Optional[Dict[str, str]] = None
+    theme_config: Optional[Dict[str, Any]] = None
+    is_public: Optional[bool] = False
+    publisher_id: Optional[UUID] = None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def coerce_name(cls, v: Any) -> Dict[str, str]:
+        if isinstance(v, str):
+            return {"en": v, "ar": v}
+        return v
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def coerce_description(cls, v: Any) -> Optional[Dict[str, str]]:
+        if isinstance(v, str):
+            return {"en": v, "ar": v}
+        return v
+
+    class Config:
+        from_attributes = True
+
+
+class ProgramsListResponse(BaseModel):
+    programs: List[ProgramResponse]
+    total: int
+
+
+class ProgramMembershipResponse(BaseModel):
+    id: UUID
+    program_id: UUID
+    user_id: UUID
+    role: str
+    joined_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ProgramAvatarResponse(BaseModel):
+    id: UUID
+    program_id: UUID
+    avatar_id: UUID
+    added_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ProgramCourseResponse(BaseModel):
+    id: UUID
+    program_id: UUID
+    course_id: UUID
+    added_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ProgramAddAvatarRequest(BaseModel):
+    avatar_id: UUID
+
+
+class ProgramAddCourseRequest(BaseModel):
+    course_id: UUID
+
+
+class SetUserProgramRequest(BaseModel):
+    program_id: Optional[UUID] = None
+
+
+class AdminSetUserRoleRequest(BaseModel):
+    role: str = Field(..., pattern="^(admin|publisher|subscriber)$")
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Wave 2C — GDPR Compliance
+# ═══════════════════════════════════════════════════════════════════
+
+class UserAgreementCreate(BaseModel):
+    agreement_type: str = Field(..., description="terms | privacy | gdpr | marketing")
+
+
+class UserAgreementResponse(BaseModel):
+    id: UUID
+    user_id: UUID
+    agreement_type: str
+    agreed_at: datetime
+    ip_address: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class UserDataExportResponse(BaseModel):
+    user: dict
+    agreements: List[dict]
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Wave 3 — Avatar–Course Join + Access Codes
+# ═══════════════════════════════════════════════════════════════════
+
+# ── Avatar–Course join (R50) ──────────────────────────────────────
+
+class AvatarCourseAddRequest(BaseModel):
+    course_id: UUID
+    sort_order: int = Field(0, ge=0)
+
+
+class AvatarCourseResponse(BaseModel):
+    id: UUID
+    avatar_id: UUID
+    course_id: UUID
+    sort_order: int
+    added_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AvatarCoursesListResponse(BaseModel):
+    courses: List[AvatarCourseResponse]
+    total: int
+
+
+# ── Avatar access codes (R46, R47, R49) ──────────────────────────
+
+class AvatarAccessCodeCreate(BaseModel):
+    max_users: int = Field(..., ge=1, description="Maximum number of subscribers who may redeem this code")
+    credits_per_user: Decimal = Field(Decimal("0"), ge=0, description="Credits granted to each subscriber on redemption")
+    expires_at: Optional[datetime] = None
+
+
+class AvatarAccessCodeUpdate(BaseModel):
+    max_users: Optional[int] = Field(None, ge=1)
+    is_active: Optional[bool] = None
+
+
+class AvatarAccessCodeResponse(BaseModel):
+    id: UUID
+    avatar_id: UUID
+    created_by: Optional[UUID] = None
+    code: str
+    max_users: int
+    users_count: int
+    credits_per_user: Decimal
+    is_active: bool
+    expires_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AvatarAccessCodesListResponse(BaseModel):
+    codes: List[AvatarAccessCodeResponse]
+    total: int
+
+
+# ── Avatar access code redemption (R48) ──────────────────────────
+
+class AvatarCodeRedeemRequest(BaseModel):
+    code: str = Field(..., min_length=1, max_length=64)
+
+
+class AvatarCodeRedeemResponse(BaseModel):
+    success: bool
+    code: str
+    avatar_id: UUID
+    subscription_created: bool
+    credits_granted: Decimal
+    courses_enrolled: List[UUID]
+    programs_enrolled: List[UUID]
+    message: str
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Wave 4 — Variant-Based Session Runtime (Phase 5)
+# ═══════════════════════════════════════════════════════════════════
+
+class SearchKnowledgeRequest(BaseModel):
+    query: str = Field(..., min_length=1, max_length=1000)
+    top_k: int = Field(5, ge=1, le=20)
+
+
+class KnowledgeChunk(BaseModel):
+    slide_number: Optional[int] = None
+    chunk_index: Optional[int] = None
+    content: str
+    score: float
+    source: str  # "slide" | "course_material"
+
+
+class SearchKnowledgeResponse(BaseModel):
+    query: str
+    results: List[KnowledgeChunk]
+    total: int
+
+
+class FlagTopicRequest(BaseModel):
+    topic: str = Field(..., min_length=1, max_length=500)
+    context: Optional[str] = Field(None, max_length=2000)
+
+
+class FlagTopicResponse(BaseModel):
+    session_run_id: str
+    topic: str
+    flagged_at: datetime
+    message: str
+
+
+class PatchSessionRoleRequest(BaseModel):
+    """Request body for PATCH /sessions/{id}/role — at least one of role_id or variant_id required."""
+    role_id: Optional[str] = None
+    variant_id: Optional[UUID] = None
+    session_run_id: Optional[str] = None
+
+
+class VariantSwitchRequest(BaseModel):
+    variant_id: UUID
+    session_run_id: Optional[str] = None  # when provided, logs to session_persona_switches
+
+
+class VariantSwitchResponse(BaseModel):
+    session_id: str
+    variant_id: UUID
+    variant_name: str
+    language: Optional[str] = None
+    switched_at: datetime
+
+
+# ── Wave 6: Feedback ─────────────────────────────────────────────────────────
+
+class SessionFeedbackRequest(BaseModel):
+    overall_rating: Optional[int] = Field(None, ge=1, le=5)
+    clarity_rating: Optional[int] = Field(None, ge=1, le=5)
+    helpfulness_rating: Optional[int] = Field(None, ge=1, le=5)
+    engagement_rating: Optional[int] = Field(None, ge=1, le=5)
+    comments: Optional[str] = Field(None, max_length=2000)
+    tags: Optional[List[str]] = None
+
+
+class SessionFeedbackResponse(BaseModel):
+    id: UUID
+    session_run_id: UUID
+    user_id: UUID
+    overall_rating: Optional[int] = None
+    clarity_rating: Optional[int] = None
+    helpfulness_rating: Optional[int] = None
+    engagement_rating: Optional[int] = None
+    comments: Optional[str] = None
+    tags: Optional[List[str]] = None
+    created_at: datetime
+
+
+class TranscriptFeedbackRequest(BaseModel):
+    turn_index: int = Field(..., ge=0)
+    rating: Optional[str] = Field(None, pattern="^(helpful|incorrect|unclear|other)$")
+    comment: Optional[str] = Field(None, max_length=1000)
+
+
+class TranscriptFeedbackResponse(BaseModel):
+    id: UUID
+    session_run_id: UUID
+    user_id: UUID
+    turn_index: int
+    rating: Optional[str] = None
+    comment: Optional[str] = None
+    created_at: datetime
+
+
+# ── Wave 6: Analytics ────────────────────────────────────────────────────────
+
+class CourseProgressSummary(BaseModel):
+    course_id: UUID
+    course_name: str
+    completion_pct: float
+    time_spent_sec: int
+    last_session_at: Optional[datetime] = None
+
+
+class AssessmentSummary(BaseModel):
+    session_run_id: UUID
+    score: Optional[float] = None
+    question_count: int
+    generated_at: datetime
+
+
+class MonthlyCompletion(BaseModel):
+    month: str
+    value: int
+
+
+class CoursePerformance(BaseModel):
+    name: dict[str, str]
+    completion: int
+    subscribers: int
+
+
+class AtRiskSubscriber(BaseModel):
+    name: dict[str, str]
+    course: dict[str, str]
+    progress: int
+
+
+class SubscriberAnalyticsResponse(BaseModel):
+    user_id: UUID
+    total_sessions_completed: int
+    total_time_spent_sec: int
+    course_progress: List[CourseProgressSummary]
+    recent_assessments: List[AssessmentSummary]
+    average_session_rating: Optional[float] = None
+
+
+class AvatarAnalyticsSummary(BaseModel):
+    avatar_id: UUID
+    avatar_name: str
+    total_subscribers: int
+    active_subscribers: int
+    total_session_runs: int
+    avg_session_duration_sec: Optional[float] = None
+    avg_rating: Optional[float] = None
+
+
+class CourseAnalyticsSummary(BaseModel):
+    course_id: UUID
+    course_name: str
+    enrolled_count: int
+    avg_completion_pct: float
+    total_session_runs: int
+
+
+class PublisherAnalyticsResponse(BaseModel):
+    publisher_id: UUID
+    total_avatars: int
+    total_courses: int
+    avatar_stats: List[AvatarAnalyticsSummary]
+    course_stats: List[CourseAnalyticsSummary]
+    total_credits_earned: float
+    monthly_completions: List[MonthlyCompletion] = []
+    course_performance: List[CoursePerformance] = []
+    at_risk_learners: List[AtRiskSubscriber] = []
+
+
+class AdminAnalyticsResponse(BaseModel):
+    total_users: int
+    total_publishers: int
+    total_subscribers: int
+    total_avatars: int
+    total_courses: int
+    total_session_runs: int
+    total_credits_issued: float
+    total_credits_consumed: float
+    sessions_last_7_days: int
+    sessions_last_30_days: int
+    monthly_completions: List[MonthlyCompletion] = []
+    course_performance: List[CoursePerformance] = []
+    at_risk_learners: List[AtRiskSubscriber] = []
+
+
+# ── Wave 7: AI Navigation Assistant ──────────────────────────────────────────
+
+class AssistantMessageResponse(BaseModel):
+    id: UUID
+    role: str
+    content: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AssistantConversationSummary(BaseModel):
+    id: UUID
+    title: str
+    context_type: str
+    avatar_id: Optional[UUID] = None
+    program_id: Optional[UUID] = None
+    message_count: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AssistantConversationDetail(BaseModel):
+    id: UUID
+    title: str
+    context_type: str
+    avatar_id: Optional[UUID] = None
+    program_id: Optional[UUID] = None
+    messages: List[AssistantMessageResponse]
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AssistantConversationListResponse(BaseModel):
+    conversations: List[AssistantConversationSummary]
+    total: int
+
+
+class AssistantConversationCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255)
+    avatar_id: Optional[UUID] = None
+    program_id: Optional[UUID] = None
+    context_type: str = Field("auto", pattern="^(publisher|subscriber|admin|auto)$")
+
+
+class AssistantChatRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=8000)
+    conversation_id: Optional[UUID] = None
+    avatar_id: Optional[UUID] = None
+    program_id: Optional[UUID] = None
+
+
+class AssistantChatResponse(BaseModel):
+    conversation_id: UUID
+    message_id: UUID
+    reply: str
+    turn_number: int
+    created_at: datetime
