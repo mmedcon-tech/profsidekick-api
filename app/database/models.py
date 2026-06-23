@@ -859,11 +859,18 @@ class SAESubmission(Base):
     overall_confidence     = Column(String(50), nullable=True)
     review_required        = Column(Boolean, nullable=False, default=False)
     result_json            = Column(JSONB, nullable=True)
+    # Instructor-edited copy; NULL until the first publisher edit.
+    # result_json holds the original LLM output and is never overwritten.
+    edited_result_json     = Column(JSONB, nullable=True)
+    last_edited_at         = Column(DateTime, nullable=True)
+    last_edited_by         = Column(UUID(as_uuid=True),
+                                    ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at             = Column(DateTime, default=datetime.utcnow)
     updated_at             = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     student        = relationship("SAEStudent", back_populates="submission")
     publisher_user = relationship("User", foreign_keys=[publisher_user_id])
+    last_editor    = relationship("User", foreign_keys=[last_edited_by])
 
 
 class Student(Base):
