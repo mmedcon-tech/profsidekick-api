@@ -1492,14 +1492,24 @@ async def get_ephemeral_token(
         )
         # ── Build avatar display config from variant_snapshot ─────────────────
         snapshot = getattr(session_run, "variant_snapshot", None) or {}
-        render_type = snapshot.get("render_type", "static")
         model_url = snapshot.get("model_url")
         heygen_id = snapshot.get("heygen_avatar_id")
         variant_name = snapshot.get("name")
         language = snapshot.get("language", "en")
 
-        # If model_url is still missing (old snapshot without model_url field),
-        # look it up from avatar_3d_models now.
+        # Infer render_type for old snapshots that predate the render_type field.
+        # New snapshots (build_variant_snapshot with db) already have it set.
+        if "render_type" in snapshot:
+            render_type = snapshot["render_type"]
+        elif snapshot.get("model_3d_id"):
+            render_type = "3d"
+        elif snapshot.get("heygen_avatar_id"):
+            render_type = "heygen"
+        else:
+            render_type = "static"
+
+        # Resolve model URL for 3D renders — handles both old snapshots (no model_url)
+        # and new ones where model_url was already stored at snapshot time.
         if render_type == "3d" and not model_url and snapshot.get("model_3d_id"):
             from app.database.models.variants import Avatar3DModel as _A3DM
             m3d = db.query(_A3DM).filter(_A3DM.id == snapshot["model_3d_id"]).first()
