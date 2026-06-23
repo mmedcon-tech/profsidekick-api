@@ -381,6 +381,67 @@ async def update_session(
             detail=f"Error updating session: {e}",
         )
 
+@router.get("/sessions/{session_id}/eligibility")
+async def check_session_eligibility(
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Lightweight pre-flight check for subscribers: returns whether the user can
+    start this session and a list of human-readable blocking issues.
+    Publishers/admins always get eligible=True.
+    """
+    issues = []
+
+    db_session = db.query(Session).filter(Session.session_id == session_id).first()
+    if not db_session:
+        return {"eligible": False, "issues": [{"code": "not_found", "message": "Session not found."}]}
+
+    if current_user.role in ("publisher", "admin"):
+        return {"eligible": True, "issues": []}
+
+    # Gate 1: course must allow subscriber sessions
+    course = db_session.course
+    if not course:
+        issues.append({"code": "no_course", "message": "Session has no associated course."})
+        return {"eligible": False, "issues": issues}
+
+    if not course.allow_subscriber_sessions:
+        issues.append({"code": "course_disabled", "message": "This course does not allow sessions."})
+
+    # Gate 2: enrolled
+    enrolled = db.query(CourseStudent).filter_by(
+        course_id=db_session.course_id,
+        user_id=current_user.id,
+    ).first()
+    if not enrolled:
+        issues.append({"code": "not_enrolled", "message": "You are not enrolled in this course."})
+
+    # Gate 3: published
+    if not getattr(db_session, "is_published", False):
+        issues.append({"code": "not_published", "message": "This session has not been published yet."})
+
+    # Gate 4: subscription (only meaningful if enrolled and published)
+    if not issues:
+        try:
+            session_resolution_service.resolve_session_avatar(db_session, current_user.id, db)
+        except HTTPException as e:
+            if e.status_code == status.HTTP_403_FORBIDDEN:
+                issues.append({"code": "no_subscription", "message": e.detail})
+
+    # Gate 5: credits
+    from app.services import billing_service as _billing
+    balance_info = _billing.get_active_balance(current_user.id, db)
+    if balance_info["balance"] <= 0:
+        issues.append({
+            "code": "no_credits",
+            "message": "You have no credits. Redeem an access code to start a session.",
+        })
+
+    return {"eligible": len(issues) == 0, "issues": issues}
+
+
 @router.patch("/sessions/{session_id}/publish")
 async def set_session_published(
     session_id: str,
