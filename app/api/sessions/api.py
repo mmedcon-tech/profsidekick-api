@@ -862,7 +862,7 @@ async def start_session_run(
                 _dv = resolve_default_variant(db_session_raw.avatar_id, db)
                 if _dv:
                     session_run.avatar_variant_id = _dv.id
-                    session_run.variant_snapshot = build_variant_snapshot(_dv)
+                    session_run.variant_snapshot = build_variant_snapshot(_dv, db)
                     db.commit()
         except Exception as _ve:
             logger.warning("Could not snapshot avatar variant for run %s: %s", session_run.session_run_id, _ve)
@@ -1490,7 +1490,44 @@ async def get_ephemeral_token(
             memories=memories,
             refined_prompt=refined_prompt,
         )
-        return EphemeralTokenResponse(client_secret=token_data["client_secret"])
+        # ── Build avatar display config from variant_snapshot ─────────────────
+        snapshot = getattr(session_run, "variant_snapshot", None) or {}
+        render_type = snapshot.get("render_type", "static")
+        model_url = snapshot.get("model_url")
+        heygen_id = snapshot.get("heygen_avatar_id")
+        variant_name = snapshot.get("name")
+        language = snapshot.get("language", "en")
+
+        # If model_url is still missing (old snapshot without model_url field),
+        # look it up from avatar_3d_models now.
+        if render_type == "3d" and not model_url and snapshot.get("model_3d_id"):
+            from app.database.models.variants import Avatar3DModel as _A3DM
+            m3d = db.query(_A3DM).filter(_A3DM.id == snapshot["model_3d_id"]).first()
+            if m3d:
+                model_url = getattr(m3d, "model_url", None) or getattr(m3d, "file_path", None)
+
+        # Avatar image (static fallback) — lives on AvatarTemplate, not Avatar
+        avatar_image_url: str | None = None
+        if db_session_raw and db_session_raw.avatar_id:
+            _av = db.query(Avatar).filter(Avatar.id == db_session_raw.avatar_id).first()
+            if _av and _av.template_id:
+                _tmpl = db.query(AvatarTemplate).filter(AvatarTemplate.id == _av.template_id).first()
+                if _tmpl:
+                    avatar_image_url = _tmpl.avatar_image_path
+            if not avatar_image_url and _av:
+                avatar_image_url = getattr(_av, "avatar_image_path", None)
+
+        return EphemeralTokenResponse(
+            client_secret=token_data["client_secret"],
+            avatar_render_type=render_type,
+            avatar_name=variant_name,
+            avatar_image_url=avatar_image_url,
+            glb_library_id=model_url,
+            heygen_avatar_id=heygen_id,
+            heygen_quality="high",
+            session_language=language,
+            session_mode=session_mode,
+        )
 
     except HTTPException:
         raise
