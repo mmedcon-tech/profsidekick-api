@@ -1492,13 +1492,14 @@ async def get_ephemeral_token(
         )
         # ── Build avatar display config from variant_snapshot ─────────────────
         snapshot = getattr(session_run, "variant_snapshot", None) or {}
+        logger.info(f"🎭 variant_snapshot for run {session_run_id}: {snapshot}")
+
         model_url = snapshot.get("model_url")
         heygen_id = snapshot.get("heygen_avatar_id")
         variant_name = snapshot.get("name")
         language = snapshot.get("language", "en")
 
-        # Infer render_type for old snapshots that predate the render_type field.
-        # New snapshots (build_variant_snapshot with db) already have it set.
+        # Infer render_type — handles old snapshots that predate the render_type field.
         if "render_type" in snapshot:
             render_type = snapshot["render_type"]
         elif snapshot.get("model_3d_id"):
@@ -1508,13 +1509,47 @@ async def get_ephemeral_token(
         else:
             render_type = "static"
 
-        # Resolve model URL for 3D renders — handles both old snapshots (no model_url)
-        # and new ones where model_url was already stored at snapshot time.
-        if render_type == "3d" and not model_url and snapshot.get("model_3d_id"):
-            from app.database.models.variants import Avatar3DModel as _A3DM
-            m3d = db.query(_A3DM).filter(_A3DM.id == snapshot["model_3d_id"]).first()
-            if m3d:
-                model_url = getattr(m3d, "model_url", None) or getattr(m3d, "file_path", None)
+        # Fallback: if snapshot is empty / missing 3D info, resolve from the live
+        # avatar_variant row (handles session runs created before snapshot was enriched).
+        if render_type == "static" and not snapshot:
+            _variant_id = getattr(session_run, "avatar_variant_id", None)
+            if not _variant_id and db_session_raw and db_session_raw.avatar_id:
+                from app.services.avatar_variant_service import resolve_default_variant as _rdv
+                _fallback_v = _rdv(db_session_raw.avatar_id, db)
+                if _fallback_v:
+                    _variant_id = _fallback_v.id
+                    variant_name = variant_name or _fallback_v.name
+                    language = language or _fallback_v.language or "en"
+            if _variant_id:
+                from app.database.models.variants import AvatarVariant as _AV
+                _v = db.query(_AV).filter(_AV.id == _variant_id).first()
+                if _v:
+                    variant_name = variant_name or _v.name
+                    language = _v.language or language
+                    if _v.model_3d_id:
+                        render_type = "3d"
+                        heygen_id = None
+                    elif _v.heygen_avatar_id:
+                        render_type = "heygen"
+                        heygen_id = _v.heygen_avatar_id
+
+        # Resolve model URL for 3D renders — covers both old snapshots (no model_url)
+        # and the live fallback path above.
+        if render_type == "3d" and not model_url:
+            from app.database.models.variants import AvatarVariant as _AV2, Avatar3DModel as _A3DM
+            _model_3d_id = snapshot.get("model_3d_id")
+            if not _model_3d_id:
+                _vid = getattr(session_run, "avatar_variant_id", None)
+                if _vid:
+                    _vrow = db.query(_AV2).filter(_AV2.id == _vid).first()
+                    if _vrow:
+                        _model_3d_id = str(_vrow.model_3d_id) if _vrow.model_3d_id else None
+            if _model_3d_id:
+                m3d = db.query(_A3DM).filter(_A3DM.id == _model_3d_id).first()
+                if m3d:
+                    model_url = getattr(m3d, "model_url", None) or getattr(m3d, "file_path", None)
+
+        logger.info(f"🎭 resolved → render_type={render_type}, model_url={model_url}, variant_name={variant_name}")
 
         # Avatar image (static fallback) — lives on AvatarTemplate, not Avatar
         avatar_image_url: str | None = None

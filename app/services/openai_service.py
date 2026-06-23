@@ -183,21 +183,13 @@ class OpenAIService:
                 raise Exception(response.text)
 
             raw = response.json()
-            print(f"🔑 GA client_secrets raw response keys: {list(raw.keys())}")
-            cs = raw.get("client_secret", {})
-            print(f"🔑 client_secret keys: {list(cs.keys()) if isinstance(cs, dict) else cs}")
-            # GA API token key may be "secret", "value", or "token" depending on version
-            token_value = (
-                cs.get("secret")
-                or cs.get("value")
-                or cs.get("token")
-                or raw.get("value")   # top-level fallback
-                or ""
-            )
-            expires_at = cs.get("expires_at", 0)
+            # GA API response: {"value": "ek_...", "expires_at": 1234, "session": {...}}
+            # Token is at the top level, not nested under client_secret
+            token_value = raw.get("value", "")
+            expires_at = raw.get("expires_at", 0)
             used_model = raw.get("session", {}).get("model") or model
             if not token_value:
-                print(f"⚠️  Could not extract token from response: {raw}")
+                print(f"⚠️  Could not extract token — raw keys: {list(raw.keys())}")
             return {
                 "client_secret": {"value": token_value, "expires_at": expires_at},
                 "model": used_model,
