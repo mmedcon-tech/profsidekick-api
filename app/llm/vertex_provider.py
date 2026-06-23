@@ -5,7 +5,7 @@ import time
 import vertexai
 from vertexai.generative_models import GenerationConfig, GenerativeModel, Part
 
-from app.llm.errors import FatalError, RetryableError
+from app.llm.errors import RetryableError
 from app.llm.provider import GradingResult, LLMProvider, StudentFiles
 from app.services.gemini_file_cache import autograder_cache
 
@@ -82,15 +82,18 @@ class VertexAIProvider(LLMProvider):
             msg = str(exc)
             print(
                 f"[TRACE] vertex_error elapsed_ms={elapsed_ms} "
-                f"model={self._model_name} error={msg[:200]}"
+                f"model={self._model_name} error={msg}"
             )
             lower = msg.lower()
+
+            # Quota / rate-limit / transient infra errors — retryable on same provider.
             if any(k in lower for k in (
                 "quota", "rate", "503", "502", "429", "unavailable",
                 "resource exhausted", "deadline exceeded",
             )):
-                raise RetryableError(f"{self.name}: {msg[:300]}")
-            # GCS URI access failure — retry with inline fallback if we were using GCS.
+                raise RetryableError(f"{self.name}: {msg}")
+
+            # GCS URI access failure — retry once with inline base64, then fall through.
             if using_gcs and any(k in lower for k in (
                 "permission denied", "not found", "invalid", "access"
             )):
@@ -108,9 +111,15 @@ class VertexAIProvider(LLMProvider):
                         f"[TRACE] vertex_inline_fallback_ok elapsed_ms={elapsed_ms}"
                     )
                 except Exception as exc2:
-                    raise FatalError(f"{self.name} (inline fallback): {str(exc2)[:300]}")
+                    # Inline fallback also failed — surface full error, fall through to
+                    # Gemini Pro in the FallbackProvider chain.
+                    raise RetryableError(
+                        f"{self.name} (inline fallback after GCS failure): {exc2}"
+                    )
             else:
-                raise FatalError(f"{self.name}: {msg[:300]}")
+                # All other errors (auth, content filter, bad response, etc.) —
+                # surface the full error and let FallbackProvider move to Gemini Pro.
+                raise RetryableError(f"{self.name}: {msg}")
 
         return self._parse_response(response)
 
@@ -119,15 +128,34 @@ class VertexAIProvider(LLMProvider):
     # ------------------------------------------------------------------
 
     def _build_parts(self, student_files: StudentFiles) -> list:
-        """Use GCS URIs for static files when available; fall back to inline."""
+        """
+        Build the content parts list for the Vertex AI request.
+
+        Static reference PDFs (rubric, solution, WebAssign solution) use GCS URI
+        references (gs://bucket/path) when GCS_STATIC_BUCKET is configured — the
+        same concept as Gemini Pro's Files API URIs, just GCS-backed.  When GCS is
+        not configured they are sent as inline base64 instead.
+
+        Student files (handwritten exam, WebAssign submission) are always inline
+        base64 — identical to how GeminiProvider handles student files.
+        """
         gcs = autograder_cache.vertex_gcs_uris
         if gcs.get("rubric"):
+            print(
+                f"[TRACE] vertex_using_gcs_uris "
+                f"rubric={gcs['rubric'][:60]} "
+                f"model={self._model_name}"
+            )
             static_parts = [
                 Part.from_uri(gcs["rubric"], mime_type="application/pdf"),
                 Part.from_uri(gcs["webassign_solution"], mime_type="application/pdf"),
                 Part.from_uri(gcs["solution"], mime_type="application/pdf"),
             ]
         else:
+            print(
+                f"[TRACE] vertex_using_inline_base64 "
+                f"reason='no GCS URIs configured' model={self._model_name}"
+            )
             static_parts = self._inline_static_parts()
 
         return [
@@ -165,18 +193,18 @@ class VertexAIProvider(LLMProvider):
         try:
             raw_output = response.text
         except Exception as exc:
-            raise FatalError(
+            raise RetryableError(
                 f"{self.name}: Could not extract text from Vertex AI response: {exc}"
             )
 
         if not raw_output:
-            raise FatalError(f"{self.name}: Model returned empty content.")
+            raise RetryableError(f"{self.name}: Model returned empty content.")
 
         cleaned = raw_output.replace("```json", "").replace("```", "").strip()
         try:
             parsed = json.loads(cleaned)
         except json.JSONDecodeError as exc:
-            raise FatalError(
+            raise RetryableError(
                 f"{self.name}: Invalid JSON at line {exc.lineno}, col {exc.colno}: {exc.msg}"
             )
 

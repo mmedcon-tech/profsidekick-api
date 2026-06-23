@@ -1,16 +1,19 @@
 """
 Publisher-only SAE management routes.
 
-POST /api/sae/publisher/students/batch          → pre-generate N students + tokens
-GET  /api/sae/publisher/students                → list all students with status
-GET  /api/sae/publisher/students/{student_id}   → single student detail + submission
-POST /api/sae/publisher/students/{student_id}/submit → submit on behalf of a student
+POST  /api/sae/publisher/students/batch                   → pre-generate N students + tokens
+GET   /api/sae/publisher/students                         → list all students with status
+GET   /api/sae/publisher/students/{student_id}            → single student detail + submission
+POST  /api/sae/publisher/students/{student_id}/submit     → submit on behalf of a student
+PATCH /api/sae/publisher/students/{student_id}/submission → instructor edits to grading result
 """
 
 import uuid
-from typing import Optional
+from pathlib import Path
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
@@ -21,7 +24,8 @@ from app.schemas.sae import (
     SAEBatchCreateResponse,
     SAEStudentDetail,
     SAEStudentRow,
-    SAESubmissionResult,
+    SAESubmissionEditRequest,
+    SAESubmissionResultPublisher,
 )
 from app.services import sae_service
 from app.services.gemini_file_cache import autograder_cache
@@ -67,6 +71,24 @@ def _student_to_row(student: SAEStudent, db: Session) -> SAEStudentRow:
     )
 
 
+def _sub_to_result_publisher(sub: SAESubmission) -> SAESubmissionResultPublisher:
+    """Build the publisher-facing submission result with edit metadata."""
+    effective_rj = sae_service.get_effective_result_json(sub)
+    return SAESubmissionResultPublisher(
+        id=sub.id,
+        score=sub.score,
+        overall_confidence=sub.overall_confidence,
+        review_required=sub.review_required,
+        result_json=effective_rj,
+        submitted_by_publisher=sub.submitted_by_publisher,
+        created_at=sub.created_at,
+        is_edited=sub.edited_result_json is not None,
+        last_edited_at=sub.last_edited_at,
+        handwritten_filename=sub.handwritten_filename,
+        webassign_filename=sub.webassign_filename,
+    )
+
+
 def _student_to_detail(student: SAEStudent, db: Session) -> SAEStudentDetail:
     inv = student.invitation
     sub = student.submission
@@ -81,19 +103,7 @@ def _student_to_detail(student: SAEStudent, db: Session) -> SAEStudentDetail:
         activated_at=student.activated_at,
         has_submitted=student.has_submitted,
         submitted_at=student.submitted_at,
-        submission=_sub_to_result(sub) if sub else None,
-    )
-
-
-def _sub_to_result(sub: SAESubmission) -> SAESubmissionResult:
-    return SAESubmissionResult(
-        id=sub.id,
-        score=sub.score,
-        overall_confidence=sub.overall_confidence,
-        review_required=sub.review_required,
-        result_json=sub.result_json,
-        submitted_by_publisher=sub.submitted_by_publisher,
-        created_at=sub.created_at,
+        submission=_sub_to_result_publisher(sub) if sub else None,
     )
 
 
@@ -149,7 +159,7 @@ def get_student(
     return _student_to_detail(student, db)
 
 
-@router.post("/students/{student_id}/submit", response_model=SAESubmissionResult)
+@router.post("/students/{student_id}/submit", response_model=SAESubmissionResultPublisher)
 async def submit_on_behalf(
     student_id: str,
     student_answer: UploadFile = File(..., description="Handwritten exam PDF"),
@@ -189,4 +199,81 @@ async def submit_on_behalf(
         submitted_by_publisher=True,
         publisher_user_id=publisher.id,
     )
-    return _sub_to_result(submission)
+    return _sub_to_result_publisher(submission)
+
+
+@router.patch("/students/{student_id}/submission", response_model=SAESubmissionResultPublisher)
+def edit_submission(
+    student_id: str,
+    body: SAESubmissionEditRequest,
+    publisher: User = Depends(require_publisher),
+    db: Session = Depends(get_db),
+):
+    """
+    Instructor edits to a grading result.
+
+    Only overall_feedback and per-question score/feedback are editable.
+    The original LLM output (result_json) is preserved; edits are stored
+    separately in edited_result_json and become the canonical grade shown
+    to both publisher and student.
+    Recalculates the total score from the updated per-question scores.
+    """
+    student = _require_own_student(student_id, publisher, db)
+
+    if not student.submission:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail="This student has no submission to edit.",
+        )
+
+    question_edits = (
+        [{"id": qe.id, "score": qe.score, "feedback": qe.feedback}
+         for qe in body.questions]
+        if body.questions else []
+    )
+
+    updated = sae_service.update_submission_edit(
+        db=db,
+        submission=student.submission,
+        overall_feedback=body.overall_feedback,
+        question_edits=question_edits,
+        editor_id=publisher.id,
+    )
+    return _sub_to_result_publisher(updated)
+
+
+@router.get("/students/{student_id}/files/{file_type}")
+def get_student_file(
+    student_id: str,
+    file_type: Literal["handwritten", "webassign"],
+    publisher: User = Depends(require_publisher),
+    db: Session = Depends(get_db),
+):
+    """
+    Stream a student's submitted PDF to the publisher.
+    Ownership is verified — publishers can only access their own students' files.
+    """
+    student = _require_own_student(student_id, publisher, db)
+    sub = student.submission
+    if not sub:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="No submission found for this student.")
+
+    if file_type == "handwritten":
+        file_path = sub.handwritten_file_path
+        filename = sub.handwritten_filename or "handwritten.pdf"
+    else:
+        file_path = sub.webassign_file_path
+        filename = sub.webassign_filename or "webassign.pdf"
+
+    if not file_path:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File path not recorded for this submission.")
+
+    disk_path = Path(file_path)
+    if not disk_path.exists():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File not found on server.")
+
+    return FileResponse(
+        path=str(disk_path),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
