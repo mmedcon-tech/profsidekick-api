@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 from PIL import Image
 import json
 import os
@@ -14,7 +15,7 @@ from app.database.connection import get_db
 from app.database.models import (
     Session, SessionRun, SessionRunStatus, User,
     Avatar, AvatarSubscription, AvatarTemplate, AvatarTemplateVersion, AvatarTemplateRole,
-    Course, CourseStudent, PublisherAvatarProfile,
+    Course, CourseStudent, PublisherAvatarProfile, AvatarConfiguration,
 )
 from app.database.models.feedback import SessionPersonaSwitch
 from app.services.summarization_service import (
@@ -379,6 +380,101 @@ async def update_session(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error updating session: {e}",
         )
+
+@router.get("/sessions/{session_id}/eligibility")
+async def check_session_eligibility(
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Lightweight pre-flight check for subscribers: returns whether the user can
+    start this session and a list of human-readable blocking issues.
+    Publishers/admins always get eligible=True.
+    """
+    issues = []
+
+    db_session = db.query(Session).filter(Session.session_id == session_id).first()
+    if not db_session:
+        return {"eligible": False, "issues": [{"code": "not_found", "message": "Session not found."}]}
+
+    if current_user.role in ("publisher", "admin"):
+        return {"eligible": True, "issues": []}
+
+    # Gate 1: course must allow subscriber sessions
+    course = db_session.course
+    if not course:
+        issues.append({"code": "no_course", "message": "Session has no associated course."})
+        return {"eligible": False, "issues": issues}
+
+    if not course.allow_subscriber_sessions:
+        issues.append({"code": "course_disabled", "message": "This course does not allow sessions."})
+
+    # Gate 2: enrolled
+    enrolled = db.query(CourseStudent).filter_by(
+        course_id=db_session.course_id,
+        user_id=current_user.id,
+    ).first()
+    if not enrolled:
+        issues.append({"code": "not_enrolled", "message": "You are not enrolled in this course."})
+
+    # Gate 3: published
+    if not getattr(db_session, "is_published", False):
+        issues.append({"code": "not_published", "message": "This session has not been published yet."})
+
+    # Gate 4: subscription (only meaningful if enrolled and published)
+    if not issues:
+        try:
+            session_resolution_service.resolve_session_avatar(db_session, current_user.id, db)
+        except HTTPException as e:
+            if e.status_code == status.HTTP_403_FORBIDDEN:
+                issues.append({"code": "no_subscription", "message": e.detail})
+
+    # Gate 5: credits
+    from app.services import billing_service as _billing
+    balance_info = _billing.get_active_balance(current_user.id, db)
+    if balance_info["balance"] <= 0:
+        issues.append({
+            "code": "no_credits",
+            "message": "You have no credits. Redeem an access code to start a session.",
+        })
+
+    return {"eligible": len(issues) == 0, "issues": issues}
+
+
+@router.patch("/sessions/{session_id}/publish")
+async def set_session_published(
+    session_id: str,
+    request_data: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Set is_published on a session. Body: {"is_published": true|false}
+    Only the session owner or an admin may call this.
+    """
+    is_published = request_data.get("is_published")
+    if not isinstance(is_published, bool):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Body must contain {'is_published': true|false}",
+        )
+
+    db_session = db.query(Session).filter(Session.session_id == session_id).first()
+    if not db_session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    if current_user.role != "admin" and str(db_session.user_id) != str(current_user.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only modify your own sessions",
+        )
+
+    db_session.is_published = is_published
+    db_session.updated_at = datetime.utcnow()
+    db.commit()
+    return {"session_id": session_id, "is_published": is_published}
+
 
 @router.delete("/sessions/{session_id}")
 async def delete_session(
@@ -766,7 +862,7 @@ async def start_session_run(
                 _dv = resolve_default_variant(db_session_raw.avatar_id, db)
                 if _dv:
                     session_run.avatar_variant_id = _dv.id
-                    session_run.variant_snapshot = build_variant_snapshot(_dv)
+                    session_run.variant_snapshot = build_variant_snapshot(_dv, db)
                     db.commit()
         except Exception as _ve:
             logger.warning("Could not snapshot avatar variant for run %s: %s", session_run.session_run_id, _ve)
@@ -1380,8 +1476,24 @@ async def get_ephemeral_token(
                 avatar_id=db_session_raw.avatar_id,
             )
 
+        # Merge voice from AvatarConfiguration into assistant_parameters so the
+        # ephemeral token uses the publisher's chosen voice, not the session default.
+        _ap = (
+            session_run.assistant_parameters.model_dump()
+            if hasattr(session_run.assistant_parameters, "model_dump")
+            else dict(session_run.assistant_parameters or {})
+        )
+        if db_session_raw and db_session_raw.avatar_id:
+            _avcfg = (
+                db.query(AvatarConfiguration)
+                .filter(AvatarConfiguration.avatar_id == db_session_raw.avatar_id)
+                .first()
+            )
+            if _avcfg and _avcfg.voice:
+                _ap["voice"] = _avcfg.voice.lower()
+
         token_data = await openai_service.generate_ephemeral_token(
-            session_run.assistant_parameters,
+            _ap,
             student_slide_list,
             solution_slide_list or None,
             conversation_prompt=conversation_prompt,
@@ -1394,7 +1506,111 @@ async def get_ephemeral_token(
             memories=memories,
             refined_prompt=refined_prompt,
         )
-        return EphemeralTokenResponse(client_secret=token_data["client_secret"])
+        # ── Build avatar display config from variant_snapshot ─────────────────
+        snapshot = getattr(session_run, "variant_snapshot", None) or {}
+        logger.info(f"🎭 variant_snapshot for run {session_run_id}: {snapshot}")
+
+        model_url = snapshot.get("model_url")
+        heygen_id = snapshot.get("heygen_avatar_id")
+        variant_name = snapshot.get("name")
+        language = snapshot.get("language", "en")
+
+        # Infer render_type — handles old snapshots that predate the render_type field.
+        if "render_type" in snapshot:
+            render_type = snapshot["render_type"]
+        elif snapshot.get("model_3d_id"):
+            render_type = "3d"
+        elif snapshot.get("heygen_avatar_id"):
+            render_type = "heygen"
+        else:
+            render_type = "static"
+
+        # Fallback: if snapshot is empty / missing 3D info, resolve from the live
+        # avatar_variant row (handles session runs created before snapshot was enriched).
+        if render_type == "static" and not snapshot:
+            _variant_id = getattr(session_run, "avatar_variant_id", None)
+            if not _variant_id and db_session_raw and db_session_raw.avatar_id:
+                from app.services.avatar_variant_service import resolve_default_variant as _rdv
+                _fallback_v = _rdv(db_session_raw.avatar_id, db)
+                if _fallback_v:
+                    _variant_id = _fallback_v.id
+                    variant_name = variant_name or _fallback_v.name
+                    language = language or _fallback_v.language or "en"
+            if _variant_id:
+                from app.database.models.variants import AvatarVariant as _AV
+                _v = db.query(_AV).filter(_AV.id == _variant_id).first()
+                if _v:
+                    variant_name = variant_name or _v.name
+                    language = _v.language or language
+                    if _v.model_3d_id:
+                        render_type = "3d"
+                        heygen_id = None
+                    elif _v.heygen_avatar_id:
+                        render_type = "heygen"
+                        heygen_id = _v.heygen_avatar_id
+
+        # Resolve model URL for 3D renders — covers both old snapshots (no model_url)
+        # and the live fallback path above.
+        if render_type == "3d" and not model_url:
+            from app.database.models.variants import AvatarVariant as _AV2, Avatar3DModel as _A3DM
+            _model_3d_id = snapshot.get("model_3d_id")
+            if not _model_3d_id:
+                _vid = getattr(session_run, "avatar_variant_id", None)
+                if _vid:
+                    _vrow = db.query(_AV2).filter(_AV2.id == _vid).first()
+                    if _vrow:
+                        _model_3d_id = str(_vrow.model_3d_id) if _vrow.model_3d_id else None
+            if _model_3d_id:
+                m3d = db.query(_A3DM).filter(_A3DM.id == _model_3d_id).first()
+                if m3d:
+                    model_url = getattr(m3d, "model_url", None) or getattr(m3d, "file_path", None)
+
+        # ── Final fallback: AvatarConfiguration.additional_settings ──────────
+        # The publisher UI stores renderType / glbLibraryId directly in this JSONB
+        # column.  When no variant has 3D info, read it from here.
+        if render_type == "static" and db_session_raw and db_session_raw.avatar_id:
+            _av_cfg = (
+                db.query(AvatarConfiguration)
+                .filter(AvatarConfiguration.avatar_id == db_session_raw.avatar_id)
+                .first()
+            )
+            if _av_cfg and _av_cfg.additional_settings:
+                _as = _av_cfg.additional_settings
+                _cfg_render = _as.get("renderType") or _as.get("render_type")
+                _cfg_glb = _as.get("glbLibraryId") or _as.get("glb_library_id") or _as.get("modelUrl")
+                if _cfg_render == "3d":
+                    render_type = "3d"
+                    model_url = model_url or _cfg_glb
+                elif _cfg_render in ("heygen", "talkingheads"):
+                    render_type = _cfg_render
+                    heygen_id = heygen_id or _as.get("heygenAvatarId") or _as.get("heygen_avatar_id")
+                logger.info(f"🎭 additional_settings fallback → render_type={render_type}, model_url={model_url}")
+
+        logger.info(f"🎭 resolved → render_type={render_type}, model_url={model_url}, variant_name={variant_name}")
+
+        # Avatar image (static fallback) — lives on AvatarTemplate, not Avatar
+        avatar_image_url: str | None = None
+        if db_session_raw and db_session_raw.avatar_id:
+            _av = db.query(Avatar).filter(Avatar.id == db_session_raw.avatar_id).first()
+            if _av and _av.template_id:
+                _tmpl = db.query(AvatarTemplate).filter(AvatarTemplate.id == _av.template_id).first()
+                if _tmpl:
+                    avatar_image_url = _tmpl.avatar_image_path
+            if not avatar_image_url and _av:
+                avatar_image_url = getattr(_av, "avatar_image_path", None)
+
+        return EphemeralTokenResponse(
+            client_secret=token_data["client_secret"],
+            realtime_model=token_data.get("model"),
+            avatar_render_type=render_type,
+            avatar_name=variant_name,
+            avatar_image_url=avatar_image_url,
+            glb_library_id=model_url,
+            heygen_avatar_id=heygen_id,
+            heygen_quality="high",
+            session_language=language,
+            session_mode=session_mode,
+        )
 
     except HTTPException:
         raise
