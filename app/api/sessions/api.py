@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 from PIL import Image
 import json
 import os
@@ -379,6 +380,40 @@ async def update_session(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error updating session: {e}",
         )
+
+@router.patch("/sessions/{session_id}/publish")
+async def set_session_published(
+    session_id: str,
+    request_data: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Set is_published on a session. Body: {"is_published": true|false}
+    Only the session owner or an admin may call this.
+    """
+    is_published = request_data.get("is_published")
+    if not isinstance(is_published, bool):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Body must contain {'is_published': true|false}",
+        )
+
+    db_session = db.query(Session).filter(Session.session_id == session_id).first()
+    if not db_session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    if current_user.role != "admin" and str(db_session.user_id) != str(current_user.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only modify your own sessions",
+        )
+
+    db_session.is_published = is_published
+    db_session.updated_at = datetime.utcnow()
+    db.commit()
+    return {"session_id": session_id, "is_published": is_published}
+
 
 @router.delete("/sessions/{session_id}")
 async def delete_session(
