@@ -140,7 +140,6 @@ class OpenAIService:
             transcription = {
                 "model": (tr_raw.get("model") if tr_raw else None) or "gpt-4o-transcribe",
                 "language": (tr_raw.get("language") if tr_raw else None) or "en",
-                "delay": "low",
             }
 
             audio_input_fmt = self._map_audio_format(ap.get('input_audio_format'))
