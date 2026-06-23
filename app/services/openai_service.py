@@ -159,7 +159,6 @@ class OpenAIService:
                             "type": "realtime",
                             "model": model,
                             "instructions": instructions,
-                            "temperature": ap.get("temperature", 0.8),
                             "max_output_tokens": ap.get("max_output_tokens", "inf"),
                             "tool_choice": ap.get("tool_choice", "auto"),
                             "tools": ap.get("tools") or [],
