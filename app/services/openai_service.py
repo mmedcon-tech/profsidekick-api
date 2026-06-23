@@ -23,22 +23,21 @@ class OpenAIService:
         self.client = OpenAI(api_key=settings.openai_api_key)
         self.async_client = AsyncOpenAI(api_key=settings.openai_api_key)
         
-    # Valid OpenAI Realtime API model identifiers
+    # Valid OpenAI Realtime API model identifiers (as of 2025)
     _VALID_REALTIME_MODELS = {
-        "gpt-4o-realtime-preview",
-        "gpt-4o-realtime-preview-2024-12-17",
-        # "gpt-4o-realtime-preview-2024-10-01" — discontinued by OpenAI
-        "gpt-4o-mini-realtime-preview",
-        "gpt-4o-mini-realtime-preview-2024-12-17",
+        "gpt-realtime-2",
+        "gpt-realtime-1.5",
+        "gpt-realtime",
+        "gpt-realtime-translate",
+        "gpt-realtime-whisper",
     }
-    _DEFAULT_REALTIME_MODEL = "gpt-4o-realtime-preview"
+    _DEFAULT_REALTIME_MODEL = "gpt-realtime-2"
 
     def _normalize_realtime_model(self, model: str) -> str:
-        """Map legacy/invalid model names to a valid Realtime API model identifier."""
+        """Map legacy/deprecated model names to a valid Realtime API model identifier."""
         if model in self._VALID_REALTIME_MODELS:
             return model
-        if "mini" in model.lower():
-            return "gpt-4o-mini-realtime-preview"
+        # Map any legacy gpt-4o-realtime-* or unknown names to the current default
         return self._DEFAULT_REALTIME_MODEL
 
     async def generate_ephemeral_token(
@@ -141,15 +140,6 @@ class OpenAIService:
                 raise Exception(response.text)
 
             return response.json()
-
-
-            # The SDK returns a typed object; convert to the dict shape the rest of the code expects
-            return {
-                "client_secret": {
-                    "value": response.client_secret.value,
-                    "expires_at": response.client_secret.expires_at,
-                }
-            }
 
         except Exception as e:
             print("❌ generate_ephemeral_token FAILED")
