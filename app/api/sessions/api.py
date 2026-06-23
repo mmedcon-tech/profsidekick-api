@@ -15,7 +15,7 @@ from app.database.connection import get_db
 from app.database.models import (
     Session, SessionRun, SessionRunStatus, User,
     Avatar, AvatarSubscription, AvatarTemplate, AvatarTemplateVersion, AvatarTemplateRole,
-    Course, CourseStudent, PublisherAvatarProfile,
+    Course, CourseStudent, PublisherAvatarProfile, AvatarConfiguration,
 )
 from app.database.models.feedback import SessionPersonaSwitch
 from app.services.summarization_service import (
@@ -1476,8 +1476,24 @@ async def get_ephemeral_token(
                 avatar_id=db_session_raw.avatar_id,
             )
 
+        # Merge voice from AvatarConfiguration into assistant_parameters so the
+        # ephemeral token uses the publisher's chosen voice, not the session default.
+        _ap = (
+            session_run.assistant_parameters.model_dump()
+            if hasattr(session_run.assistant_parameters, "model_dump")
+            else dict(session_run.assistant_parameters or {})
+        )
+        if db_session_raw and db_session_raw.avatar_id:
+            _avcfg = (
+                db.query(AvatarConfiguration)
+                .filter(AvatarConfiguration.avatar_id == db_session_raw.avatar_id)
+                .first()
+            )
+            if _avcfg and _avcfg.voice:
+                _ap["voice"] = _avcfg.voice.lower()
+
         token_data = await openai_service.generate_ephemeral_token(
-            session_run.assistant_parameters,
+            _ap,
             student_slide_list,
             solution_slide_list or None,
             conversation_prompt=conversation_prompt,
@@ -1548,6 +1564,27 @@ async def get_ephemeral_token(
                 m3d = db.query(_A3DM).filter(_A3DM.id == _model_3d_id).first()
                 if m3d:
                     model_url = getattr(m3d, "model_url", None) or getattr(m3d, "file_path", None)
+
+        # ── Final fallback: AvatarConfiguration.additional_settings ──────────
+        # The publisher UI stores renderType / glbLibraryId directly in this JSONB
+        # column.  When no variant has 3D info, read it from here.
+        if render_type == "static" and db_session_raw and db_session_raw.avatar_id:
+            _av_cfg = (
+                db.query(AvatarConfiguration)
+                .filter(AvatarConfiguration.avatar_id == db_session_raw.avatar_id)
+                .first()
+            )
+            if _av_cfg and _av_cfg.additional_settings:
+                _as = _av_cfg.additional_settings
+                _cfg_render = _as.get("renderType") or _as.get("render_type")
+                _cfg_glb = _as.get("glbLibraryId") or _as.get("glb_library_id") or _as.get("modelUrl")
+                if _cfg_render == "3d":
+                    render_type = "3d"
+                    model_url = model_url or _cfg_glb
+                elif _cfg_render in ("heygen", "talkingheads"):
+                    render_type = _cfg_render
+                    heygen_id = heygen_id or _as.get("heygenAvatarId") or _as.get("heygen_avatar_id")
+                logger.info(f"🎭 additional_settings fallback → render_type={render_type}, model_url={model_url}")
 
         logger.info(f"🎭 resolved → render_type={render_type}, model_url={model_url}, variant_name={variant_name}")
 
