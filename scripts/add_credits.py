@@ -21,8 +21,6 @@ Arguments:
 import argparse
 import os
 import sys
-import uuid
-from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -54,7 +52,8 @@ def main() -> None:
         parser.error("Provide one of --credits or --usd.")
 
     from app.config import settings
-    from app.database.models import CreditBalance, UsageRecord, User
+    from app.database.models import User
+    from app.services import billing_service
 
     CREDITS_PER_USD = Decimal(str(settings.credits_per_usd))
 
@@ -79,53 +78,26 @@ def main() -> None:
             print("ERROR: Amount must be positive")
             sys.exit(1)
 
-        credit_balance = db.query(CreditBalance).filter(CreditBalance.user_id == user.id).first()
-        previous = Decimal(str(credit_balance.balance_credits)) if credit_balance else Decimal("0")
-        new_balance = previous + credits_to_add
+        balance_info = billing_service.get_active_balance(user.id, db)
+        current_balance = balance_info["balance"]
 
-        print(f"User:           {user.email} ({user.first_name} {user.last_name})")
-        print(f"Current balance: {previous:,.6f} credits")
+        print(f"User:            {user.email} ({user.first_name} {user.last_name})")
+        print(f"Current balance: {current_balance:,.6f} credits  [{balance_info['source']}]")
         print(f"Adding:          {credits_to_add:,.6f} credits  (reason: {args.reason})")
-        print(f"New balance:     {new_balance:,.6f} credits")
+        print(f"New balance:     {current_balance + credits_to_add:,.6f} credits")
 
         if args.dry_run:
             print("\n[DRY RUN] No changes written.")
             return
 
-        now = datetime.utcnow()
-        if credit_balance:
-            credit_balance.balance_credits = new_balance
-            credit_balance.updated_at = now
-        else:
-            credit_balance = CreditBalance(
-                id=uuid.uuid4(),
-                user_id=user.id,
-                balance_credits=new_balance,
-                updated_at=now,
-            )
-            db.add(credit_balance)
-
-        # Write an audit record so the grant appears in usage history
-        record = UsageRecord(
-            id=uuid.uuid4(),
+        result = billing_service.adjust_user_balance(
             user_id=user.id,
-            session_run_id=None,
-            operation_type="admin_grant",
-            input_tokens=0,
-            output_tokens=0,
-            raw_cost_usd=Decimal("0"),
-            platform_fee_usd=Decimal("0"),
-            total_cost_usd=Decimal("0"),
-            credits_charged=credits_to_add,
-            funded_by="admin",
-            ai_provider="manual",
-            access_code_id=None,
-            created_at=now,
+            delta_credits=credits_to_add,
+            reason=args.reason,
+            admin_id=user.id,  # self-grant; used only for logging
+            db=db,
         )
-        db.add(record)
-        db.commit()
-
-        print("\nDone. Credits added successfully.")
+        print(f"\nDone. New balance: {result['new_balance']:,.6f} credits")
     except Exception as e:
         db.rollback()
         print(f"ERROR: {e}")
