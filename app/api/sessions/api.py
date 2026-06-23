@@ -1519,6 +1519,7 @@ async def get_ephemeral_token(
 
         return EphemeralTokenResponse(
             client_secret=token_data["client_secret"],
+            realtime_model=token_data.get("model"),
             avatar_render_type=render_type,
             avatar_name=variant_name,
             avatar_image_url=avatar_image_url,
