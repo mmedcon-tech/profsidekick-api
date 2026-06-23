@@ -439,6 +439,7 @@ class SessionService:
                 avatarId=str(session.avatar_id) if session.avatar_id else None,
                 selectedRoleId=str(session.selected_role_id) if session.selected_role_id else None,
                 roleLabel=session.role_label,
+                isPublished=getattr(session, 'is_published', False) or False,
             )
             
             session_summaries.append(session_summary)
