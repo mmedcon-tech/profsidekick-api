@@ -219,6 +219,7 @@ class SessionSummary(BaseModel):
     avatarId: Optional[str] = None
     selectedRoleId: Optional[str] = None
     roleLabel: Optional[str] = None
+    isPublished: bool = False
 
 class PaginationInfo(BaseModel):
     page: int
