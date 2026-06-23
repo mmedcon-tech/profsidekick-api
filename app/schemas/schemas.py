@@ -377,6 +377,9 @@ class CourseSessionSummary(BaseModel):
     class_name: Optional[str] = None
     description: Optional[str] = None
     duration: Optional[int] = None
+    total_slides: int = 0
+    run_count: int = 0
+    is_published: bool = False
     created_at: datetime
     updated_at: datetime
 
