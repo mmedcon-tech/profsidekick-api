@@ -4,6 +4,7 @@ services:
   # FastAPI Backend
   backend:
     build: .
+    image: profsidekick-api:main
     container_name: profsidekick-backend
     ports:
       - "8000:8000"
@@ -13,6 +14,7 @@ services:
       # These override .env values — DATABASE_URL and REDIS_URL must use Docker service names
       - DATABASE_URL=postgresql://profsidekick:password123@postgres:5432/profsidekick
       - REDIS_URL=redis://redis:6379/0
+      - BACKEND_INSTANCE=main
     volumes:
       - ./uploads:/app/uploads
       - ./static:/app/static
