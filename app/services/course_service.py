@@ -376,6 +376,11 @@ class CourseService:
         
         session_summaries = []
         for session in sessions:
+            student_slides = [
+                s for s in (session.slides_details or [])
+                if not s.get("solution_slide")
+            ]
+            run_count = len(session.session_runs) if session.session_runs else 0
             session_summaries.append(CourseSessionSummary(
                 sessionId=session.session_id,
                 session_number=session.session_number,
@@ -383,8 +388,11 @@ class CourseService:
                 class_name=session.class_name,
                 description=session.description,
                 duration=session.duration,
+                total_slides=len(student_slides),
+                run_count=run_count,
+                is_published=getattr(session, 'is_published', False) or False,
                 created_at=session.created_at,
                 updated_at=session.updated_at
             ))
-        
+
         return session_summaries
