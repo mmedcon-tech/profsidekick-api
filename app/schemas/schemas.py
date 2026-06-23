@@ -27,6 +27,7 @@ class EphemeralTokenResponse(BaseModel):
     client_secret: dict
     # Avatar display config — populated by the ephemeral endpoint from variant_snapshot
     openai_token: Optional[str] = None
+    realtime_model: Optional[str] = None       # model used; frontend passes this to the SDP exchange
     avatar_render_type: Optional[str] = None   # 'static' | 'heygen' | '3d'
     avatar_name: Optional[str] = None
     avatar_image_url: Optional[str] = None

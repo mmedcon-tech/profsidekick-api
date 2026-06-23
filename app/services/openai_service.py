@@ -119,6 +119,7 @@ class OpenAIService:
                     headers={
                         "Authorization": f"Bearer {settings.openai_api_key}",
                         "Content-Type": "application/json",
+                        "OpenAI-Beta": "realtime=v1",
                     },
                     json={
                         "model": model,
