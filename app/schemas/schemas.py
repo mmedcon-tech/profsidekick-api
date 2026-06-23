@@ -25,6 +25,17 @@ class PresentationData(BaseModel):
 
 class EphemeralTokenResponse(BaseModel):
     client_secret: dict
+    # Avatar display config — populated by the ephemeral endpoint from variant_snapshot
+    openai_token: Optional[str] = None
+    avatar_render_type: Optional[str] = None   # 'static' | 'heygen' | '3d'
+    avatar_name: Optional[str] = None
+    avatar_image_url: Optional[str] = None
+    glb_library_id: Optional[str] = None       # model URL when render_type == '3d'
+    heygen_avatar_id: Optional[str] = None
+    heygen_quality: Optional[str] = None
+    heygen_access_token: Optional[str] = None
+    session_language: Optional[str] = None
+    session_mode: Optional[str] = None
 
 class InputAudioNoiseReduction(BaseModel):
     type: str
