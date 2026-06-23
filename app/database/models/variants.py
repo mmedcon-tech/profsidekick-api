@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 
 from app.database.connection import Base
@@ -17,6 +17,10 @@ class Avatar3DModel(Base):
     description = Column(Text, nullable=True)
     file_path = Column(String(500), nullable=True)
     preview_image_path = Column(String(500), nullable=True)
+    model_type = Column(String(50), nullable=True, default="three_js", server_default="three_js")
+    gender = Column(String(20), nullable=True)
+    supported_languages = Column(JSONB, nullable=True, default=list, server_default='["en"]')
+    sort_order = Column(Integer, nullable=False, default=0, server_default="0")
     is_active = Column(Boolean, nullable=False, default=True, server_default="true")
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
