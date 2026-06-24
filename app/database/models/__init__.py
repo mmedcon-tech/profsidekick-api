@@ -122,6 +122,18 @@ from app.database.models.progress import (  # noqa: F401
     AssessmentResult,
 )
 
+# SAE (Self Assessment Exam) system — depends on User only
+from app.database.models.sae import (  # noqa: F401
+    SAEStudent,
+    SAEInvitationToken,
+    SAESubmission,
+)
+
+# Autograder (Math Placement Exam) — depends on User only
+from app.database.models.autograder import (  # noqa: F401
+    Student,
+    AutograderSubmission,
+)
 # Third-party integration tokens — depends on User only
 from app.database.models.integrations import BrightspaceToken  # noqa: F401
 
@@ -212,6 +224,13 @@ __all__ = [
     # progress + assessment (W6)
     "SubscriberCourseProgress",
     "AssessmentResult",
+    # SAE system
+    "SAEStudent",
+    "SAEInvitationToken",
+    "SAESubmission",
+    # autograder
+    "Student",
+    "AutograderSubmission",
     # integrations
     "BrightspaceToken",
     # legacy
