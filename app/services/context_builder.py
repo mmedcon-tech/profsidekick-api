@@ -139,15 +139,17 @@ def _resolve_prompt_for_mode(
     Select the correct base persona prompt based on session_mode.
 
     Priority:
-      examination → examination_prompt → conversation_prompt (fallback)
-      teaching    → teaching_prompt    → conversation_prompt (fallback)
-      None/unknown→ conversation_prompt (backward compat)
+      examination  → examination_prompt → conversation_prompt (fallback)
+      teaching     → teaching_prompt    → conversation_prompt (fallback)
+      consultation → teaching_prompt    → conversation_prompt (fallback)
+      None/unknown → conversation_prompt (backward compat)
     """
     mode = (session_mode or "teaching").lower()
     if mode == "examination":
         candidate = (examination_prompt or "").strip()
         return candidate if candidate else ((conversation_prompt or "").strip() or None)
     else:
+        # teaching and consultation both use the teaching/conversation prompt as base
         candidate = (teaching_prompt or "").strip()
         return candidate if candidate else ((conversation_prompt or "").strip() or None)
 
@@ -189,6 +191,7 @@ def build_realtime_instructions(
     session_instructions: str = (sb.get("sessionInstructions", "") or "").strip()
 
     is_examination = (session_mode or "teaching").lower() == "examination"
+    is_consultation = (session_mode or "teaching").lower() == "consultation"
 
     parts: List[str] = []
 
@@ -209,9 +212,16 @@ def build_realtime_instructions(
     if role_blk:
         parts.append(role_blk)
 
-    # 2b. Examination reinforcement (inserted immediately after role to keep assessment focus tight)
+    # 2b. Mode reinforcement
     if is_examination:
         parts.append(EXAMINATION_REINFORCEMENT)
+    elif is_consultation:
+        parts.append(
+            "[CONSULTATION MODE BEHAVIOUR]\n"
+            "You are acting as an expert consultant. Listen carefully to the user's question or "
+            "problem, provide clear and actionable advice, and ask clarifying questions when needed. "
+            "Avoid lecturing — focus on addressing the specific need the user presents."
+        )
 
     # 3. Rubric
     if rubric:
@@ -304,11 +314,17 @@ def build_chat_system_prompt(
     parts: List[str] = []
 
     is_examination = (session_mode or "teaching").lower() == "examination"
+    is_consultation = (session_mode or "teaching").lower() == "consultation"
 
     # 1. Core persona — mode-resolved prompt
     resolved = _resolve_prompt_for_mode(session_mode, teaching_prompt, examination_prompt, conversation_prompt)
     if resolved:
-        mode_label = "EXAMINATION MODE" if is_examination else "TEACHING MODE"
+        if is_examination:
+            mode_label = "EXAMINATION MODE"
+        elif is_consultation:
+            mode_label = "CONSULTATION MODE"
+        else:
+            mode_label = "TEACHING MODE"
         parts.append(
             f"You are the AI avatar named \"{avatar_name}\".\n"
             f"[SESSION MODE: {mode_label}]\n"
@@ -332,9 +348,16 @@ def build_chat_system_prompt(
     if role_blk:
         parts.append(role_blk)
 
-    # 2b. Examination reinforcement (when in examination mode)
+    # 2b. Mode reinforcement
     if is_examination:
         parts.append(EXAMINATION_REINFORCEMENT)
+    elif is_consultation:
+        parts.append(
+            "[CONSULTATION MODE BEHAVIOUR]\n"
+            "You are acting as an expert consultant. Listen carefully to the user's question or "
+            "problem, provide clear and actionable advice, and ask clarifying questions when needed. "
+            "Avoid lecturing — focus on addressing the specific need the user presents."
+        )
 
     # 3. Configuration
     difficulty = difficulty_level or prefs.get("preferred_difficulty", "")

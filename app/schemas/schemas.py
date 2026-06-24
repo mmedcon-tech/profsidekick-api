@@ -96,7 +96,7 @@ class SessionDetails(BaseModel):
     description: Optional[str] = None
     duration: int = Field(..., gt=0, le=480)  # Max 8 hours
     assistantParameters: Optional[AssistantParameters] = None
-    sessionMode: Optional[str] = "teaching"   # 'teaching' | 'examination'
+    sessionMode: Optional[str] = "teaching"   # 'teaching' | 'examination' | 'consultation'
     subscriberRuntimeMode: Optional[str] = "avatar"  # 'avatar' | 'chat' | 'choice'
 
 class SessionCreateRequest(BaseModel):
@@ -112,7 +112,7 @@ class SessionCreateRequest(BaseModel):
     selectedRoleId: Optional[UUID] = None
     roleLabel: Optional[str] = None
     # Session mode: determines which template prompt is loaded
-    sessionMode: Optional[str] = Field("teaching", pattern="^(teaching|examination)$")
+    sessionMode: Optional[str] = Field("teaching", pattern="^(teaching|examination|consultation)$")
     # Subscriber runtime mode: determines what experience subscribers get
     subscriberRuntimeMode: Optional[str] = Field("avatar", pattern="^(avatar|chat|choice)$")
 
@@ -227,7 +227,7 @@ class SessionSummary(BaseModel):
     lastAccessedAt: Optional[datetime] = None
     runCount: int
     lastRunAt: Optional[datetime] = None
-    sessionMode: Optional[str] = "teaching"   # 'teaching' | 'examination'
+    sessionMode: Optional[str] = "teaching"   # 'teaching' | 'examination' | 'consultation'
     avatarId: Optional[str] = None
     selectedRoleId: Optional[str] = None
     roleLabel: Optional[str] = None
