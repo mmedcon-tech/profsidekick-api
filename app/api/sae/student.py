@@ -9,7 +9,11 @@ GET  /api/sae/student/submission  → own submission (404 if not yet submitted)
 POST /api/sae/student/submit      → one-time file upload + grading
 """
 
+from pathlib import Path
+from typing import Literal
+
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
@@ -79,9 +83,11 @@ def get_my_submission(
         score=sub.score,
         overall_confidence=sub.overall_confidence,
         review_required=sub.review_required,
-        result_json=sub.result_json,
+        result_json=sae_service.get_effective_result_json(sub),
         submitted_by_publisher=sub.submitted_by_publisher,
         created_at=sub.created_at,
+        handwritten_filename=sub.handwritten_filename,
+        webassign_filename=sub.webassign_filename,
     )
 
 
@@ -128,7 +134,43 @@ async def submit(
         score=submission.score,
         overall_confidence=submission.overall_confidence,
         review_required=submission.review_required,
-        result_json=submission.result_json,
+        result_json=sae_service.get_effective_result_json(submission),
         submitted_by_publisher=submission.submitted_by_publisher,
         created_at=submission.created_at,
+        handwritten_filename=submission.handwritten_filename,
+        webassign_filename=submission.webassign_filename,
+    )
+
+
+@router.get("/files/{file_type}")
+def get_my_file(
+    file_type: Literal["handwritten", "webassign"],
+    sae_student: SAEStudent = Depends(require_sae_subscriber),
+):
+    """
+    Stream the student's own submitted PDF.
+    Students can only access their own submission files.
+    """
+    sub = sae_student.submission
+    if not sub:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="No submission found.")
+
+    if file_type == "handwritten":
+        file_path = sub.handwritten_file_path
+        filename = sub.handwritten_filename or "handwritten.pdf"
+    else:
+        file_path = sub.webassign_file_path
+        filename = sub.webassign_filename or "webassign.pdf"
+
+    if not file_path:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File path not recorded for this submission.")
+
+    disk_path = Path(file_path)
+    if not disk_path.exists():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File not found on server.")
+
+    return FileResponse(
+        path=str(disk_path),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
