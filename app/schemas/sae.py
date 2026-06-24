@@ -20,6 +20,17 @@ class SAEInviteSetupRequest(BaseModel):
     password: str = Field(..., min_length=8)
 
 
+class SAEQuestionEdit(BaseModel):
+    id: str
+    score: Optional[float] = None
+    feedback: Optional[str] = None
+
+
+class SAESubmissionEditRequest(BaseModel):
+    overall_feedback: Optional[str] = None
+    questions: Optional[List[SAEQuestionEdit]] = None
+
+
 # ── Response schemas ───────────────────────────────────────────────────────────
 
 class SAEStudentRow(BaseModel):
@@ -57,6 +68,7 @@ class SAESetupResponse(BaseModel):
 
 
 class SAESubmissionResult(BaseModel):
+    """Student-facing submission result. Contains the effective (possibly edited) grading."""
     id: UUID
     score: Optional[int]
     overall_confidence: Optional[str]
@@ -64,9 +76,17 @@ class SAESubmissionResult(BaseModel):
     result_json: Optional[dict]
     submitted_by_publisher: bool
     created_at: datetime
+    handwritten_filename: Optional[str] = None
+    webassign_filename: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+
+class SAESubmissionResultPublisher(SAESubmissionResult):
+    """Publisher-facing submission result. Extends the base result with edit metadata."""
+    is_edited: bool
+    last_edited_at: Optional[datetime]
 
 
 class SAEStudentDetail(BaseModel):
@@ -80,7 +100,7 @@ class SAEStudentDetail(BaseModel):
     activated_at: Optional[datetime]
     has_submitted: bool
     submitted_at: Optional[datetime]
-    submission: Optional[SAESubmissionResult]
+    submission: Optional[SAESubmissionResultPublisher]
 
     class Config:
         from_attributes = True

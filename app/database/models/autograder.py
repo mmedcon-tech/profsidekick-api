@@ -27,45 +27,34 @@ class Student(Base):
 
 class AutograderSubmission(Base):
     __tablename__ = "autograder_submissions"
+
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
-    # ── New columns (Phase 3) ───────────────────────────────────────────────
-    student_id    = Column(UUID(as_uuid=True), ForeignKey("students.id", ondelete="RESTRICT"), nullable=True)
+    # Phase 3 columns
+    student_id     = Column(UUID(as_uuid=True), ForeignKey("students.id", ondelete="RESTRICT"), nullable=True)
     version_number = Column(Integer, nullable=True)
-    submitted_by  = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True)
+    submitted_by   = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True)
 
     handwritten_filename  = Column(String(255), nullable=True)
     handwritten_file_path = Column(String(500), nullable=True)
     webassign_filename    = Column(String(255), nullable=True)
     webassign_file_path   = Column(String(500), nullable=True)
 
-    # ── Legacy columns (kept until Phase 5) ─────────────────────────────────
-    # Link to logged-in account when available
+    # Legacy columns (kept until Phase 5)
     student_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    student_net_id  = Column(String(100), nullable=False)
+    student_name    = Column(String(255), nullable=False)
+    filename        = Column(String(255), nullable=True)
+    file_path       = Column(String(500), nullable=True)
 
-    # Human-facing placement test identity
-    student_net_id = Column(String(100), nullable=False)
-    student_name = Column(String(255), nullable=False)
-
-    # Uploaded submission file, nullable for now
-    filename = Column(String(255), nullable=True)
-    file_path = Column(String(500), nullable=True)
-
-    # Summary fields for professor table
-    score = Column(Integer, nullable=True)
+    score              = Column(Integer, nullable=True)
     overall_confidence = Column(String(50), nullable=True)
-    review_required = Column(Boolean, default=False)
-
-    # Full AI grading result
-    result_json = Column(JSONB, nullable=False)
-
-    # Only the newest submission per student is active; older ones are False
-    is_active = Column(Boolean, nullable=False, default=True, server_default="true")
+    review_required    = Column(Boolean, default=False)
+    result_json        = Column(JSONB, nullable=False)
+    is_active          = Column(Boolean, nullable=False, default=True, server_default="true")
 
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    # ── Relationships ────────────────────────────────────────────────────────
     student      = relationship("Student", foreign_keys=[student_id], back_populates="submissions")
     student_user = relationship("User", foreign_keys=[student_user_id])
     operator     = relationship("User", foreign_keys=[submitted_by])
-
