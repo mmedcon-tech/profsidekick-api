@@ -137,14 +137,33 @@ def resolve_default_variant(avatar_id: UUID, db: Session) -> Optional[AvatarVari
     )
 
 
-def build_variant_snapshot(variant: AvatarVariant) -> dict:
+def build_variant_snapshot(variant: AvatarVariant, db: Optional[Session] = None) -> dict:
+    """Build a denormalized snapshot of a variant for storage in session_runs.
+
+    Pass ``db`` to resolve the 3D model URL at snapshot time so the ephemeral
+    endpoint can return it without an extra query later.
+    """
+    model_url: Optional[str] = None
+    render_type: str = "static"
+
+    if variant.heygen_avatar_id:
+        render_type = "heygen"
+    elif variant.model_3d_id:
+        render_type = "3d"
+        if db is not None:
+            m3d = db.query(Avatar3DModel).filter(Avatar3DModel.id == variant.model_3d_id).first()
+            if m3d:
+                model_url = getattr(m3d, "model_url", None) or getattr(m3d, "file_path", None)
+
     return {
         "id": str(variant.id),
         "name": variant.name,
+        "render_type": render_type,
         "heygen_avatar_id": variant.heygen_avatar_id,
         "heygen_voice_id": variant.heygen_voice_id,
         "language": variant.language,
         "model_3d_id": str(variant.model_3d_id) if variant.model_3d_id else None,
+        "model_url": model_url,
     }
 
 

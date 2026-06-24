@@ -1,16 +1,11 @@
-"""
-Math Placement Exam autograder models.
-Completely isolated from the SAE system.
-"""
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, JSON
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 
 from app.database.connection import Base
-
 
 class Student(Base):
     __tablename__ = "students"

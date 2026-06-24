@@ -86,7 +86,7 @@ def resolve_session_avatar(
         return {
             "avatar_id": ac.avatar_id,
             "variant_id": variant.id if variant else None,
-            "variant_snapshot": build_variant_snapshot(variant) if variant else None,
+            "variant_snapshot": build_variant_snapshot(variant, db) if variant else None,
             "source": "course_link",
         }
 
@@ -104,7 +104,7 @@ def resolve_session_avatar(
             return {
                 "avatar_id": db_session.avatar_id,
                 "variant_id": variant.id if variant else None,
-                "variant_snapshot": build_variant_snapshot(variant) if variant else None,
+                "variant_snapshot": build_variant_snapshot(variant, db) if variant else None,
                 "source": "legacy_session_avatar_id",
             }
 

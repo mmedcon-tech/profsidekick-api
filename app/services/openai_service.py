@@ -23,22 +23,37 @@ class OpenAIService:
         self.client = OpenAI(api_key=settings.openai_api_key)
         self.async_client = AsyncOpenAI(api_key=settings.openai_api_key)
         
-    # Valid OpenAI Realtime API model identifiers
+    # Valid OpenAI Realtime GA API model identifiers
     _VALID_REALTIME_MODELS = {
-        "gpt-4o-realtime-preview",
-        "gpt-4o-realtime-preview-2024-12-17",
-        # "gpt-4o-realtime-preview-2024-10-01" — discontinued by OpenAI
-        "gpt-4o-mini-realtime-preview",
-        "gpt-4o-mini-realtime-preview-2024-12-17",
+        "gpt-realtime-2",
+        "gpt-realtime-2025-08-28",
+        "gpt-realtime-1.5",
+        "gpt-realtime",
+        "gpt-realtime-mini",
+        "gpt-realtime-mini-2025-10-06",
+        "gpt-realtime-mini-2025-12-15",
+        "gpt-realtime-translate",
+        "gpt-realtime-whisper",
     }
-    _DEFAULT_REALTIME_MODEL = "gpt-4o-realtime-preview"
+    _DEFAULT_REALTIME_MODEL = "gpt-realtime-2025-08-28"
+
+    @staticmethod
+    def _map_audio_format(fmt: str | None) -> dict:
+        """Convert legacy pcm16/g711_ulaw string formats to GA audio format objects."""
+        if not fmt or fmt == "pcm16":
+            return {"type": "audio/pcm", "rate": 24000}
+        if fmt in ("g711_ulaw", "g711_alaw"):
+            return {"type": fmt}
+        # Already an object (passed through)
+        if isinstance(fmt, dict):
+            return fmt
+        return {"type": "audio/pcm", "rate": 24000}
 
     def _normalize_realtime_model(self, model: str) -> str:
-        """Map legacy/invalid model names to a valid Realtime API model identifier."""
+        """Map legacy/deprecated model names to a valid Realtime GA API model identifier."""
         if model in self._VALID_REALTIME_MODELS:
             return model
-        if "mini" in model.lower():
-            return "gpt-4o-mini-realtime-preview"
+        # Map any legacy gpt-4o-realtime-* or unknown names to the current default
         return self._DEFAULT_REALTIME_MODEL
 
     async def generate_ephemeral_token(
@@ -92,47 +107,74 @@ class OpenAIService:
                 grounding_policy=grounding_policy,
             )
 
-            # Build turn_detection in the shape the SDK expects
+            # ── Build GA audio.input ───────────────────────────────────────────
             td = ap.get('turn_detection')
-            if td is None:
-                turn_detection = openai.NOT_GIVEN
-            elif td.get('type') == "server_vad":
+            if td and td.get('type') == "server_vad":
                 turn_detection = {
                     "type": "server_vad",
-                    "threshold": td.get('threshold'),
-                    "prefix_padding_ms": td.get('prefix_padding_ms'),
-                    "silence_duration_ms": td.get('silence_duration_ms'),
+                    "threshold": td.get('threshold', 0.5),
+                    "silence_duration_ms": td.get('silence_duration_ms', 500),
+                    "create_response": True,
+                    "interrupt_response": True,
                 }
-            elif td.get('type') == "semantic_vad":
+            elif td and td.get('type') == "semantic_vad":
                 turn_detection = {
                     "type": "semantic_vad",
-                    "eagerness": td.get('eagerness'),
+                    "eagerness": td.get('eagerness', "auto"),
+                    "create_response": True,
+                    "interrupt_response": True,
                 }
             else:
-                turn_detection = {"type": td['type']}
+                turn_detection = {
+                    "type": "server_vad",
+                    "threshold": 0.5,
+                    "silence_duration_ms": 500,
+                    "create_response": True,
+                    "interrupt_response": True,
+                }
 
-            noise_reduction = ap.get('input_audio_noise_reduction')
-            transcription = ap.get('input_audio_transcription')
+            nr_raw = ap.get('input_audio_noise_reduction') or ap.get('input_audio_noice_reduction')
+            noise_reduction = {"type": nr_raw.get("type", "near_field")} if nr_raw else {"type": "near_field"}
+
+            tr_raw = ap.get('input_audio_transcription')
+            transcription = {
+                "model": (tr_raw.get("model") if tr_raw else None) or "gpt-4o-transcribe",
+                "language": (tr_raw.get("language") if tr_raw else None) or "en",
+            }
+
+            audio_input_fmt = self._map_audio_format(ap.get('input_audio_format'))
+            audio_output_fmt = self._map_audio_format(ap.get('output_audio_format'))
 
             async with httpx.AsyncClient() as client:
                 response = await client.post(
-                    "https://api.openai.com/v1/realtime/sessions",
+                    "https://api.openai.com/v1/realtime/client_secrets",
                     headers={
                         "Authorization": f"Bearer {settings.openai_api_key}",
                         "Content-Type": "application/json",
                     },
                     json={
-                        "model": model,
-                        "voice": ap.get("voice", "alloy"),
-                        "instructions": instructions,
-                        "input_audio_format": ap.get("input_audio_format", "pcm16"),
-                        "output_audio_format": ap.get("output_audio_format", "pcm16"),
-                        "temperature": ap.get("temperature", 0.8),
-                        "tool_choice": ap.get("tool_choice", "auto"),
-                        "tools": ap.get("tools") or [],
-                        "turn_detection": turn_detection,
-                        "input_audio_noise_reduction": noise_reduction if noise_reduction else None,
-                        "input_audio_transcription": transcription if transcription else None,
+                        "expires_after": {"anchor": "created_at", "seconds": 600},
+                        "session": {
+                            "type": "realtime",
+                            "model": model,
+                            "instructions": instructions,
+                            "max_output_tokens": ap.get("max_output_tokens", "inf"),
+                            "tool_choice": ap.get("tool_choice", "auto"),
+                            "tools": ap.get("tools") or [],
+                            "audio": {
+                                "input": {
+                                    "format": audio_input_fmt,
+                                    "noise_reduction": noise_reduction,
+                                    "transcription": transcription,
+                                    "turn_detection": turn_detection,
+                                },
+                                "output": {
+                                    "format": audio_output_fmt,
+                                    "voice": ap.get("voice", "alloy"),
+                                    "speed": 1.0,
+                                },
+                            },
+                        },
                     },
                 )
 
@@ -140,15 +182,17 @@ class OpenAIService:
                 print(response.text)
                 raise Exception(response.text)
 
-            return response.json()
-
-
-            # The SDK returns a typed object; convert to the dict shape the rest of the code expects
+            raw = response.json()
+            # GA API response: {"value": "ek_...", "expires_at": 1234, "session": {...}}
+            # Token is at the top level, not nested under client_secret
+            token_value = raw.get("value", "")
+            expires_at = raw.get("expires_at", 0)
+            used_model = raw.get("session", {}).get("model") or model
+            if not token_value:
+                print(f"⚠️  Could not extract token — raw keys: {list(raw.keys())}")
             return {
-                "client_secret": {
-                    "value": response.client_secret.value,
-                    "expires_at": response.client_secret.expires_at,
-                }
+                "client_secret": {"value": token_value, "expires_at": expires_at},
+                "model": used_model,
             }
 
         except Exception as e:

@@ -25,6 +25,18 @@ class PresentationData(BaseModel):
 
 class EphemeralTokenResponse(BaseModel):
     client_secret: dict
+    # Avatar display config — populated by the ephemeral endpoint from variant_snapshot
+    openai_token: Optional[str] = None
+    realtime_model: Optional[str] = None       # model used; frontend passes this to the SDP exchange
+    avatar_render_type: Optional[str] = None   # 'static' | 'heygen' | '3d'
+    avatar_name: Optional[str] = None
+    avatar_image_url: Optional[str] = None
+    glb_library_id: Optional[str] = None       # model URL when render_type == '3d'
+    heygen_avatar_id: Optional[str] = None
+    heygen_quality: Optional[str] = None
+    heygen_access_token: Optional[str] = None
+    session_language: Optional[str] = None
+    session_mode: Optional[str] = None
 
 class InputAudioNoiseReduction(BaseModel):
     type: str
@@ -219,6 +231,7 @@ class SessionSummary(BaseModel):
     avatarId: Optional[str] = None
     selectedRoleId: Optional[str] = None
     roleLabel: Optional[str] = None
+    isPublished: bool = False
 
 class PaginationInfo(BaseModel):
     page: int
@@ -376,6 +389,9 @@ class CourseSessionSummary(BaseModel):
     class_name: Optional[str] = None
     description: Optional[str] = None
     duration: Optional[int] = None
+    total_slides: int = 0
+    run_count: int = 0
+    is_published: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -1260,8 +1276,22 @@ class SubscriberChatHistoryResponse(BaseModel):
 class Avatar3DModelCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     description: Optional[str] = None
+    # Accept either the legacy DB column names or the frontend-friendly aliases
     file_path: Optional[str] = Field(None, max_length=500)
     preview_image_path: Optional[str] = Field(None, max_length=500)
+    model_url: Optional[str] = Field(None, max_length=500)
+    thumbnail_url: Optional[str] = Field(None, max_length=500)
+    model_type: Optional[str] = Field(None, max_length=50)
+    gender: Optional[str] = Field(None, max_length=20)
+    supported_languages: Optional[List[str]] = None
+    sort_order: Optional[int] = 0
+    is_active: Optional[bool] = True
+
+    def resolved_file_path(self) -> Optional[str]:
+        return self.file_path or self.model_url
+
+    def resolved_preview_image_path(self) -> Optional[str]:
+        return self.preview_image_path or self.thumbnail_url
 
 
 class Avatar3DModelUpdate(BaseModel):
@@ -1269,6 +1299,12 @@ class Avatar3DModelUpdate(BaseModel):
     description: Optional[str] = None
     file_path: Optional[str] = Field(None, max_length=500)
     preview_image_path: Optional[str] = Field(None, max_length=500)
+    model_url: Optional[str] = Field(None, max_length=500)
+    thumbnail_url: Optional[str] = Field(None, max_length=500)
+    model_type: Optional[str] = Field(None, max_length=50)
+    gender: Optional[str] = Field(None, max_length=20)
+    supported_languages: Optional[List[str]] = None
+    sort_order: Optional[int] = None
     is_active: Optional[bool] = None
 
 
@@ -1278,10 +1314,28 @@ class Avatar3DModelResponse(BaseModel):
     description: Optional[str] = None
     file_path: Optional[str] = None
     preview_image_path: Optional[str] = None
+    model_type: Optional[str] = None
+    gender: Optional[str] = None
+    supported_languages: Optional[List[str]] = None
+    sort_order: int = 0
     is_active: bool
     created_by: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime
+
+    @property
+    def model_url(self) -> Optional[str]:
+        return self.file_path
+
+    @property
+    def thumbnail_url(self) -> Optional[str]:
+        return self.preview_image_path
+
+    def model_dump(self, **kwargs) -> Dict[str, Any]:
+        data = super().model_dump(**kwargs)
+        data["model_url"] = self.file_path
+        data["thumbnail_url"] = self.preview_image_path
+        return data
 
     class Config:
         from_attributes = True
