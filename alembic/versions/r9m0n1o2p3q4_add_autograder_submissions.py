@@ -5,7 +5,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 
-revision = "r9m0n1o2p3q4"
+revision = "ag001_autograder_submissions"
 down_revision = "q8l9m0n1o2p3"
 branch_labels = None
 depends_on = None

@@ -4,8 +4,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "s0n1o2p3q4r5"
-down_revision = "r9m0n1o2p3q4"
+revision = "ag002_add_is_active"
+down_revision = "ag001_autograder_submissions"
 branch_labels = None
 depends_on = None
 

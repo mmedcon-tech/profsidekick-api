@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
 from app.database.models import Avatar, User, PublisherAvatarProfile
+from app.database.models.variants import Avatar3DModel
 from app.dependencies.auth import require_admin, require_publisher, require_subscriber
 from app.schemas.schemas import (
     AvatarConfigurationCreate,
@@ -54,6 +55,29 @@ router = APIRouter(prefix="/api", tags=["avatars"])
 avatar_service = AvatarService()
 file_processor = FileProcessor()
 openai_service = OpenAIService()
+
+
+# ══════════════════════════════════════════════════════════════════
+# Publisher — 3D Model Catalog (read-only, active models only)
+# ══════════════════════════════════════════════════════════════════
+
+@router.get("/publisher/3d-models", tags=["publisher-3d-models"])
+def list_publisher_3d_models(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_publisher),
+):
+    """Return the active 3D model catalog so publishers can pick a visual for their avatar."""
+    models = (
+        db.query(Avatar3DModel)
+        .filter(Avatar3DModel.is_active == True)  # noqa: E712
+        .order_by(Avatar3DModel.sort_order, Avatar3DModel.name)
+        .all()
+    )
+    from app.schemas.schemas import Avatar3DModelResponse, Avatar3DModelsListResponse
+    return Avatar3DModelsListResponse(
+        models=[Avatar3DModelResponse.model_validate(m) for m in models],
+        total=len(models),
+    )
 
 
 # ══════════════════════════════════════════════════════════════════

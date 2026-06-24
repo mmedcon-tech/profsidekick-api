@@ -40,8 +40,13 @@ def create_3d_model(
     m = Avatar3DModel(
         name=body.name,
         description=body.description,
-        file_path=body.file_path,
-        preview_image_path=body.preview_image_path,
+        file_path=body.resolved_file_path(),
+        preview_image_path=body.resolved_preview_image_path(),
+        model_type=body.model_type or "three_js",
+        gender=body.gender,
+        supported_languages=body.supported_languages or ["en"],
+        sort_order=body.sort_order or 0,
+        is_active=body.is_active if body.is_active is not None else True,
         created_by=admin.id,
     )
     db.add(m)
@@ -77,10 +82,20 @@ def update_3d_model(
         m.name = body.name
     if body.description is not None:
         m.description = body.description
-    if body.file_path is not None:
-        m.file_path = body.file_path
-    if body.preview_image_path is not None:
-        m.preview_image_path = body.preview_image_path
+    resolved_fp = body.file_path or body.model_url
+    if resolved_fp is not None:
+        m.file_path = resolved_fp
+    resolved_pip = body.preview_image_path or body.thumbnail_url
+    if resolved_pip is not None:
+        m.preview_image_path = resolved_pip
+    if body.model_type is not None:
+        m.model_type = body.model_type
+    if body.gender is not None:
+        m.gender = body.gender
+    if body.supported_languages is not None:
+        m.supported_languages = body.supported_languages
+    if body.sort_order is not None:
+        m.sort_order = body.sort_order
     if body.is_active is not None:
         m.is_active = body.is_active
 

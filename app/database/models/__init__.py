@@ -138,6 +138,19 @@ from app.database.models.autograder import (  # noqa: F401
 # Dormant v1 stubs — keep last; no other models depend on them
 from app.database.models.legacy import ProfessorPersona  # noqa: F401
 
+# Autograder
+from app.database.models.autograder import (  # noqa: F401
+    Student,
+    AutograderSubmission,
+)
+
+# SAE
+from app.database.models.sae import (  # noqa: F401
+    SAEStudent,
+    SAEInvitationToken,
+    SAESubmission,
+)
+
 __all__ = [
     "Base",
     # enums
@@ -218,4 +231,11 @@ __all__ = [
     "AutograderSubmission",
     # legacy
     "ProfessorPersona",
+    # autograder
+    "Student",
+    "AutograderSubmission",
+    # sae
+    "SAEStudent",
+    "SAEInvitationToken",
+    "SAESubmission",
 ]
