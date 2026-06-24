@@ -134,6 +134,8 @@ from app.database.models.autograder import (  # noqa: F401
     Student,
     AutograderSubmission,
 )
+# Third-party integration tokens — depends on User only
+from app.database.models.integrations import BrightspaceToken  # noqa: F401
 
 # Dormant v1 stubs — keep last; no other models depend on them
 from app.database.models.legacy import ProfessorPersona  # noqa: F401
@@ -229,6 +231,8 @@ __all__ = [
     # autograder
     "Student",
     "AutograderSubmission",
+    # integrations
+    "BrightspaceToken",
     # legacy
     "ProfessorPersona",
     # autograder

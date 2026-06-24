@@ -79,6 +79,11 @@ class Settings(BaseSettings):
     admin_secret: str = Field("", env="ADMIN_SECRET")
     credits_per_usd: int = Field(100, env="CREDITS_PER_USD")
 
+    # Brightspace (D2L Valence) OAuth integration
+    brightspace_client_id: str = Field("", env="BRIGHTSPACE_CLIENT_ID")
+    brightspace_client_secret: str = Field("", env="BRIGHTSPACE_CLIENT_SECRET")
+    brightspace_redirect_uri: str = Field("", env="BRIGHTSPACE_REDIRECT_URI")
+
     # Wix payment webhook
     # WIX_WEBHOOK_SECRET: shared secret set in your Wix Automation action header.
     # Leave empty in dev to skip secret verification (logs a warning).
