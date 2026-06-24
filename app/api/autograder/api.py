@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
@@ -104,6 +105,24 @@ async def grade_submission(
             f"webassign_filename={webassign_orig_filename} "
             f"webassign_bytes={len(webassign_content)}"
         )
+
+        if _rid:
+            await event_bus.publish(_rid, {
+                "event": "files_ready",
+                "request_id": _rid,
+                "submission_id": str(submission_id),
+                "files": {
+                    "handwritten": {
+                        "filename": handwritten_orig_filename,
+                        "size_bytes": len(student_content),
+                    },
+                    "webassign": {
+                        "filename": webassign_orig_filename,
+                        "size_bytes": len(webassign_content),
+                    },
+                },
+                "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+            })
 
         student_files = StudentFiles(
             webassign_b64=base64.b64encode(webassign_content).decode("utf-8"),
@@ -227,6 +246,7 @@ async def grade_submission(
             await event_bus.publish(_rid, {
                 "event": "grading_complete",
                 "request_id": _rid,
+                "submission_id": str(submission_id),
                 "provider": result.model_used,
                 "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
             })
@@ -480,3 +500,92 @@ async def get_submission(
         ),
         "result_json": submission.result_json,
     }
+
+
+# ---------------------------------------------------------------------------
+# File download endpoint
+# ---------------------------------------------------------------------------
+
+@router.get("/submissions/{submission_id}/files/{file_type}")
+async def get_submission_file(
+    submission_id: str,
+    file_type: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Stream the handwritten or webassign PDF for a submission.
+
+    Two-phase path resolution:
+    - If the DB row exists (grading finished): use the stored path and enforce
+      subscriber ownership.
+    - If the DB row doesn't exist yet (grading in progress, files_ready was
+      emitted before db.commit()): derive the path from the submission_id
+      directly. The UUID is non-guessable and was only sent to the operator
+      who opened the SSE connection, so this is safe.
+    """
+    require_autograder_role(current_user, ["subscriber", "publisher", "admin"])
+
+    if file_type not in ("handwritten", "webassign"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="file_type must be 'handwritten' or 'webassign'",
+        )
+
+    # Validate submission_id is a well-formed UUID before any path construction.
+    try:
+        uuid.UUID(submission_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid submission_id: {submission_id}",
+        )
+
+    submission = (
+        db.query(AutograderSubmission)
+        .filter(AutograderSubmission.id == submission_id)
+        .first()
+    )
+
+    if submission:
+        # Grading finished — enforce subscriber ownership via DB record.
+        if (
+            current_user.role == "subscriber"
+            and submission.student_user_id != current_user.id
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only access your own submission files.",
+            )
+        file_path_str = (
+            submission.handwritten_file_path
+            if file_type == "handwritten"
+            else submission.webassign_file_path
+        )
+        display_filename = (
+            submission.handwritten_filename
+            if file_type == "handwritten"
+            else submission.webassign_filename
+        )
+        if not file_path_str:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="File not found for this submission",
+            )
+        path = Path(file_path_str)
+    else:
+        # Grading still in progress — DB row not committed yet.
+        # Path is deterministic from submission_id (set before fp.grade() is called).
+        path = Path("uploads") / "autograder" / submission_id / f"{file_type}.pdf"
+        display_filename = path.name
+
+    if not path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="File not found on disk",
+        )
+
+    return FileResponse(
+        path=str(path),
+        media_type="application/pdf",
+        filename=display_filename or path.name,
+    )
