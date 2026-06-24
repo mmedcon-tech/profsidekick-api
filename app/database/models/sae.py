@@ -1,16 +1,18 @@
+"""
+Self Assessment Exam (SAE) system models.
+Completely isolated from the Math Placement Exam autograder.
+Three tables: sae_students → sae_invitation_tokens → sae_submissions
+"""
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
+from sqlalchemy import UniqueConstraint
 
 from app.database.connection import Base
 
-# Self Assessment Exam (SAE) System
-# Completely isolated from the Math Placement Exam autograder.
-# Three tables: sae_students → sae_invitation_tokens → sae_submissions
-# ══════════════════════════════════════════════════════════════════════════
 
 class SAEStudent(Base):
     """
@@ -33,14 +35,16 @@ class SAEStudent(Base):
     user_id        = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"),
                             nullable=True, index=True)
     is_activated   = Column(Boolean, nullable=False, default=False)
+    activated_at   = Column(DateTime, nullable=True)
+    has_submitted  = Column(Boolean, nullable=False, default=False)
+    submitted_at   = Column(DateTime, nullable=True)
     created_at     = Column(DateTime, default=datetime.utcnow)
 
-    # Relationships
-    publisher_user = relationship("User", foreign_keys=[publisher_id])
-    user           = relationship("User", foreign_keys=[user_id])
-    invitation     = relationship("SAEInvitationToken", back_populates="student",
+    publisher   = relationship("User", foreign_keys=[publisher_id])
+    user        = relationship("User", foreign_keys=[user_id])
+    invitation  = relationship("SAEInvitationToken", back_populates="student",
                                uselist=False, cascade="all, delete-orphan")
-    submission     = relationship("SAESubmission", back_populates="student",
+    submission  = relationship("SAESubmission", back_populates="student",
                                uselist=False, cascade="all, delete-orphan")
 
 
@@ -87,8 +91,14 @@ class SAESubmission(Base):
     score                  = Column(Integer, nullable=True)
     overall_confidence     = Column(String(50), nullable=True)
     review_required        = Column(Boolean, nullable=False, default=False)
-    result_json            = Column(JSONB, nullable=False)
+    result_json            = Column(JSONB, nullable=True)
+    edited_result_json     = Column(JSONB, nullable=True)
+    last_edited_at         = Column(DateTime, nullable=True)
+    last_edited_by         = Column(UUID(as_uuid=True),
+                                    ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at             = Column(DateTime, default=datetime.utcnow)
+    updated_at             = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     student        = relationship("SAEStudent", back_populates="submission")
     publisher_user = relationship("User", foreign_keys=[publisher_user_id])
+    last_editor    = relationship("User", foreign_keys=[last_edited_by])

@@ -122,6 +122,19 @@ from app.database.models.progress import (  # noqa: F401
     AssessmentResult,
 )
 
+# SAE (Self Assessment Exam) system — depends on User only
+from app.database.models.sae import (  # noqa: F401
+    SAEStudent,
+    SAEInvitationToken,
+    SAESubmission,
+)
+
+# Autograder (Math Placement Exam) — depends on User only
+from app.database.models.autograder import (  # noqa: F401
+    Student,
+    AutograderSubmission,
+)
+
 # Dormant v1 stubs — keep last; no other models depend on them
 from app.database.models.legacy import ProfessorPersona  # noqa: F401
 
@@ -209,6 +222,13 @@ __all__ = [
     # progress + assessment (W6)
     "SubscriberCourseProgress",
     "AssessmentResult",
+    # SAE system
+    "SAEStudent",
+    "SAEInvitationToken",
+    "SAESubmission",
+    # autograder
+    "Student",
+    "AutograderSubmission",
     # legacy
     "ProfessorPersona",
     # autograder
