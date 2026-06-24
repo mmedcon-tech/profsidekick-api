@@ -141,6 +141,8 @@ app.add_middleware(
         "https://profsidekick-autograder.vercel.app",
         "https://profsidekick-ai.vercel.app",
         "https://*.profsidekick-ai.vercel.app",
+        "https://myos.sk",
+        "https://*.myos.sk",
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
