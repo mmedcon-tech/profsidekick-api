@@ -189,8 +189,15 @@ class FallbackProvider:
             f"final_status=failure "
             f"last_error={last_error}"
         )
+        # Collect every provider's error so the caller can see the full picture,
+        # not just the last failure.
+        all_errors = " | ".join(
+            f"{p['name']}: {p.get('last_error', 'unknown error')}"
+            for p in providers_tried
+            if p.get("status") == "failed"
+        )
         raise RuntimeError(
-            f"All grading providers exhausted. Last error: {last_error}"
+            f"All grading providers exhausted. Errors: [{all_errors}]"
         )
 
 
@@ -230,19 +237,27 @@ def get_fallback_provider() -> FallbackProvider:
 
         # 1. Vertex AI
         if settings.google_cloud_project:
-            from app.llm.vertex_provider import VertexAIProvider
-            providers.append(
-                VertexAIProvider(
-                    project=settings.google_cloud_project,
-                    location=settings.vertex_ai_location,
-                    model=settings.vertex_ai_model,
+            try:
+                from app.llm.vertex_provider import VertexAIProvider
+                providers.append(
+                    VertexAIProvider(
+                        project=settings.google_cloud_project,
+                        location=settings.vertex_ai_location,
+                        model=settings.vertex_ai_model,
+                    )
                 )
-            )
-            print(
-                f"[TRACE] vertex_ai_enabled=True "
-                f"project={settings.google_cloud_project} "
-                f"model={settings.vertex_ai_model}"
-            )
+                print(
+                    f"[TRACE] vertex_ai_enabled=True "
+                    f"project={settings.google_cloud_project} "
+                    f"model={settings.vertex_ai_model}"
+                )
+            except Exception as exc:
+                # Init failure (e.g. missing ADC, bad project ID, SDK import error).
+                # Log the specific error and skip Vertex — Gemini Pro is tried next.
+                print(
+                    f"[WARN] Vertex AI provider failed to initialize — skipping. "
+                    f"Error: {exc}"
+                )
         else:
             print("[TRACE] vertex_ai_disabled reason='missing GOOGLE_CLOUD_PROJECT'")
 

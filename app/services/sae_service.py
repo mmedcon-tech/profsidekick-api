@@ -12,6 +12,7 @@ Design rules enforced here:
 """
 
 import base64
+import copy
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -338,3 +339,66 @@ def get_publisher_students(
             | (SAEStudent.display_name.ilike(like))
         )
     return q.order_by(SAEStudent.student_number.asc()).all()
+
+
+# ── Effective result helper ────────────────────────────────────────────────────
+
+def get_effective_result_json(submission: SAESubmission) -> Optional[dict]:
+    """
+    Returns the canonical grading JSON for a submission.
+    Instructor edits take precedence over the original LLM output.
+    """
+    if submission.edited_result_json is not None:
+        return submission.edited_result_json
+    return submission.result_json
+
+
+# ── Instructor edit ────────────────────────────────────────────────────────────
+
+def update_submission_edit(
+    db: Session,
+    submission: SAESubmission,
+    overall_feedback: Optional[str],
+    question_edits: list[dict],
+    editor_id: uuid.UUID,
+) -> SAESubmission:
+    """
+    Apply instructor edits to a submission.
+
+    Works on a deep copy of the current effective result so successive edits
+    layer correctly (edit → save → edit → save always starts from latest state).
+    Recalculates the raw_score / score from the updated per-question scores and
+    keeps the SAESubmission.score column in sync.
+    """
+    base = copy.deepcopy(get_effective_result_json(submission) or {})
+
+    if overall_feedback is not None:
+        base["overall_feedback"] = overall_feedback
+
+    if question_edits:
+        edits_by_id = {qe["id"]: qe for qe in question_edits}
+        for q in base.get("questions", []):
+            qe = edits_by_id.get(q.get("id"))
+            if qe is None:
+                continue
+            if qe.get("score") is not None:
+                q["score"] = qe["score"]
+            if qe.get("feedback") is not None:
+                q["feedback"] = qe["feedback"]
+
+    # Recalculate totals from the updated question scores.
+    new_total = sum(
+        (q.get("score") or 0) for q in base.get("questions", [])
+    )
+    base["raw_score"] = new_total
+    base["score"] = new_total
+
+    # Assign a new dict so SQLAlchemy detects the JSONB column as dirty.
+    submission.edited_result_json = base
+    submission.last_edited_at = datetime.utcnow()
+    submission.last_edited_by = editor_id
+    submission.score = round(new_total)
+
+    db.commit()
+    db.refresh(submission)
+    return submission
