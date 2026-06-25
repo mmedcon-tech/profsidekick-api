@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
@@ -168,7 +168,12 @@ def get_my_file(
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File path not recorded for this submission.")
 
     if r2.enabled and not os.path.isabs(file_path):
-        return RedirectResponse(url=r2.presigned_get_url(file_path), status_code=302)
+        data = r2.download(file_path)
+        return Response(
+            content=data,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        )
 
     disk_path = Path(file_path)
     if not disk_path.exists():
