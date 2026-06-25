@@ -149,12 +149,15 @@ def activate_student_account(
     Atomically:
       1. Re-validates the token (with FOR UPDATE lock to prevent races).
       2. Checks username uniqueness.
-      3. Creates a users row (email_verified=True, is_approved=True — no email gate).
-      4. Links sae_students.user_id and marks it activated.
+      3. Creates a users row on first activation; updates the existing one on
+         re-activation (i.e. when student.user_id is already set after a
+         publisher-triggered regeneration).  The User row is NEVER deleted —
+         credentials are simply replaced.
+      4. Links / confirms sae_students.user_id and marks it activated.
       5. Marks the token as used.
       6. Commits everything.
 
-    Returns (success, error_message, new_user).
+    Returns (success, error_message, user).
     """
     # Lock the token row to prevent two simultaneous requests from both succeeding.
     token_row = (
@@ -174,55 +177,151 @@ def activate_student_account(
         if datetime.now(timezone.utc) > exp:
             return False, "This invitation link has expired.", None
 
-    # Username uniqueness check
-    existing = db.query(User).filter(User.username == username).first()
-    if existing:
-        return False, "Username already taken. Please choose a different one.", None
-
     student = db.query(SAEStudent).filter(
         SAEStudent.id == token_row.student_id
     ).first()
     if not student:
         return False, "Student record not found.", None
 
-    # Placeholder email — never emailed, but satisfies the NOT NULL unique column.
-    placeholder_email = f"sae.{student.student_code.lower()}@noreply.internal"
-
-    # Hash password using bcrypt (same as AuthService.hash_password)
+    # Hash the new password once — used by both activation paths.
     salt = bcrypt.gensalt()
     password_hash = bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
 
-    new_user = User(
-        username=username,
-        email=placeholder_email,
-        password_hash=password_hash,
-        first_name=student.display_name,
-        last_name="",
-        role="subscriber",
-        # Bypass normal email verification and admin approval flows —
-        # possession of the invitation link is proof of authorization.
-        email_verified=True,
-        is_approved=True,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
-    )
-    db.add(new_user)
-    db.flush()  # get new_user.id
+    # Canonical placeholder email — never emailed; satisfies NOT NULL unique column.
+    placeholder_email = f"sae.{student.student_code.lower()}@noreply.internal"
 
-    # Link and mark activated
-    student.user_id = new_user.id
+    if student.user_id is not None:
+        # ── Re-activation path ──────────────────────────────────────────────
+        # The publisher called regenerate_student_access(), which mangled the
+        # existing User's credentials without deleting the row.  We update that
+        # same row in-place so no data is lost.
+        existing_user = db.query(User).filter(User.id == student.user_id).first()
+        if not existing_user:
+            return False, "Linked user account not found. Contact support.", None
+
+        # Username uniqueness — exclude the current user row from the check.
+        conflict = (
+            db.query(User)
+            .filter(User.username == username, User.id != existing_user.id)
+            .first()
+        )
+        if conflict:
+            return False, "Username already taken. Please choose a different one.", None
+
+        existing_user.username = username
+        existing_user.email = placeholder_email   # restore canonical email
+        existing_user.password_hash = password_hash
+        existing_user.updated_at = datetime.utcnow()
+        user = existing_user
+    else:
+        # ── First-activation path ───────────────────────────────────────────
+        conflict = db.query(User).filter(User.username == username).first()
+        if conflict:
+            return False, "Username already taken. Please choose a different one.", None
+
+        user = User(
+            username=username,
+            email=placeholder_email,
+            password_hash=password_hash,
+            first_name=student.display_name,
+            last_name="",
+            role="subscriber",
+            # Bypass normal email verification and admin approval flows —
+            # possession of the invitation link is proof of authorization.
+            email_verified=True,
+            is_approved=True,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+        db.add(user)
+        db.flush()  # get user.id before writing the FK
+        student.user_id = user.id
+
+    # Common: mark activated and consume the token.
     student.is_activated = True
     student.activated_at = datetime.utcnow()
-
-    # Invalidate token
     token_row.is_used = True
     token_row.used_at = datetime.utcnow()
 
     db.commit()
-    db.refresh(new_user)
+    db.refresh(user)
     db.refresh(student)
 
-    return True, "", new_user
+    return True, "", user
+
+
+# ── Access regeneration ────────────────────────────────────────────────────────
+
+def regenerate_student_access(
+    db: Session,
+    student: SAEStudent,
+) -> tuple[str, str]:
+    """
+    Resets a student's credentials so they can choose a new username/password
+    via a fresh invitation link.
+
+    What this does:
+    - Mangles the existing User row's credentials (username, email, password)
+      so the student cannot log in with old details.  The row is NOT deleted —
+      no student data or submissions are affected.
+    - Marks all currently-unused invitation tokens for this student as used.
+    - Resets sae_students.is_activated to False (keeps user_id pointing at the
+      same User row so it is preserved).
+    - Inserts a new SAEInvitationToken.
+
+    The student's next step is to open the returned URL and go through the
+    normal setup flow, which will update the same User row with new credentials.
+
+    Returns (invitation_url, token_value).
+    Raises ValueError if the student has not been activated yet.
+    """
+    if not student.is_activated:
+        raise ValueError("Student is not activated — nothing to regenerate.")
+
+    # Re-fetch with a row lock to prevent concurrent regenerations.
+    student = (
+        db.query(SAEStudent)
+        .filter(SAEStudent.id == student.id)
+        .with_for_update()
+        .first()
+    )
+
+    # Mangle existing User credentials so the student cannot log in any more.
+    # We intentionally keep the row (and all linked submissions) intact.
+    if student.user_id:
+        old_user = db.query(User).filter(User.id == student.user_id).first()
+        if old_user:
+            rand = secrets.token_hex(6)
+            # Free up the canonical username/email slots so re-activation can
+            # reclaim them without hitting unique-constraint errors.
+            old_user.username = f"__reset_{rand}_{student.student_code.lower()}__"
+            old_user.email = (
+                f"__reset_{rand}.{student.student_code.lower()}@noreply.internal"
+            )
+            # Hash a random secret nobody knows — effectively disables login.
+            old_user.password_hash = bcrypt.hashpw(
+                secrets.token_bytes(32), bcrypt.gensalt()
+            ).decode("utf-8")
+
+    # Invalidate any unused tokens that are still floating around.
+    db.query(SAEInvitationToken).filter(
+        SAEInvitationToken.student_id == student.id,
+        SAEInvitationToken.is_used == False,  # noqa: E712
+    ).update({"is_used": True, "used_at": datetime.utcnow()})
+
+    # Reset activation state — user_id is intentionally kept.
+    student.is_activated = False
+
+    # Issue a fresh invitation token.
+    new_token_value = _generate_invitation_token()
+    new_token = SAEInvitationToken(
+        student_id=student.id,
+        token=new_token_value,
+    )
+    db.add(new_token)
+    db.commit()
+
+    return _build_invitation_url(new_token_value), new_token_value
 
 
 # ── File storage ───────────────────────────────────────────────────────────────

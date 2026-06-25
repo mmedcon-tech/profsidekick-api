@@ -106,6 +106,11 @@ class SAEStudentDetail(BaseModel):
         from_attributes = True
 
 
+class SAERegenerateResponse(BaseModel):
+    invitation_url: str
+    invitation_token: str
+
+
 class SAEStudentMe(BaseModel):
     id: UUID
     student_number: int

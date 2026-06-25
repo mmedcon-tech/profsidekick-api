@@ -17,11 +17,12 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
-from app.database.models import SAEStudent, SAESubmission, User
+from app.database.models import SAEInvitationToken, SAEStudent, SAESubmission, User
 from app.dependencies.auth import require_publisher
 from app.schemas.sae import (
     SAEBatchCreateRequest,
     SAEBatchCreateResponse,
+    SAERegenerateResponse,
     SAEStudentDetail,
     SAEStudentRow,
     SAESubmissionEditRequest,
@@ -55,8 +56,21 @@ def _require_own_student(
     return student
 
 
+def _get_active_token(student: SAEStudent, db: Session) -> Optional[SAEInvitationToken]:
+    """Return the latest unused invitation token for this student, or None."""
+    return (
+        db.query(SAEInvitationToken)
+        .filter(
+            SAEInvitationToken.student_id == student.id,
+            SAEInvitationToken.is_used == False,  # noqa: E712
+        )
+        .order_by(SAEInvitationToken.created_at.desc())
+        .first()
+    )
+
+
 def _student_to_row(student: SAEStudent, db: Session) -> SAEStudentRow:
-    inv = student.invitation
+    inv = _get_active_token(student, db)
     return SAEStudentRow(
         id=student.id,
         student_number=student.student_number,
@@ -90,7 +104,7 @@ def _sub_to_result_publisher(sub: SAESubmission) -> SAESubmissionResultPublisher
 
 
 def _student_to_detail(student: SAEStudent, db: Session) -> SAEStudentDetail:
-    inv = student.invitation
+    inv = _get_active_token(student, db)
     sub = student.submission
     return SAEStudentDetail(
         id=student.id,
@@ -240,6 +254,44 @@ def edit_submission(
         editor_id=publisher.id,
     )
     return _sub_to_result_publisher(updated)
+
+
+@router.post("/students/{student_id}/regenerate", response_model=SAERegenerateResponse)
+def regenerate_access(
+    student_id: str,
+    publisher: User = Depends(require_publisher),
+    db: Session = Depends(get_db),
+):
+    """
+    Reset a student's login credentials and issue a fresh invitation link.
+
+    The existing User row and any submission data are fully preserved — only the
+    username, email, and password on the User row are mangled so the student
+    cannot log in until they complete setup again via the new link.
+
+    Allowed for activated students regardless of submission status.
+    Blocked if the student has not yet activated (nothing to reset).
+    """
+    student = _require_own_student(student_id, publisher, db)
+
+    if not student.is_activated:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail="This student has not activated their account yet. Share the original invitation link.",
+        )
+
+    try:
+        invitation_url, invitation_token = sae_service.regenerate_student_access(
+            db=db,
+            student=student,
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc))
+
+    return SAERegenerateResponse(
+        invitation_url=invitation_url,
+        invitation_token=invitation_token,
+    )
 
 
 @router.get("/students/{student_id}/files/{file_type}")
