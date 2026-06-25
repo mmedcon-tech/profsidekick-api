@@ -142,6 +142,7 @@ app.add_middleware(
         "https://profsidekick-ai.vercel.app",
         "https://*.profsidekick-ai.vercel.app",
         "https://myos.sk",
+        "https://www.myos.sk",
         "https://*.myos.sk",
         "https://autograder.myos.sk",
         "https://app.myos.sk",
