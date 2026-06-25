@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
+from app.database.models.sae import SAEStudent
 from app.schemas.sae import SAEInviteSetupRequest, SAESetupResponse, SAETokenValidationResponse
 from app.services import sae_service
 from app.services.auth_service import AuthService
@@ -68,6 +69,8 @@ async def setup_account(
         token_value=token,
         username=body.username.strip(),
         password=body.password,
+        country_of_origin=body.country_of_origin,
+        curriculum=body.curriculum,
     )
 
     if not success:
@@ -81,7 +84,6 @@ async def setup_account(
     token_data = _auth.create_access_token(str(new_user.id), new_user.username)
 
     # Reload student to get the code/display_name
-    from app.database.models import SAEStudent
     sae_student = db.query(SAEStudent).filter(
         SAEStudent.user_id == new_user.id
     ).first()

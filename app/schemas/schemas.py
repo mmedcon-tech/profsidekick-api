@@ -154,7 +154,6 @@ class UserRegistration(BaseModel):
     password: str = Field(..., min_length=6)
     firstName: str = Field(..., min_length=1, max_length=100)
     lastName: str = Field(..., min_length=1, max_length=100)
-    role: str = Field(..., min_length=1, max_length=100)
 
 class UserLogin(BaseModel):
     username: str

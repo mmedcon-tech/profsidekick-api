@@ -38,6 +38,9 @@ class SAEStudent(Base):
     activated_at   = Column(DateTime, nullable=True)
     has_submitted  = Column(Boolean, nullable=False, default=False)
     submitted_at   = Column(DateTime, nullable=True)
+    # Educational background — collected during SAE account setup.
+    country_of_origin = Column(String(100), nullable=True)
+    curriculum        = Column(String(200), nullable=True)
     created_at     = Column(DateTime, default=datetime.utcnow)
 
     publisher   = relationship("User", foreign_keys=[publisher_id])

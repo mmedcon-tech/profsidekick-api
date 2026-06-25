@@ -82,6 +82,8 @@ def _student_to_row(student: SAEStudent, db: Session) -> SAEStudentRow:
         activated_at=student.activated_at,
         has_submitted=student.has_submitted,
         submitted_at=student.submitted_at,
+        country_of_origin=student.country_of_origin,
+        curriculum=student.curriculum,
     )
 
 

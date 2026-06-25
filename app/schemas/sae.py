@@ -18,6 +18,8 @@ class SAEBatchCreateRequest(BaseModel):
 class SAEInviteSetupRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     password: str = Field(..., min_length=8)
+    country_of_origin: str = Field(..., min_length=1, max_length=100)
+    curriculum: str = Field(..., min_length=1, max_length=200)
 
 
 class SAEQuestionEdit(BaseModel):
@@ -44,6 +46,8 @@ class SAEStudentRow(BaseModel):
     activated_at: Optional[datetime]
     has_submitted: bool
     submitted_at: Optional[datetime]
+    country_of_origin: Optional[str] = None
+    curriculum: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -118,6 +122,8 @@ class SAEStudentMe(BaseModel):
     display_name: str
     is_activated: bool
     has_submitted: bool
+    country_of_origin: Optional[str] = None
+    curriculum: Optional[str] = None
 
     class Config:
         from_attributes = True

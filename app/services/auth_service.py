@@ -94,13 +94,6 @@ class AuthService:
                 message="Email already registered"
             )
         
-        # Check if role is valid
-        if registration_data.role not in ["publisher", "subscriber", "admin"]:
-            return AuthResponse(
-                success=False,
-                message="Invalid role. Must be publisher, subscriber, or admin."
-            )
-        
         # Generate email verification token
         verification_token = self.generate_token()
         
@@ -113,7 +106,7 @@ class AuthService:
             password_hash=hashed_password,
             first_name=registration_data.firstName,
             last_name=registration_data.lastName,
-            role=registration_data.role,
+            role="subscriber",
             email_verified=settings.bypass_email_verification,
             email_verification_token=verification_token,
             email_verification_sent_at=datetime.utcnow(),

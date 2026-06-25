@@ -144,6 +144,8 @@ def activate_student_account(
     token_value: str,
     username: str,
     password: str,
+    country_of_origin: str,
+    curriculum: str,
 ) -> tuple[bool, str, Optional[User]]:
     """
     Atomically:
@@ -237,9 +239,11 @@ def activate_student_account(
         db.flush()  # get user.id before writing the FK
         student.user_id = user.id
 
-    # Common: mark activated and consume the token.
+    # Common: mark activated, store educational metadata, consume the token.
     student.is_activated = True
     student.activated_at = datetime.utcnow()
+    student.country_of_origin = country_of_origin
+    student.curriculum = curriculum
     token_row.is_used = True
     token_row.used_at = datetime.utcnow()
 

@@ -64,6 +64,8 @@ def get_my_profile(
         display_name=sae_student.display_name,
         is_activated=sae_student.is_activated,
         has_submitted=sae_student.has_submitted,
+        country_of_origin=sae_student.country_of_origin,
+        curriculum=sae_student.curriculum,
     )
 
 
