@@ -38,6 +38,20 @@ def seed_models():
                 "file_path": "/avatars/avatar-3.glb",
                 "preview_image_path": "/images/avatar-male.png",
                 "is_active": True
+            },
+            {
+                "name": "Layla",
+                "description": "Roblox-style Kids Female Model",
+                "file_path": "/avatars/kids-female.glb",
+                "preview_image_path": "/images/kids-female.png",
+                "is_active": True
+            },
+            {
+                "name": "Omar",
+                "description": "Roblox-style Kids Male Model",
+                "file_path": "/avatars/kids-male.glb",
+                "preview_image_path": "/images/kids-male.png",
+                "is_active": True
             }
         ]
 
