@@ -46,7 +46,7 @@ def _generate_invitation_token() -> str:
 
 
 def _build_invitation_url(token: str) -> str:
-    base = settings.frontend_url.rstrip("/")
+    base = settings.autograder_frontend_url.rstrip("/")
     return f"{base}/sae/setup/{token}"
 
 
