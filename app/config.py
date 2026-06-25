@@ -61,6 +61,12 @@ class Settings(BaseSettings):
     s3_bucket_name: str = Field("", env="S3_BUCKET_NAME")
     s3_bucket_region: str = Field("", env="S3_BUCKET_REGION")
     cloudfront_domain: str = Field("", env="CLOUDFRONT_DOMAIN")  # Optional CDN domain
+
+    # Cloudflare R2 Storage (SAE submission PDFs)
+    r2_account_id: str = Field("", env="R2_ACCOUNT_ID")
+    r2_access_key_id: str = Field("", env="R2_ACCESS_KEY_ID")
+    r2_secret_access_key: str = Field("", env="R2_SECRET_ACCESS_KEY")
+    r2_bucket_name: str = Field("", env="R2_BUCKET_NAME")
     
     # Poppler path (required on Windows for pdf2image; leave empty on Linux/Docker where poppler-utils is in PATH)
     poppler_path: Optional[str] = Field(None, env="POPPLER_PATH")
