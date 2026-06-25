@@ -114,6 +114,7 @@ class Settings(BaseSettings):
     # Email Verification & Approval
     professor_approval_emails: str = Field("", env="PROFESSOR_APPROVAL_EMAILS")
     frontend_url: str = Field("http://localhost:3000", env="FRONTEND_URL")
+    autograder_frontend_url: str = Field("http://localhost:3000", env="AUTOGRADER_FRONTEND_URL")
     # DEV ONLY — set BYPASS_EMAIL_VERIFICATION=false in production
     bypass_email_verification: bool = Field(True, env="BYPASS_EMAIL_VERIFICATION")
     
