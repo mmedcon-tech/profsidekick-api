@@ -54,8 +54,7 @@ class SessionService:
             
         if user.role == "publisher" and course.user_id != user_id:
             raise ValueError("You can only create sessions in your own courses")
-        elif user.role == "subscriber":
-            raise ValueError("Subscribers cannot create sessions")
+        # Subscribers may freely create sessions in any course (temporary — no restraint).
         
         # Validate and normalise session_mode
         raw_mode = session_details.get('sessionMode') or 'teaching'
@@ -68,10 +67,10 @@ class SessionService:
 
         raw_avatar_id = session_details.get('avatarId')
         if raw_avatar_id:
-            avatar_row = db.query(Avatar).filter(
-                Avatar.id == raw_avatar_id,
-                Avatar.publisher_id == user_id,
-            ).first()
+            avatar_query = db.query(Avatar).filter(Avatar.id == raw_avatar_id)
+            if user.role == "publisher":
+                avatar_query = avatar_query.filter(Avatar.publisher_id == user_id)
+            avatar_row = avatar_query.first()
             if avatar_row:
                 avatar_id = avatar_row.id
 
@@ -86,8 +85,12 @@ class SessionService:
                 role_label = role_row.name
 
         # Create session in database
-        raw_runtime_mode = session_details.get('subscriberRuntimeMode') or 'avatar'
-        subscriber_runtime_mode = raw_runtime_mode if raw_runtime_mode in ('avatar', 'chat', 'choice') else 'avatar'
+        if user.role == "subscriber":
+            # Subscriber-created sessions always run in realtime (avatar) mode, never chat.
+            subscriber_runtime_mode = 'avatar'
+        else:
+            raw_runtime_mode = session_details.get('subscriberRuntimeMode') or 'avatar'
+            subscriber_runtime_mode = raw_runtime_mode if raw_runtime_mode in ('avatar', 'chat', 'choice') else 'avatar'
 
         db_session = SessionModel(
             session_id=session_id,
@@ -328,7 +331,34 @@ class SessionService:
         session_run.session_run_metadata = session_run_metadata
         db.commit()
         return session_run
-    
+
+    async def transition_session_run(
+        self, db: Session, session_id: str, session_run_id: str, runtime_mode_used: str
+    ) -> Optional[SessionRun]:
+        """
+        Record a mid-run mode switch (e.g. realtime voice -> text chat) on an
+        otherwise still-active SessionRun. Metadata-only — does not stop the run.
+        """
+        db_session = db.query(SessionModel).filter(SessionModel.session_id == session_id).first()
+        if not db_session:
+            return None
+
+        session_run = db.query(SessionRun).filter(
+            SessionRun.session_id == db_session.id,
+            SessionRun.session_run_id == session_run_id,
+        ).first()
+        if not session_run:
+            return None
+
+        session_run.runtime_mode_used = runtime_mode_used
+        session_run.session_run_metadata = {
+            **(session_run.session_run_metadata or {}),
+            "transitioned_from_realtime": True,
+            "transitioned_at": datetime.now().isoformat(),
+        }
+        db.commit()
+        return session_run
+
     async def get_sessions_paginated(
         self,
         db: Session,
