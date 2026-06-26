@@ -18,6 +18,7 @@ from app.api.billing.api import router as billing_router
 from app.api.admin.billing_api import router as admin_billing_router
 from app.api.webhooks.wix import router as wix_webhook_router
 from app.api.professor.api import router as professor_router
+from app.api.assistant.api import router as assistant_router
 
 
 @asynccontextmanager
@@ -162,6 +163,7 @@ app.include_router(billing_router)
 app.include_router(admin_billing_router)
 app.include_router(wix_webhook_router)
 app.include_router(professor_router)
+app.include_router(assistant_router)
 
 
 # Add middleware for request logging (optional)
