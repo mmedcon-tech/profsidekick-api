@@ -1483,14 +1483,47 @@ async def get_ephemeral_token(
             if hasattr(session_run.assistant_parameters, "model_dump")
             else dict(session_run.assistant_parameters or {})
         )
+
+        # ── Knowledge context: avatar docs + course materials ─────────────────
+        # Collect avatar-level knowledge documents (uploaded under the Knowledge tab)
+        # and course-level knowledge chunks (uploaded as course materials) so they
+        # are injected into the realtime session's system prompt via rag_context.
+        rag_parts: list[str] = []
+
         if db_session_raw and db_session_raw.avatar_id:
             _avcfg = (
                 db.query(AvatarConfiguration)
                 .filter(AvatarConfiguration.avatar_id == db_session_raw.avatar_id)
                 .first()
             )
-            if _avcfg and _avcfg.voice:
-                _ap["voice"] = _avcfg.voice.lower()
+            if _avcfg:
+                if _avcfg.voice:
+                    _ap["voice"] = _avcfg.voice.lower()
+
+                # Avatar knowledge documents — use extracted content_text (populated
+                # by the background RAG ingestion task on upload).
+                _MAX_CHARS_PER_DOC = 1_200
+                for doc in (_avcfg.knowledge_documents or []):
+                    if doc.content_text and doc.content_text.strip():
+                        excerpt = doc.content_text.strip()[:_MAX_CHARS_PER_DOC]
+                        rag_parts.append(f"[Knowledge: {doc.title}]\n{excerpt}")
+
+        # Course material chunks — retrieve from KnowledgeChunk rows scoped to the
+        # session's course (course_id FK on the Session model).
+        if db_session_raw and db_session_raw.course_id:
+            from app.database.models import KnowledgeChunk as _KC
+            _course_chunks = (
+                db.query(_KC)
+                .filter(_KC.course_id == db_session_raw.course_id)
+                .order_by(_KC.created_at)
+                .limit(20)  # cap to avoid exceeding token budget
+                .all()
+            )
+            for chunk in _course_chunks:
+                if chunk.content and chunk.content.strip():
+                    rag_parts.append(f"[Course Material]\n{chunk.content.strip()[:800]}")
+
+        rag_context: str | None = "\n\n".join(rag_parts) if rag_parts else None
 
         token_data = await openai_service.generate_ephemeral_token(
             _ap,
@@ -1505,6 +1538,7 @@ async def get_ephemeral_token(
             session_summary=session_summary,
             memories=memories,
             refined_prompt=refined_prompt,
+            rag_context=rag_context,
         )
         # ── Build avatar display config from variant_snapshot ─────────────────
         snapshot = getattr(session_run, "variant_snapshot", None) or {}
