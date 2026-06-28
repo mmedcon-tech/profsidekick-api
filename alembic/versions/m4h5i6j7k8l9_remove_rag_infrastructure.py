@@ -1,0 +1,91 @@
+"""Remove unimplemented RAG infrastructure
+
+Revision ID: m4h5i6j7k8l9
+Revises: l3g4h5i6j7k8
+Create Date: 2026-06-02
+
+Changes:
+  DROP TABLE  knowledge_document_chunks
+    — chunk rows were never created (no upload handler populated them).
+    — retrieval code path is removed from publisher_chat_service.
+    — knowledge content is now always sourced from knowledge_documents.content_text.
+
+  DROP COLUMN user_memories.embedding
+    — embedding was never computed or written (always NULL).
+    — memory retrieval uses importance + recency ordering, not cosine similarity.
+
+Knowledge document uploads and prompt injection are NOT affected:
+  knowledge_documents.content_text remains and is injected as before.
+"""
+
+from alembic import op
+import sqlalchemy as sa
+
+revision = "m4h5i6j7k8l9"
+down_revision = "l3g4h5i6j7k8"
+branch_labels = None
+depends_on = None
+
+
+def upgrade() -> None:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    existing_tables = inspector.get_table_names()
+
+    def get_cols(table):
+        if table not in existing_tables:
+            return []
+        return [c['name'] for c in inspector.get_columns(table)]
+
+    def get_fks(table):
+        if table not in existing_tables:
+            return []
+        return [f['name'] for f in inspector.get_foreign_keys(table)]
+
+    def get_indexes(table):
+        if table not in existing_tables:
+            return []
+        return [i['name'] for i in inspector.get_indexes(table)]
+
+    # Drop the chunks table first (FK references knowledge_documents.id).
+    if 'knowledge_document_chunks' in existing_tables:
+        op.drop_table("knowledge_document_chunks")
+
+    # Drop the embedding column from user_memories.
+    if 'embedding' in get_cols('user_memories'):
+        op.drop_column("user_memories", "embedding")
+
+
+def downgrade() -> None:
+    # Restore embedding column (nullable — no data recovery possible).
+    op.add_column(
+        "user_memories",
+        sa.Column("embedding", sa.Text, nullable=True),
+    )
+
+    # Recreate the chunks table (empty — no data recovery possible).
+    op.create_table(
+        "knowledge_document_chunks",
+        sa.Column("id", sa.dialects.postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column(
+            "knowledge_document_id",
+            sa.dialects.postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("knowledge_documents.id", ondelete="CASCADE"),
+            nullable=False,
+            index=True,
+        ),
+        sa.Column("chunk_index", sa.Integer, nullable=False),
+        sa.Column("chunk_text", sa.Text, nullable=False),
+        sa.Column("embedding", sa.Text, nullable=True),
+        sa.Column(
+            "created_at",
+            sa.DateTime,
+            nullable=False,
+            server_default=sa.func.now(),
+        ),
+    )
+    op.create_index(
+        "ix_knowledge_document_chunks_knowledge_document_id",
+        "knowledge_document_chunks",
+        ["knowledge_document_id"],
+    )

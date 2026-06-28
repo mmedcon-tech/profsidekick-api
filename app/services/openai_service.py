@@ -2,131 +2,236 @@ import json
 import asyncio
 import base64
 import httpx
-import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
-from uuid import UUID
-
 import openai
-from openai import OpenAI
-from sqlalchemy.orm import Session as DBSession
-
+from openai import OpenAI, AsyncOpenAI
 from app.config import settings
+from app.services.context_builder import (
+    build_realtime_instructions,
+    resolve_vision_prompt,
+    GROUNDING_POLICY_DEFAULT,
+)
 from PIL import Image
+import traceback
 import io
-
-logger = logging.getLogger(__name__)
-
 
 class OpenAIService:
     """Service for OpenAI API integration"""
 
     def __init__(self):
         self.client = OpenAI(api_key=settings.openai_api_key)
-        self.url = "https://api.openai.com/v1/realtime/sessions"
-        self.headers = {
-            "Authorization": f"Bearer {settings.openai_api_key}",
-            "Content-Type": "application/json",
-        }
+        self.async_client = AsyncOpenAI(api_key=settings.openai_api_key)
+        
+    # Valid OpenAI Realtime GA API model identifiers
+    _VALID_REALTIME_MODELS = {
+        "gpt-realtime-2",
+        "gpt-realtime-2025-08-28",
+        "gpt-realtime-1.5",
+        "gpt-realtime",
+        "gpt-realtime-mini",
+        "gpt-realtime-mini-2025-10-06",
+        "gpt-realtime-mini-2025-12-15",
+        "gpt-realtime-translate",
+        "gpt-realtime-whisper",
+    }
+    _DEFAULT_REALTIME_MODEL = "gpt-realtime-2025-08-28"
+
+    @staticmethod
+    def _map_audio_format(fmt: str | None) -> dict:
+        """Convert legacy pcm16/g711_ulaw string formats to GA audio format objects."""
+        if not fmt or fmt == "pcm16":
+            return {"type": "audio/pcm", "rate": 24000}
+        if fmt in ("g711_ulaw", "g711_alaw"):
+            return {"type": fmt}
+        # Already an object (passed through)
+        if isinstance(fmt, dict):
+            return fmt
+        return {"type": "audio/pcm", "rate": 24000}
+
+    def _normalize_realtime_model(self, model: str) -> str:
+        """Map legacy/deprecated model names to a valid Realtime GA API model identifier."""
+        if model in self._VALID_REALTIME_MODELS:
+            return model
+        # Map any legacy gpt-4o-realtime-* or unknown names to the current default
+        return self._DEFAULT_REALTIME_MODEL
 
     async def generate_ephemeral_token(
         self,
         assistant_parameters: Any,
         slides: List[Dict[str, Any]],
-        user_id: Optional[UUID] = None,
-        session_run_id: Optional[UUID] = None,
-        db: Optional[DBSession] = None,
+        solution_slides: List[Dict[str, Any]] = None,
+        # Avatar / template context (resolved at call site)
+        conversation_prompt: Optional[str] = None,
+        teaching_prompt: Optional[str] = None,
+        examination_prompt: Optional[str] = None,
+        session_mode: Optional[str] = None,
+        role_label: Optional[str] = None,
+        role_context: Optional[str] = None,
+        session_summary: Optional[str] = None,
+        memories: Optional[List[str]] = None,
+        # Publisher teaching persona (from PublisherAvatarProfile.refined_prompt)
+        refined_prompt: Optional[str] = None,
+        # RAG-retrieved knowledge context
+        rag_context: Optional[str] = None,
+        # Grounding policy override
+        grounding_policy: str = GROUNDING_POLICY_DEFAULT,
     ) -> Dict[str, Any]:
         """
-        Generate ephemeral token for OpenAI Realtime API.
-        Charges a flat realtime_token fee when user_id and db are provided.
+        Generate ephemeral token for OpenAI Realtime API using the SDK.
+        Using the SDK (rather than raw httpx) guarantees the request shape matches
+        the current GA API format regardless of future OpenAI API changes.
         """
-        # Pre-call balance check
-        if user_id is not None and db is not None:
-            from app.services.billing_service import charge_usage
+        try:
+            ap = assistant_parameters if isinstance(assistant_parameters, dict) else vars(assistant_parameters)
 
-            charge_usage(
-                user_id=user_id,
-                operation_type="realtime_token",
-                input_tokens=0,
-                output_tokens=0,
-                db=db,
-                session_run_id=session_run_id,
+            raw_model = ap.get('model') or self._DEFAULT_REALTIME_MODEL
+            model = self._normalize_realtime_model(raw_model)
+            if model != raw_model:
+                print(f"⚠️  Remapped realtime model '{raw_model}' → '{model}'")
+
+            instructions = build_realtime_instructions(
+                assistant_parameters=assistant_parameters,
+                slides=slides,
+                solution_slides=solution_slides,
+                conversation_prompt=conversation_prompt,
+                teaching_prompt=teaching_prompt,
+                examination_prompt=examination_prompt,
+                session_mode=session_mode,
+                role_label=role_label,
+                role_context=role_context,
+                session_summary=session_summary,
+                memories=memories,
+                refined_prompt=refined_prompt,
+                rag_context=rag_context,
+                grounding_policy=grounding_policy,
             )
 
-        try:
-            if assistant_parameters["turn_detection"]["type"] == "server_vad":
+            # ── Build GA audio.input ───────────────────────────────────────────
+            td = ap.get('turn_detection')
+            if td and td.get('type') == "server_vad":
                 turn_detection = {
-                    "type": assistant_parameters["turn_detection"]["type"],
-                    "prefix_padding_ms": assistant_parameters["turn_detection"][
-                        "prefix_padding_ms"
-                    ],
-                    "silence_duration_ms": assistant_parameters["turn_detection"][
-                        "silence_duration_ms"
-                    ],
-                    "threshold": assistant_parameters["turn_detection"]["threshold"],
+                    "type": "server_vad",
+                    "threshold": td.get('threshold', 0.5),
+                    "silence_duration_ms": td.get('silence_duration_ms', 500),
+                    "create_response": True,
+                    "interrupt_response": True,
                 }
-            elif assistant_parameters["turn_detection"]["type"] == "semantic_vad":
+            elif td and td.get('type') == "semantic_vad":
                 turn_detection = {
-                    "type": assistant_parameters["turn_detection"]["type"],
-                    "eagerness": assistant_parameters["turn_detection"]["eagerness"],
+                    "type": "semantic_vad",
+                    "eagerness": td.get('eagerness', "auto"),
+                    "create_response": True,
+                    "interrupt_response": True,
                 }
             else:
                 turn_detection = {
-                    "type": assistant_parameters["turn_detection"]["type"],
+                    "type": "server_vad",
+                    "threshold": 0.5,
+                    "silence_duration_ms": 500,
+                    "create_response": True,
+                    "interrupt_response": True,
                 }
 
-            if (
-                assistant_parameters["instructions"] is not None
-                and assistant_parameters["instructions"][0] != "{"
-            ):
-                instructions = assistant_parameters["instructions"]
-            else:
-                instructions_json = json.loads(assistant_parameters["instructions"])
-                instructions = (
-                    instructions_json["editable"] + "\n" + instructions_json["core"]
-                )
-            for slide in slides:
-                instructions += (
-                    f"\n\nSlide {slide.slideNumber}: {slide.title}\n{slide.content}"
-                )
+            nr_raw = ap.get('input_audio_noise_reduction') or ap.get('input_audio_noice_reduction')
+            noise_reduction = {"type": nr_raw.get("type", "near_field")} if nr_raw else {"type": "near_field"}
+
+            tr_raw = ap.get('input_audio_transcription')
+            transcription = {
+                "model": (tr_raw.get("model") if tr_raw else None) or "gpt-4o-transcribe",
+                "language": (tr_raw.get("language") if tr_raw else None) or "en",
+            }
+
+            audio_input_fmt = self._map_audio_format(ap.get('input_audio_format'))
+            audio_output_fmt = self._map_audio_format(ap.get('output_audio_format'))
 
             async with httpx.AsyncClient() as client:
                 response = await client.post(
-                    self.url,
-                    headers=self.headers,
+                    "https://api.openai.com/v1/realtime/client_secrets",
+                    headers={
+                        "Authorization": f"Bearer {settings.openai_api_key}",
+                        "Content-Type": "application/json",
+                    },
                     json={
-                        "model": assistant_parameters["model"],
-                        "voice": assistant_parameters["voice"],
-                        "instructions": instructions,
-                        "input_audio_format": assistant_parameters[
-                            "input_audio_format"
-                        ],
-                        "output_audio_format": assistant_parameters[
-                            "output_audio_format"
-                        ],
-                        "temperature": assistant_parameters["temperature"],
-                        "tool_choice": assistant_parameters["tool_choice"],
-                        "input_audio_noise_reduction": assistant_parameters[
-                            "input_audio_noise_reduction"
-                        ],
-                        "input_audio_transcription": assistant_parameters[
-                            "input_audio_transcription"
-                        ],
-                        "tools": assistant_parameters["tools"],
-                        "turn_detection": turn_detection,
+                        "expires_after": {"anchor": "created_at", "seconds": 600},
+                        "session": {
+                            "type": "realtime",
+                            "model": model,
+                            "instructions": instructions,
+                            "max_output_tokens": ap.get("max_output_tokens", "inf"),
+                            "tool_choice": ap.get("tool_choice", "auto"),
+                            "tools": ap.get("tools") or [],
+                            "audio": {
+                                "input": {
+                                    "format": audio_input_fmt,
+                                    "noise_reduction": noise_reduction,
+                                    "transcription": transcription,
+                                    "turn_detection": turn_detection,
+                                },
+                                "output": {
+                                    "format": audio_output_fmt,
+                                    "voice": ap.get("voice", "alloy"),
+                                    "speed": 1.0,
+                                },
+                            },
+                        },
                     },
                 )
 
-                if response.status_code == 200:
-                    return response.json()
-                else:
-                    raise Exception(
-                        f"API request failed with status {response.status_code}: {response.text}"
-                    )
+            if response.status_code != 200:
+                print(response.text)
+                raise Exception(response.text)
+
+            raw = response.json()
+            # GA API response: {"value": "ek_...", "expires_at": 1234, "session": {...}}
+            # Token is at the top level, not nested under client_secret
+            token_value = raw.get("value", "")
+            expires_at = raw.get("expires_at", 0)
+            used_model = raw.get("session", {}).get("model") or model
+            if not token_value:
+                print(f"⚠️  Could not extract token — raw keys: {list(raw.keys())}")
+            return {
+                "client_secret": {"value": token_value, "expires_at": expires_at},
+                "model": used_model,
+            }
 
         except Exception as e:
-            raise Exception(f"Failed to generate ephemeral token: {str(e)}")
+            print("❌ generate_ephemeral_token FAILED")
+            print(traceback.format_exc())
+            raise
+
+    async def refine_persona_prompt(
+        self,
+        draft: str,
+        additional_context: Optional[str] = None,
+    ) -> str:
+        """Call gpt-4o-mini to condense a draft teaching-persona into a compact directive."""
+        extra = (
+            f"\n\nAdditional context from the publisher:\n{additional_context.strip()}"
+            if additional_context and additional_context.strip()
+            else ""
+        )
+        completion = await self.async_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a prompt engineer for an educational AI platform. "
+                        "Your task is to rewrite the draft teaching persona below into a concise, "
+                        "natural, first-person instructional style directive (max 200 words). "
+                        "Preserve all teaching preferences. Remove template headers and bullet formatting. "
+                        "Output only the refined persona text — no preamble, no labels."
+                    ),
+                },
+                {"role": "user", "content": f"Draft:\n{draft}{extra}"},
+            ],
+            max_tokens=400,
+            temperature=0.4,
+        )
+        if not completion.choices:
+            raise ValueError("OpenAI returned no choices for persona refinement")
+        return completion.choices[0].message.content.strip()
 
     async def process_slides_with_vision(
         self,
@@ -135,152 +240,102 @@ class OpenAIService:
         session_id: str,
         vision_instructions: str,
         vision_model: str,
-        user_id: Optional[UUID] = None,
-        db: Optional[DBSession] = None,
+        template_document_analysis_prompt: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         try:
+            # Prepare slides for Vision API
             slides_details = []
+            # Priority: explicit vision_instructions from session > template prompt > hardcoded default
             if not vision_instructions:
-                vision_instructions = (
-                    "You are a helpful assistant that can analyze the slide image "
-                    "and provide a detailed description of the content."
-                )
+                vision_instructions = resolve_vision_prompt(template_document_analysis_prompt)
             if not vision_model:
                 vision_model = "gpt-4o"
 
             for slide_image, image_path in zip(slide_images, images_paths):
-                slide_details = await self._process_slide_with_vision(
-                    slide_image,
-                    vision_instructions,
-                    vision_model,
-                    user_id=user_id,
-                    db=db,
-                )
-                slides_details.append(
-                    {
-                        "id": image_path.get("slideNumber"),
-                        "slideNumber": image_path.get("slideNumber"),
-                        "title": slide_details.get("title"),
-                        "content": slide_details.get("content"),
-                        "imagePath": image_path.get("imagePath"),
-                        "thumbnailPath": image_path.get("thumbnailPath"),
-                        "visionInstructions": vision_instructions,
-                        "visionModel": vision_model,
-                    }
-                )
-
+                slide_details = await self._process_slide_with_vision(slide_image, vision_instructions, vision_model)
+                slides_details.append({
+                    "id": image_path.get('slideNumber'),
+                    "slideNumber": image_path.get('slideNumber'),
+                    "title": slide_details.get('title'),
+                    "content": slide_details.get('content'),
+                    "imagePath": image_path.get('imagePath'),
+                    "thumbnailPath": image_path.get('thumbnailPath'),
+                    "visionInstructions": vision_instructions,
+                    "visionModel": vision_model
+                })
+            
             return slides_details
-
+        
         except Exception as e:
             raise Exception(f"Failed to process slides with Vision API: {str(e)}")
-
-    async def process_slide_with_vision(
-        self,
-        slide_image: Image,
-        vision_instructions: str,
-        vision_model: str,
-        user_id: Optional[UUID] = None,
-        db: Optional[DBSession] = None,
-    ) -> Dict[str, Any]:
+    
+    async def process_slide_with_vision(self, slide_image: Image, vision_instructions: str, vision_model: str) -> Dict[str, Any]:
         try:
-            slide_details = await self._process_slide_with_vision(
-                slide_image,
-                vision_instructions,
-                vision_model,
-                user_id=user_id,
-                db=db,
-            )
+            print(f"Processing slide with Vision API: {slide_image}")
+            slide_details = await self._process_slide_with_vision(slide_image, vision_instructions, vision_model)
             return slide_details
         except Exception as e:
             raise Exception(f"Failed to process slide with Vision API: {str(e)}")
-
-    async def _process_slide_with_vision(
-        self,
-        slide_image: Image,
-        vision_instructions: str,
-        vision_model: str,
-        user_id: Optional[UUID] = None,
-        db: Optional[DBSession] = None,
-    ) -> Dict[str, Any]:
+    
+    async def _process_slide_with_vision(self, slide_image: Image, vision_instructions: str, vision_model: str) -> Dict[str, Any]:
         try:
+            # Convert image to base64 PNG format
             buffer = io.BytesIO()
-            slide_image.save(buffer, format="PNG")
+            slide_image.save(buffer, format='PNG')
             buffer.seek(0)
             image_base64 = base64.b64encode(buffer.getvalue()).decode()
 
-            # Vision call (gpt-4o with image)
+            # Call OpenAI API
             response_content = self.client.chat.completions.create(
                 model=vision_model,
                 messages=[
-                    {"role": "system", "content": vision_instructions},
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": vision_instructions},
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/png;base64,{image_base64}",
-                                    "detail": "high",
-                                },
-                            },
-                        ],
-                    },
-                ],
-                temperature=0.4,
-            )
-
-            if user_id is not None and db is not None:
-                from app.services.billing_service import charge_usage
-
-                charge_usage(
-                    user_id=user_id,
-                    operation_type="vision",
-                    input_tokens=response_content.usage.prompt_tokens,
-                    output_tokens=response_content.usage.completion_tokens,
-                    db=db,
-                )
-
-            # Title extraction call (gpt-4o-mini)
-            response_title = self.client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
                     {
                         "role": "system",
-                        "content": (
-                            "You are a helpful assistant that can analyze the slide content "
-                            "and provide a title for the slide. The title should be a single "
-                            "sentence that captures the main idea of the slide. It should be "
-                            "no more than 10 words. Just write the title directly without title tag."
-                        ),
+                        "content": vision_instructions
                     },
                     {
                         "role": "user",
                         "content": [
                             {
                                 "type": "text",
-                                "text": response_content.choices[0].message.content,
+                                "text": "Analyze this slide and extract all content as instructed."
+                            },
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/png;base64,{image_base64}",
+                                    "detail": "high"
+                                }
                             }
-                        ],
-                    },
+                        ]
+                    }
                 ],
+                temperature=0.4
             )
 
-            if user_id is not None and db is not None:
-                from app.services.billing_service import charge_usage
-
-                charge_usage(
-                    user_id=user_id,
-                    operation_type="chat",
-                    input_tokens=response_title.usage.prompt_tokens,
-                    output_tokens=response_title.usage.completion_tokens,
-                    db=db,
-                )
+            response_title = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "Generate a concise academic title for this examination slide (maximum 10 words). Write only the title, no additional text."
+                    },
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": response_content.choices[0].message.content
+                            }
+                        ]
+                    }
+                ]
+            )
 
             return {
                 "title": response_title.choices[0].message.content,
-                "content": response_content.choices[0].message.content,
+                "content": response_content.choices[0].message.content
             }
-
+        
         except Exception as e:
             raise Exception(f"Failed to process slide with Vision API: {str(e)}")
