@@ -46,7 +46,7 @@ def _generate_invitation_token() -> str:
 
 
 def _build_invitation_url(token: str) -> str:
-    base = settings.frontend_url.rstrip("/")
+    base = settings.autograder_frontend_url.rstrip("/")
     return f"{base}/sae/setup/{token}"
 
 
@@ -259,12 +259,25 @@ async def grade_and_save_submission(
     from app.llm.provider import StudentFiles
     from fastapi import HTTPException, status
 
-    # Persist files
-    submission_dir = build_submission_dir(student.student_code)
-    hw_path = submission_dir / "handwritten.pdf"
-    wa_path = submission_dir / "webassign.pdf"
-    hw_path.write_bytes(handwritten_bytes)
-    wa_path.write_bytes(webassign_bytes)
+    # Persist files — prefer R2, fall back to local disk
+    from app.services.r2_service import r2
+
+    hw_key = f"autograder/sae/{student.student_code}/handwritten.pdf"
+    wa_key = f"autograder/sae/{student.student_code}/webassign.pdf"
+
+    if r2.enabled:
+        r2.upload(hw_key, handwritten_bytes)
+        r2.upload(wa_key, webassign_bytes)
+        hw_stored = hw_key
+        wa_stored = wa_key
+    else:
+        submission_dir = build_submission_dir(student.student_code)
+        hw_path = submission_dir / "handwritten.pdf"
+        wa_path = submission_dir / "webassign.pdf"
+        hw_path.write_bytes(handwritten_bytes)
+        wa_path.write_bytes(webassign_bytes)
+        hw_stored = str(hw_path)
+        wa_stored = str(wa_path)
 
     # Encode for LLM provider
     student_files = StudentFiles(
@@ -303,9 +316,9 @@ async def grade_and_save_submission(
         submitted_by_publisher=submitted_by_publisher,
         publisher_user_id=publisher_user_id,
         handwritten_filename=handwritten_filename,
-        handwritten_file_path=str(hw_path),
+        handwritten_file_path=hw_stored,
         webassign_filename=webassign_filename,
-        webassign_file_path=str(wa_path),
+        webassign_file_path=wa_stored,
         score=result.score,
         overall_confidence=result_data.get("overall_confidence"),
         review_required=result_data["submission_review_required"],

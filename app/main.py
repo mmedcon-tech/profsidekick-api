@@ -70,6 +70,7 @@ from app.services.gemini_file_cache import load_autograder_cache
 from app.api.webhooks.wix import router as wix_router
 from app.api.analytics.api import router as analytics_router              # W6
 from app.api.assistant.api import router as assistant_router              # W7
+from app.api.brightspace.api import router as brightspace_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -140,6 +141,12 @@ app.add_middleware(
         "https://profsidekick-autograder.vercel.app",
         "https://profsidekick-ai.vercel.app",
         "https://*.profsidekick-ai.vercel.app",
+        "https://myos.sk",
+        "https://www.myos.sk",
+        "https://*.myos.sk",
+        "https://autograder.myos.sk",
+        "https://app.myos.sk",
+        "https://*.app.myos.sk"
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
@@ -234,6 +241,7 @@ app.include_router(sae_student_router)
 app.include_router(wix_router)
 app.include_router(analytics_router)            # W6: subscriber, publisher, admin analytics
 app.include_router(assistant_router)            # W7: multi-role AI navigation assistant
+app.include_router(brightspace_router)          # Brightspace LMS integration
 
 # Add middleware for request logging (optional)
 @app.middleware("http")
