@@ -1,0 +1,304 @@
+from __future__ import annotations
+
+import time
+from datetime import datetime, timezone
+
+from app.llm.errors import FatalError, RetryableError
+from app.llm.event_bus import event_bus
+from app.llm.provider import GradingResult, LLMProvider, StudentFiles
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _ms(t0: float) -> int:
+    return int((time.monotonic() - t0) * 1000)
+
+
+def _evt(event_type: str, request_id: str, provider_name: str, **extra) -> dict:
+    return {
+        "event": event_type,
+        "request_id": request_id,
+        "provider": provider_name,
+        "timestamp": _now(),
+        **extra,
+    }
+
+
+class FallbackProvider:
+    """
+    Routes a grading request through an ordered list of providers.
+
+    For each provider:
+      - RetryableError → retry up to provider.max_attempts times, then skip.
+      - FatalError     → skip immediately (no retry).
+
+    Returns the first successful GradingResult.
+    Raises RuntimeError if every provider is exhausted.
+    """
+
+    def __init__(self, providers: list[LLMProvider]):
+        self._providers = providers
+
+    @property
+    def provider_names(self) -> list[str]:
+        return [p.name for p in self._providers]
+
+    async def grade(
+        self,
+        student_files: StudentFiles,
+        request_id: str | None = None,
+    ) -> GradingResult:
+        t_chain_start = time.monotonic()
+        last_error: Exception | None = None
+        prev_provider_name: str | None = None
+        providers_tried: list[dict] = []
+
+        rid = request_id or "no-sse"
+        print(
+            f"[TRACE] request_id={rid} START fallback_chain "
+            f"providers={self.provider_names}"
+        )
+
+        for provider in self._providers:
+            # Emit fallback_switch when transitioning from a previously-failed provider.
+            if prev_provider_name is not None:
+                print(
+                    f"[TRACE] request_id={rid} fallback_switch "
+                    f"from={prev_provider_name} to={provider.name}"
+                )
+                if request_id:
+                    await event_bus.publish(
+                        request_id,
+                        _evt(
+                            "fallback_switch",
+                            request_id,
+                            provider.name,
+                            **{"from": prev_provider_name, "to": provider.name},
+                        ),
+                    )
+
+            t_provider_start = time.monotonic()
+            attempts_made = 0
+            max_att = provider.max_attempts
+            provider_last_error: str = ""
+
+            for attempt in range(1, max_att + 1):
+                attempts_made = attempt
+                print(
+                    f"[TRACE] request_id={rid} provider_start "
+                    f"name={provider.name} attempt={attempt}/{max_att}"
+                )
+
+                if request_id and attempt == 1:
+                    await event_bus.publish(
+                        request_id,
+                        _evt(
+                            "provider_started",
+                            request_id,
+                            provider.name,
+                            attempt=1,
+                            max_attempts=max_att,
+                        ),
+                    )
+
+                try:
+                    result = await provider.grade(student_files)
+                    duration_ms = _ms(t_provider_start)
+                    print(
+                        f"[TRACE] request_id={rid} provider_success "
+                        f"name={provider.name} attempt={attempt} duration_ms={duration_ms}"
+                    )
+                    if request_id:
+                        await event_bus.publish(
+                            request_id,
+                            _evt("provider_success", request_id, provider.name, attempt=attempt),
+                        )
+
+                    total_ms = _ms(t_chain_start)
+                    providers_tried.append({"name": provider.name, "status": "success", "attempts": attempt})
+                    print(
+                        f"[TRACE] request_id={rid} FINAL_SUMMARY "
+                        f"total_duration_ms={total_ms} "
+                        f"providers_tried={providers_tried} "
+                        f"final_status=success "
+                        f"winning_provider={provider.name} "
+                        f"source={result.source}"
+                    )
+                    return result
+
+                except RetryableError as exc:
+                    provider_last_error = str(exc)
+                    print(
+                        f"[TRACE] request_id={rid} provider_retry "
+                        f"name={provider.name} attempt={attempt}/{max_att} "
+                        f"error={exc}"
+                    )
+                    last_error = exc
+                    if request_id and attempt < max_att:
+                        await event_bus.publish(
+                            request_id,
+                            _evt(
+                                "provider_retry",
+                                request_id,
+                                provider.name,
+                                attempt=attempt,
+                                reason=str(exc),
+                                max_attempts=max_att,
+                            ),
+                        )
+
+                except FatalError as exc:
+                    provider_last_error = str(exc)
+                    print(
+                        f"[TRACE] request_id={rid} provider_fatal "
+                        f"name={provider.name} error={exc}"
+                    )
+                    last_error = exc
+                    break  # no point retrying a fatal error on the same provider
+
+            providers_tried.append({
+                "name": provider.name,
+                "status": "failed",
+                "attempts": attempts_made,
+                "last_error": provider_last_error,
+            })
+            if request_id:
+                await event_bus.publish(
+                    request_id,
+                    _evt(
+                        "provider_failed",
+                        request_id,
+                        provider.name,
+                        attempts_made=attempts_made,
+                        reason=str(last_error),
+                    ),
+                )
+            prev_provider_name = provider.name
+
+        total_ms = _ms(t_chain_start)
+        print(
+            f"[TRACE] request_id={rid} ALL_PROVIDERS_FAILED "
+            f"last_error={last_error}"
+        )
+        print(
+            f"[TRACE] request_id={rid} FINAL_SUMMARY "
+            f"total_duration_ms={total_ms} "
+            f"providers_tried={providers_tried} "
+            f"final_status=failure "
+            f"last_error={last_error}"
+        )
+        # Collect every provider's error so the caller can see the full picture,
+        # not just the last failure.
+        all_errors = " | ".join(
+            f"{p['name']}: {p.get('last_error', 'unknown error')}"
+            for p in providers_tried
+            if p.get("status") == "failed"
+        )
+        raise RuntimeError(
+            f"All grading providers exhausted. Errors: [{all_errors}]"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Lazy singleton — built once on first call, reused for the lifetime of the
+# process.  Provider instances carry no mutable state so this is safe.
+# ---------------------------------------------------------------------------
+
+_instance: FallbackProvider | None = None
+
+
+def get_fallback_provider() -> FallbackProvider:
+    global _instance
+    if _instance is not None:
+        return _instance
+
+    from app.config import settings
+    from app.llm.gemini_provider import GeminiProvider
+    from app.llm.openai_provider import OpenAIProvider
+
+    providers: list[LLMProvider] = []
+
+    if settings.llm_provider_mode == "openai_only":
+        # Debug mode: bypass all Gemini providers, use OpenAI only.
+        print("[LLM MODE] OpenAI-only mode enabled")
+        if settings.openai_api_key:
+            providers.append(OpenAIProvider(settings.openai_api_key))
+        else:
+            raise RuntimeError("openai_only mode requires OPENAI_API_KEY to be set.")
+    else:
+        # ── Full fallback chain (production order) ────────────────────────────
+        # 1. Vertex AI  ×1 — primary; ADC auth, no Files API, GCS optional
+        # 2. Gemini Pro ×2 — Files API URIs uploaded at startup under pro key
+        # 3. OpenAI     ×1 — inline PDFs, no file caching
+        # 4. Gemini Flash 2.5 ×1 — Files API URIs uploaded under flash key
+        # 5. Gemini Free ×1 — Files API URIs uploaded under free key
+
+        # 1. Vertex AI
+        if settings.google_cloud_project:
+            try:
+                from app.llm.vertex_provider import VertexAIProvider
+                providers.append(
+                    VertexAIProvider(
+                        project=settings.google_cloud_project,
+                        location=settings.vertex_ai_location,
+                        model=settings.vertex_ai_model,
+                    )
+                )
+                print(
+                    f"[TRACE] vertex_ai_enabled=True "
+                    f"project={settings.google_cloud_project} "
+                    f"model={settings.vertex_ai_model}"
+                )
+            except Exception as exc:
+                # Init failure (e.g. missing ADC, bad project ID, SDK import error).
+                # Log the specific error and skip Vertex — Gemini Pro is tried next.
+                print(
+                    f"[WARN] Vertex AI provider failed to initialize — skipping. "
+                    f"Error: {exc}"
+                )
+        else:
+            print("[TRACE] vertex_ai_disabled reason='missing GOOGLE_CLOUD_PROJECT'")
+
+        # 2. Gemini Pro
+        pro_key = settings.gemini_pro_api_key or settings.gemini_api_key
+        if pro_key:
+            providers.append(GeminiProvider(pro_key, settings.gemini_model, tier="pro"))
+            print("[TRACE] gemini_pro_enabled=True")
+        else:
+            print("[TRACE] gemini_pro_disabled reason='missing GEMINI_PRO_API_KEY'")
+
+        # 3. OpenAI
+        if settings.openai_api_key:
+            providers.append(OpenAIProvider(settings.openai_api_key))
+            print("[TRACE] openai_enabled=True")
+        else:
+            print("[TRACE] openai_disabled reason='missing OPENAI_API_KEY'")
+
+        # 4. Gemini Flash 2.5
+        flash_key = settings.gemini_flash_api_key or settings.gemini_free_api_key
+        if flash_key:
+            providers.append(GeminiProvider(flash_key, settings.gemini_flash_model, tier="flash"))
+            print("[TRACE] gemini_flash_enabled=True")
+        else:
+            print("[TRACE] gemini_flash_disabled reason='missing GEMINI_FLASH_API_KEY'")
+
+        # 5. Gemini Free
+        free_key = settings.gemini_free_api_key
+        if free_key:
+            providers.append(GeminiProvider(free_key, settings.gemini_model, tier="free"))
+            print("[TRACE] gemini_free_enabled=True")
+        else:
+            print("[TRACE] gemini_free_disabled reason='missing GEMINI_FREE_API_KEY'")
+
+    if not providers:
+        raise RuntimeError(
+            "No LLM providers configured. Set at least one of: "
+            "GOOGLE_CLOUD_PROJECT, GEMINI_PRO_API_KEY, OPENAI_API_KEY, "
+            "GEMINI_FLASH_API_KEY, GEMINI_FREE_API_KEY."
+        )
+
+    print(f"[TRACE] fallback_provider_initialized providers={[p.name for p in providers]}")
+    _instance = FallbackProvider(providers)
+    return _instance

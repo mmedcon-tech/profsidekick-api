@@ -3,4 +3,12 @@ __pycache__
 .env
 .DS_Store
 uploads
-static
+static"venv/" 
+".env" 
+"QA_REPORT.md" 
+"__pycache__/" 
+"*.pyc" 
+.env.*
+!.env.example
+venv/
+static/

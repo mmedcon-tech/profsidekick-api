@@ -1,56 +1,46 @@
-import logging
 import os
 import uuid
 from typing import List, Optional
 from pathlib import Path
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
-from fastapi import HTTPException
+from fastapi import BackgroundTasks, HTTPException, UploadFile
 from app.database.models import CourseMaterial, Course, SessionMaterial, MaterialType
 from app.schemas.schemas import (
-    CourseMaterialCreate,
-    CourseMaterialUpdate,
-    CourseMaterialResponse,
-    SessionMaterialCreate,
-    SessionMaterialUpdate,
-    SessionMaterialResponse,
-    FileUploadResponse,
+    CourseMaterialCreate, CourseMaterialUpdate, CourseMaterialResponse,
+    SessionMaterialCreate, SessionMaterialUpdate, SessionMaterialResponse,
+    FileUploadResponse
 )
 from app.config import settings
 from app.services.file_processor import FileProcessor
 from app.services.cloud_storage_service import cloud_storage
-
-logger = logging.getLogger(__name__)
+from app.services.rag_service import ingest_course_material_background
 
 
 class CourseMaterialService:
     def __init__(self):
         self.file_processor = FileProcessor()
         self.materials_dir = Path(settings.upload_dir) / "course_materials"
+
+    def _ensure_materials_dir(self) -> None:
         self.materials_dir.mkdir(parents=True, exist_ok=True)
 
     async def create_course_material(
-        self, db: Session, material_data: CourseMaterialCreate, user_id: str
+        self, 
+        db: Session, 
+        material_data: CourseMaterialCreate, 
+        user_id: str
     ) -> CourseMaterialResponse:
         """Create a new course material"""
-
+        
         # Verify course ownership (course_id is string-based identifier)
-        course = (
-            db.query(Course)
-            .filter(
-                and_(
-                    Course.course_id == material_data.course_id,
-                    Course.user_id == user_id,
-                )
-            )
-            .first()
-        )
-
+        course = db.query(Course).filter(
+            and_(Course.course_id == material_data.course_id, Course.user_id == user_id)
+        ).first()
+        
         if not course:
-            raise HTTPException(
-                status_code=404, detail="Course not found or access denied"
-            )
-
+            raise HTTPException(status_code=404, detail="Course not found or access denied")
+        
         # Create material record (use the UUID primary key for foreign key)
         db_material = CourseMaterial(
             course_id=course.id,
@@ -65,13 +55,13 @@ class CourseMaterialService:
             doi=material_data.doi,
             additional_info=material_data.additional_info,
             is_required=material_data.is_required,
-            is_active=material_data.is_active,
+            is_active=material_data.is_active
         )
-
+        
         db.add(db_material)
         db.commit()
         db.refresh(db_material)
-
+        
         # Create response with string-based course_id
         return CourseMaterialResponse(
             id=db_material.id,
@@ -92,124 +82,138 @@ class CourseMaterialService:
             additional_info=db_material.additional_info,
             is_required=db_material.is_required,
             is_active=db_material.is_active,
-            rag_status=db_material.rag_status,
-            rag_error=db_material.rag_error,
-            rag_chunks=db_material.rag_chunks,
             created_at=db_material.created_at,
-            updated_at=db_material.updated_at,
+            updated_at=db_material.updated_at
         )
 
     async def upload_material_file(
-        self,
-        db: Session,
-        material_id: str,
-        file_content: bytes,
-        file_name: str,
-        content_type: Optional[str],
+        self, 
+        db: Session, 
+        material_id: str, 
+        file: UploadFile, 
         user_id: str,
+        background_tasks: Optional[BackgroundTasks] = None,
     ) -> FileUploadResponse:
-        """Store the uploaded file bytes for a course material.
-
-        RAG ingestion is NOT performed here — callers must enqueue it as a
-        background task so the upload response is not blocked.
-        """
-
+        """Upload a file for a course material"""
+        
         # Get material and verify ownership
-        material = (
-            db.query(CourseMaterial)
-            .join(Course)
-            .filter(and_(CourseMaterial.id == material_id, Course.user_id == user_id))
-            .first()
-        )
-
-        if not material:
-            raise HTTPException(
-                status_code=404, detail="Material not found or access denied"
+        material = db.query(CourseMaterial).join(Course).filter(
+            and_(
+                CourseMaterial.id == material_id,
+                Course.user_id == user_id
             )
-
-        # Validate file
-        is_valid, error_message = self.file_processor.validate_file(
-            file_content, file_name
-        )
-        if not is_valid:
-            return FileUploadResponse(success=False, message=error_message)
-
+        ).first()
+        
+        if not material:
+            raise HTTPException(status_code=404, detail="Material not found or access denied")
+        
         try:
+            # Read file content
+            file_content = await file.read()
+            
+            # Validate file
+            is_valid, error_message = self.file_processor.validate_file(file_content, file.filename)
+            if not is_valid:
+                return FileUploadResponse(success=False, message=error_message)
+            
             # Generate unique filename for path reference
-            unique_filename = f"{uuid.uuid4()}_{file_name}"
+            file_ext = Path(file.filename).suffix.lower()
+            unique_filename = f"{uuid.uuid4()}_{file.filename}"
             material_dir = self.materials_dir / str(material_id)
             file_path = material_dir / unique_filename
-
+            
             if settings.use_cloud_storage:
+                # Upload to cloud storage
                 try:
                     s3_key, public_url = await cloud_storage.upload_file(
                         file_content=file_content,
                         file_path=str(file_path),
-                        content_type=content_type,
+                        content_type=file.content_type,
                         metadata={
-                            "material_id": str(material_id),
-                            "course_id": str(material.course_id),
-                            "original_filename": file_name or "unknown",
-                            "file_type": "course_material",
-                        },
+                            'material_id': str(material_id),
+                            'course_id': str(material.course_id),
+                            'original_filename': file.filename or 'unknown',
+                            'file_type': 'course_material'
+                        }
                     )
+                    
+                    # Update material record with cloud storage info
                     material.file_path = public_url
+                    material.file_name = file.filename
+                    material.file_size = len(file_content)
+                    material.file_type = file.content_type
+                    
                 except Exception as e:
-                    logger.warning("Cloud storage upload failed, falling back to local: %s", e)
+                    print(f"Failed to upload to cloud storage: {e}")
+                    # Fallback to local storage
                     material_dir.mkdir(parents=True, exist_ok=True)
-                    with open(file_path, "wb") as f:
+                    with open(file_path, 'wb') as f:
                         f.write(file_content)
+                    
                     material.file_path = str(file_path)
+                    material.file_name = file.filename
+                    material.file_size = len(file_content)
+                    material.file_type = file.content_type
             else:
+                # Save to local storage
                 material_dir.mkdir(parents=True, exist_ok=True)
-                with open(file_path, "wb") as f:
+                with open(file_path, 'wb') as f:
                     f.write(file_content)
+                
                 material.file_path = str(file_path)
-
-            material.file_name = file_name
-            material.file_size = len(file_content)
-            material.file_type = content_type
-            material.rag_status = "pending"
-
+                material.file_name = file.filename
+                material.file_size = len(file_content)
+                material.file_type = file.content_type
+            
             db.commit()
+            db.refresh(material)
 
+            if background_tasks is not None:
+                background_tasks.add_task(
+                    ingest_course_material_background,
+                    material.course_id,
+                    material.id,
+                    file_content,
+                    file.filename or "uploaded_material",
+                )
+            
             return FileUploadResponse(
                 success=True,
                 file_path=material.file_path,
-                file_name=file_name,
+                file_name=file.filename,
                 file_size=len(file_content),
-                file_type=content_type,
-                message="File uploaded successfully",
+                file_type=file.content_type,
+                message="File uploaded successfully"
             )
-
+            
         except Exception as e:
             return FileUploadResponse(success=False, message=f"Upload failed: {str(e)}")
 
     async def get_course_materials(
-        self, db: Session, course_id: str, user_id: str, include_inactive: bool = False
+        self, 
+        db: Session, 
+        course_id: str, 
+        user_id: str,
+        include_inactive: bool = False
     ) -> List[CourseMaterialResponse]:
         """Get all materials for a course"""
-
+        
         # Verify course access (course_id is string-based identifier)
-        course = (
-            db.query(Course)
-            .filter(and_(Course.course_id == course_id, Course.user_id == user_id))
-            .first()
-        )
-
+        course = db.query(Course).filter(
+            and_(Course.course_id == course_id, Course.user_id == user_id)
+        ).first()
+        
         if not course:
-            raise HTTPException(
-                status_code=404, detail="Course not found or access denied"
-            )
-
+            raise HTTPException(status_code=404, detail="Course not found or access denied")
+        
         # Build query (use the UUID primary key for foreign key lookup)
         query = db.query(CourseMaterial).filter(CourseMaterial.course_id == course.id)
-
+        
         if not include_inactive:
             query = query.filter(CourseMaterial.is_active == True)
-
+        
         materials = query.all()
-
+        
         # Create responses with string-based course_id
         responses = []
         for material in materials:
@@ -232,33 +236,31 @@ class CourseMaterialService:
                 additional_info=material.additional_info,
                 is_required=material.is_required,
                 is_active=material.is_active,
-                rag_status=material.rag_status,
-                rag_error=material.rag_error,
-                rag_chunks=material.rag_chunks,
                 created_at=material.created_at,
-                updated_at=material.updated_at,
+                updated_at=material.updated_at
             )
             responses.append(response)
-
+        
         return responses
 
     async def get_course_material(
-        self, db: Session, material_id: str, user_id: str
+        self, 
+        db: Session, 
+        material_id: str, 
+        user_id: str
     ) -> CourseMaterialResponse:
         """Get a specific course material"""
-
-        result = (
-            db.query(CourseMaterial, Course)
-            .join(Course)
-            .filter(and_(CourseMaterial.id == material_id, Course.user_id == user_id))
-            .first()
-        )
-
-        if not result:
-            raise HTTPException(
-                status_code=404, detail="Material not found or access denied"
+        
+        result = db.query(CourseMaterial, Course).join(Course).filter(
+            and_(
+                CourseMaterial.id == material_id,
+                Course.user_id == user_id
             )
-
+        ).first()
+        
+        if not result:
+            raise HTTPException(status_code=404, detail="Material not found or access denied")
+        
         material, course = result
         return CourseMaterialResponse(
             id=material.id,
@@ -279,44 +281,39 @@ class CourseMaterialService:
             additional_info=material.additional_info,
             is_required=material.is_required,
             is_active=material.is_active,
-            rag_status=material.rag_status,
-            rag_error=material.rag_error,
-            rag_chunks=material.rag_chunks,
             created_at=material.created_at,
-            updated_at=material.updated_at,
+            updated_at=material.updated_at
         )
 
     async def update_course_material(
-        self,
-        db: Session,
-        material_id: str,
-        material_data: CourseMaterialUpdate,
-        user_id: str,
+        self, 
+        db: Session, 
+        material_id: str, 
+        material_data: CourseMaterialUpdate, 
+        user_id: str
     ) -> CourseMaterialResponse:
         """Update a course material"""
-
-        result = (
-            db.query(CourseMaterial, Course)
-            .join(Course)
-            .filter(and_(CourseMaterial.id == material_id, Course.user_id == user_id))
-            .first()
-        )
-
-        if not result:
-            raise HTTPException(
-                status_code=404, detail="Material not found or access denied"
+        
+        result = db.query(CourseMaterial, Course).join(Course).filter(
+            and_(
+                CourseMaterial.id == material_id,
+                Course.user_id == user_id
             )
-
+        ).first()
+        
+        if not result:
+            raise HTTPException(status_code=404, detail="Material not found or access denied")
+        
         material, course = result
-
+        
         # Update fields
         update_data = material_data.model_dump(exclude_unset=True)
         for field, value in update_data.items():
             setattr(material, field, value)
-
+        
         db.commit()
         db.refresh(material)
-
+        
         return CourseMaterialResponse(
             id=material.id,
             course_id=course.course_id,  # Use string-based course_id
@@ -336,41 +333,37 @@ class CourseMaterialService:
             additional_info=material.additional_info,
             is_required=material.is_required,
             is_active=material.is_active,
-            rag_status=material.rag_status,
-            rag_error=material.rag_error,
-            rag_chunks=material.rag_chunks,
             created_at=material.created_at,
-            updated_at=material.updated_at,
+            updated_at=material.updated_at
         )
 
     async def delete_course_material(
-        self, db: Session, material_id: str, user_id: str
+        self, 
+        db: Session, 
+        material_id: str, 
+        user_id: str
     ) -> dict:
         """Delete a course material"""
-
-        material = (
-            db.query(CourseMaterial)
-            .join(Course)
-            .filter(and_(CourseMaterial.id == material_id, Course.user_id == user_id))
-            .first()
-        )
-
-        if not material:
-            raise HTTPException(
-                status_code=404, detail="Material not found or access denied"
+        
+        material = db.query(CourseMaterial).join(Course).filter(
+            and_(
+                CourseMaterial.id == material_id,
+                Course.user_id == user_id
             )
-
+        ).first()
+        
+        if not material:
+            raise HTTPException(status_code=404, detail="Material not found or access denied")
+        
         # Delete associated file if exists
         if material.file_path:
             try:
-                if settings.use_cloud_storage and material.file_path.startswith(
-                    "https://"
-                ):
+                if settings.use_cloud_storage and material.file_path.startswith('https://'):
                     # Delete from cloud storage
                     # Extract S3 key from URL
-                    url_parts = material.file_path.split("/")
+                    url_parts = material.file_path.split('/')
                     if len(url_parts) > 3:
-                        s3_key = "/".join(url_parts[3:])  # Everything after domain
+                        s3_key = '/'.join(url_parts[3:])  # Everything after domain
                         await cloud_storage.delete_file(s3_key)
                 elif os.path.exists(material.file_path):
                     # Delete from local storage
@@ -379,104 +372,75 @@ class CourseMaterialService:
                     material_dir = Path(material.file_path).parent
                     if material_dir.exists() and not any(material_dir.iterdir()):
                         material_dir.rmdir()
-            except Exception as file_exc:
-                logger.warning(
-                    "delete_course_material: failed to delete file %s — %s",
-                    material.file_path,
-                    file_exc,
-                )
-        # Remove RAG embeddings for this material before deleting the record.
-        try:
-            from app.database.models import KnowledgeChunk
+            except Exception as e:
+                print(f"Warning: Could not delete file {material.file_path}: {e}")
+        
+        from app.database.models import KnowledgeChunk
 
-            db.query(KnowledgeChunk).filter(
-                KnowledgeChunk.source == f"course_material:{str(material.id)}"
-            ).delete()
-        except Exception as rag_exc:
-            logger.warning(
-                "delete_course_material: failed to remove KnowledgeChunks for %s — %s",
-                material.id,
-                rag_exc,
-            )
+        db.query(KnowledgeChunk).filter(
+            KnowledgeChunk.course_id == material.course_id,
+            KnowledgeChunk.source == f"course_material:{str(material.id)}",
+        ).delete()
 
         db.delete(material)
         db.commit()
-
+        
         return {"message": "Material deleted successfully"}
 
     # Session Materials methods
     async def create_session_material(
-        self, db: Session, session_material_data: SessionMaterialCreate, user_id: str
+        self, 
+        db: Session, 
+        session_material_data: SessionMaterialCreate, 
+        user_id: str
     ) -> SessionMaterialResponse:
         """Link a course material to a session"""
-
+        
         # Verify session and material ownership through course
         from app.database.models import Session as SessionModel
-
-        session = (
-            db.query(SessionModel)
-            .join(Course)
-            .filter(
-                and_(
-                    SessionModel.session_id == session_material_data.session_id,
-                    Course.user_id == user_id,
-                )
+        session = db.query(SessionModel).join(Course).filter(
+            and_(
+                SessionModel.session_id == session_material_data.session_id,
+                Course.user_id == user_id
             )
-            .first()
-        )
-
+        ).first()
+        
         if not session:
-            raise HTTPException(
-                status_code=404, detail="Session not found or access denied"
+            raise HTTPException(status_code=404, detail="Session not found or access denied")
+        
+        material = db.query(CourseMaterial).join(Course).filter(
+            and_(
+                CourseMaterial.id == session_material_data.course_material_id,
+                Course.user_id == user_id
             )
-
-        material = (
-            db.query(CourseMaterial)
-            .join(Course)
-            .filter(
-                and_(
-                    CourseMaterial.id == session_material_data.course_material_id,
-                    Course.user_id == user_id,
-                )
-            )
-            .first()
-        )
-
+        ).first()
+        
         if not material:
-            raise HTTPException(
-                status_code=404, detail="Material not found or access denied"
-            )
-
+            raise HTTPException(status_code=404, detail="Material not found or access denied")
+        
         # Check if association already exists
-        existing = (
-            db.query(SessionMaterial)
-            .filter(
-                and_(
-                    SessionMaterial.session_id == session.id,
-                    SessionMaterial.course_material_id
-                    == session_material_data.course_material_id,
-                )
+        existing = db.query(SessionMaterial).filter(
+            and_(
+                SessionMaterial.session_id == session.id,
+                SessionMaterial.course_material_id == session_material_data.course_material_id
             )
-            .first()
-        )
-
+        ).first()
+        
         if existing:
-            raise HTTPException(
-                status_code=400, detail="Material already linked to this session"
-            )
-
+            raise HTTPException(status_code=400, detail="Material already linked to this session")
+        
         # Create session material
         db_session_material = SessionMaterial(
             session_id=session.id,
             course_material_id=session_material_data.course_material_id,
             is_included=session_material_data.is_included,
-            usage_instructions=session_material_data.usage_instructions,
+            usage_instructions=session_material_data.usage_instructions
         )
-
+        
         db.add(db_session_material)
         db.commit()
         db.refresh(db_session_material)
-
+        
         # Create response with string-based session_id
         return SessionMaterialResponse(
             id=db_session_material.id,
@@ -505,42 +469,43 @@ class CourseMaterialService:
                 additional_info=material.additional_info,
                 is_required=material.is_required,
                 is_active=material.is_active,
-                rag_status=material.rag_status,
-                rag_error=material.rag_error,
-                rag_chunks=material.rag_chunks,
                 created_at=material.created_at,
-                updated_at=material.updated_at,
-            ),
+                updated_at=material.updated_at
+            )
         )
 
     async def get_session_materials(
-        self, db: Session, session_id: str, user_id: str
+        self,
+        db: Session,
+        session_id: str,
+        user_id: str,
+        skip_ownership_check: bool = False,
     ) -> List[SessionMaterialResponse]:
-        """Get all materials for a session"""
+        """Get all materials for a session.
 
-        # Verify session ownership (session_id is string-based identifier)
+        Admins pass skip_ownership_check=True to bypass the course-owner filter.
+        """
         from app.database.models import Session as SessionModel
 
-        session = (
-            db.query(SessionModel)
-            .join(Course)
-            .filter(
-                and_(SessionModel.session_id == session_id, Course.user_id == user_id)
-            )
-            .first()
-        )
+        if skip_ownership_check:
+            session = db.query(SessionModel).filter(
+                SessionModel.session_id == session_id
+            ).first()
+        else:
+            session = db.query(SessionModel).join(Course).filter(
+                and_(
+                    SessionModel.session_id == session_id,
+                    Course.user_id == user_id,
+                )
+            ).first()
 
         if not session:
-            raise HTTPException(
-                status_code=404, detail="Session not found or access denied"
-            )
-
-        session_materials = (
-            db.query(SessionMaterial)
-            .filter(SessionMaterial.session_id == session.id)  # Use UUID primary key
-            .all()
-        )
-
+            raise HTTPException(status_code=404, detail="Session not found or access denied")
+        
+        session_materials = db.query(SessionMaterial).filter(
+            SessionMaterial.session_id == session.id  # Use UUID primary key
+        ).all()
+        
         # Build responses with proper session_id format
         responses = []
         for sm in session_materials:
@@ -571,51 +536,43 @@ class CourseMaterialService:
                     additional_info=sm.course_material.additional_info,
                     is_required=sm.course_material.is_required,
                     is_active=sm.course_material.is_active,
-                    rag_status=sm.course_material.rag_status,
-                    rag_error=sm.course_material.rag_error,
-                    rag_chunks=sm.course_material.rag_chunks,
                     created_at=sm.course_material.created_at,
-                    updated_at=sm.course_material.updated_at,
-                ),
+                    updated_at=sm.course_material.updated_at
+                )
             )
             responses.append(response)
-
+        
         return responses
 
     async def update_session_material(
-        self,
-        db: Session,
-        session_material_id: str,
-        session_material_data: SessionMaterialUpdate,
-        user_id: str,
+        self, 
+        db: Session, 
+        session_material_id: str, 
+        session_material_data: SessionMaterialUpdate, 
+        user_id: str
     ) -> SessionMaterialResponse:
         """Update a session material"""
-
-        session_material = (
-            db.query(SessionMaterial)
-            .join(CourseMaterial)
-            .join(Course)
-            .filter(
-                and_(
-                    SessionMaterial.id == session_material_id, Course.user_id == user_id
-                )
+        
+        session_material = db.query(SessionMaterial).join(
+            CourseMaterial
+        ).join(Course).filter(
+            and_(
+                SessionMaterial.id == session_material_id,
+                Course.user_id == user_id
             )
-            .first()
-        )
-
+        ).first()
+        
         if not session_material:
-            raise HTTPException(
-                status_code=404, detail="Session material not found or access denied"
-            )
-
+            raise HTTPException(status_code=404, detail="Session material not found or access denied")
+        
         # Update fields
         update_data = session_material_data.model_dump(exclude_unset=True)
         for field, value in update_data.items():
             setattr(session_material, field, value)
-
+        
         db.commit()
         db.refresh(session_material)
-
+        
         # Create response with proper string-based IDs
         return SessionMaterialResponse(
             id=session_material.id,
@@ -644,37 +601,32 @@ class CourseMaterialService:
                 additional_info=session_material.course_material.additional_info,
                 is_required=session_material.course_material.is_required,
                 is_active=session_material.course_material.is_active,
-                rag_status=session_material.course_material.rag_status,
-                rag_error=session_material.course_material.rag_error,
-                rag_chunks=session_material.course_material.rag_chunks,
                 created_at=session_material.course_material.created_at,
-                updated_at=session_material.course_material.updated_at,
-            ),
+                updated_at=session_material.course_material.updated_at
+            )
         )
 
     async def delete_session_material(
-        self, db: Session, session_material_id: str, user_id: str
+        self, 
+        db: Session, 
+        session_material_id: str, 
+        user_id: str
     ) -> dict:
         """Remove a material from a session"""
-
-        session_material = (
-            db.query(SessionMaterial)
-            .join(CourseMaterial)
-            .join(Course)
-            .filter(
-                and_(
-                    SessionMaterial.id == session_material_id, Course.user_id == user_id
-                )
+        
+        session_material = db.query(SessionMaterial).join(
+            CourseMaterial
+        ).join(Course).filter(
+            and_(
+                SessionMaterial.id == session_material_id,
+                Course.user_id == user_id
             )
-            .first()
-        )
-
+        ).first()
+        
         if not session_material:
-            raise HTTPException(
-                status_code=404, detail="Session material not found or access denied"
-            )
-
+            raise HTTPException(status_code=404, detail="Session material not found or access denied")
+        
         db.delete(session_material)
         db.commit()
-
+        
         return {"message": "Material removed from session successfully"}
