@@ -9,11 +9,12 @@ GET  /api/sae/student/submission  → own submission (404 if not yet submitted)
 POST /api/sae/student/submit      → one-time file upload + grading
 """
 
+import os
 from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
@@ -22,6 +23,7 @@ from app.dependencies.auth import require_subscriber
 from app.schemas.sae import SAEStudentMe, SAESubmissionResult
 from app.services import sae_service
 from app.services.gemini_file_cache import autograder_cache
+from app.services.r2_service import r2
 
 router = APIRouter(prefix="/api/sae/student", tags=["sae-student"])
 
@@ -164,6 +166,14 @@ def get_my_file(
 
     if not file_path:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File path not recorded for this submission.")
+
+    if r2.enabled and not os.path.isabs(file_path):
+        data = r2.download(file_path)
+        return Response(
+            content=data,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        )
 
     disk_path = Path(file_path)
     if not disk_path.exists():
