@@ -53,6 +53,7 @@ from app.api.publisher.api import router as publisher_router
 from app.api.subscriptions.api import router as subscriptions_router
 from app.api.billing.api import router as billing_router
 from app.api.admin.billing_api import router as admin_billing_router
+from app.api.assistant.api import router as assistant_router
 from app.api.admin.models_api import router as admin_3d_models_router  # W2A
 from app.api.avatars.variants import router as avatar_variants_router  # W2A
 from app.api.programs.api import router as programs_router            # W2B
@@ -141,6 +142,12 @@ app.add_middleware(
         "https://profsidekick-autograder.vercel.app",
         "https://profsidekick-ai.vercel.app",
         "https://*.profsidekick-ai.vercel.app",
+        "https://myos.sk",
+        "https://www.myos.sk",
+        "https://*.myos.sk",
+        "https://autograder.myos.sk",
+        "https://app.myos.sk",
+        "https://*.app.myos.sk"
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
@@ -218,6 +225,7 @@ app.include_router(publisher_router)
 app.include_router(subscriptions_router)
 app.include_router(billing_router)
 app.include_router(admin_billing_router)
+app.include_router(assistant_router)
 app.include_router(admin_3d_models_router)   # W2A: admin 3D model catalog
 app.include_router(avatar_variants_router)   # W2A: publisher avatar variants
 app.include_router(programs_router)          # W2B: programs system

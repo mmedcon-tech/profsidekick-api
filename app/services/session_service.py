@@ -59,7 +59,7 @@ class SessionService:
         
         # Validate and normalise session_mode
         raw_mode = session_details.get('sessionMode') or 'teaching'
-        session_mode = raw_mode if raw_mode in ('teaching', 'examination') else 'teaching'
+        session_mode = raw_mode if raw_mode in ('teaching', 'examination', 'consultation') else 'teaching'
 
         # Resolve optional avatar + role
         avatar_id = None

@@ -1,8 +1,12 @@
+import logging
 from sqlalchemy import create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import redis.asyncio as aioredis
 from app.config import settings
+
+# setting up the logger for diagnostic warning
+logger = logging.getLogger(__name__)
 
 # PostgreSQL Database Setup
 # Fix postgres:// to postgresql:// for SQLAlchemy 2.0+
@@ -30,6 +34,13 @@ async def get_redis():
         redis_client = aioredis.from_url(
             settings.redis_url, encoding="utf-8", decode_responses=True
         )
+        try:
+            await redis_client.ping()
+        except Exception as e:
+            logger.warning(
+                f"Redis connection health check failed on initialization at {settings.redis_url}. "
+                f"Application performance may degrade. Error: {e}"
+            )
     return redis_client
 
 
