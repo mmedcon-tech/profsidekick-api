@@ -1,8 +1,10 @@
 """
 Publisher-only SAE management routes.
 
-POST  /api/sae/publisher/students/batch                   → pre-generate N students + tokens
-GET   /api/sae/publisher/students                         → list all students with status
+POST  /api/sae/publisher/assessments                      → create a new assessment (optional course link)
+GET   /api/sae/publisher/assessments                      → list all assessments for this publisher
+POST  /api/sae/publisher/students/batch                   → pre-generate N students under an assessment
+GET   /api/sae/publisher/students                         → list students (all or filtered by assessment)
 GET   /api/sae/publisher/students/{student_id}            → single student detail + submission
 POST  /api/sae/publisher/students/{student_id}/submit     → submit on behalf of a student
 PATCH /api/sae/publisher/students/{student_id}/submission → instructor edits to grading result
@@ -17,9 +19,11 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
-from app.database.models import SAEInvitationToken, SAEStudent, SAESubmission, User
+from app.database.models import SAEAssessment, SAEInvitationToken, SAEStudent, SAESubmission, User
 from app.dependencies.auth import require_publisher
 from app.schemas.sae import (
+    SAEAssessmentCreate,
+    SAEAssessmentRow,
     SAEBatchCreateRequest,
     SAEBatchCreateResponse,
     SAERegenerateResponse,
@@ -73,6 +77,7 @@ def _student_to_row(student: SAEStudent, db: Session) -> SAEStudentRow:
     inv = _get_active_token(student, db)
     return SAEStudentRow(
         id=student.id,
+        assessment_id=student.assessment_id,
         student_number=student.student_number,
         student_code=student.student_code,
         display_name=student.display_name,
@@ -80,7 +85,7 @@ def _student_to_row(student: SAEStudent, db: Session) -> SAEStudentRow:
         invitation_token=inv.token if inv else "",
         is_activated=student.is_activated,
         activated_at=student.activated_at,
-        has_submitted=student.has_submitted,
+        submission_count=student.submission_count,
         submitted_at=student.submitted_at,
         country_of_origin=student.country_of_origin,
         curriculum=student.curriculum,
@@ -92,6 +97,8 @@ def _sub_to_result_publisher(sub: SAESubmission) -> SAESubmissionResultPublisher
     effective_rj = sae_service.get_effective_result_json(sub)
     return SAESubmissionResultPublisher(
         id=sub.id,
+        submission_number=sub.submission_number,
+        is_active=sub.is_active,
         score=sub.score,
         overall_confidence=sub.overall_confidence,
         review_required=sub.review_required,
@@ -107,7 +114,7 @@ def _sub_to_result_publisher(sub: SAESubmission) -> SAESubmissionResultPublisher
 
 def _student_to_detail(student: SAEStudent, db: Session) -> SAEStudentDetail:
     inv = _get_active_token(student, db)
-    sub = student.submission
+    all_subs = sae_service.get_student_submissions(db, student)
     return SAEStudentDetail(
         id=student.id,
         student_number=student.student_number,
@@ -117,13 +124,64 @@ def _student_to_detail(student: SAEStudent, db: Session) -> SAEStudentDetail:
         invitation_token=inv.token if inv else "",
         is_activated=student.is_activated,
         activated_at=student.activated_at,
-        has_submitted=student.has_submitted,
         submitted_at=student.submitted_at,
-        submission=_sub_to_result_publisher(sub) if sub else None,
+        submission_count=student.submission_count,
+        submissions=[_sub_to_result_publisher(s) for s in all_subs],
     )
 
 
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _require_own_assessment(
+    assessment_id: str,
+    publisher: User,
+    db: Session,
+) -> SAEAssessment:
+    """Resolve assessment UUID and verify it belongs to the calling publisher."""
+    try:
+        aid = uuid.UUID(assessment_id)
+    except ValueError:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="Invalid assessment_id format.")
+    assessment = db.query(SAEAssessment).filter(SAEAssessment.id == aid).first()
+    if not assessment:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Assessment not found.")
+    if assessment.publisher_id != publisher.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN,
+                            detail="You do not own this assessment.")
+    return assessment
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
+
+@router.post("/assessments", response_model=SAEAssessmentRow, status_code=status.HTTP_201_CREATED)
+def create_assessment(
+    body: SAEAssessmentCreate,
+    publisher: User = Depends(require_publisher),
+    db: Session = Depends(get_db),
+):
+    """
+    Create a new assessment.
+    Optionally pass course_id to link it to an existing course the publisher owns.
+    """
+    assessment = sae_service.create_assessment(
+        db=db,
+        publisher_id=publisher.id,
+        name=body.name,
+        description=body.description,
+        course_id=body.course_id,
+    )
+    return assessment
+
+
+@router.get("/assessments", response_model=list[SAEAssessmentRow])
+def list_assessments(
+    publisher: User = Depends(require_publisher),
+    db: Session = Depends(get_db),
+):
+    """Return all assessments for this publisher, newest first."""
+    return sae_service.get_publisher_assessments(db=db, publisher_id=publisher.id)
+
 
 @router.post("/students/batch", response_model=SAEBatchCreateResponse)
 def create_student_batch(
@@ -132,13 +190,16 @@ def create_student_batch(
     db: Session = Depends(get_db),
 ):
     """
-    Pre-generate `count` student slots and their one-time invitation links.
-    Calling this again adds MORE students to the existing pool (does not replace).
+    Pre-generate `count` student slots under a specific assessment.
+    The assessment must belong to the calling publisher.
+    Calling this again adds MORE students to the assessment (does not replace).
     No emails are sent — the returned invitation_url list is the only delivery channel.
     """
+    _require_own_assessment(str(body.assessment_id), publisher, db)
     students = sae_service.create_student_batch(
         db=db,
         publisher_id=publisher.id,
+        assessment_id=body.assessment_id,
         count=body.count,
         expires_days=body.expires_days,
     )
@@ -148,17 +209,29 @@ def create_student_batch(
 
 @router.get("/students", response_model=list[SAEStudentRow])
 def list_students(
+    assessment_id: Optional[str] = Query(None, description="Filter to a single assessment"),
     search: Optional[str] = Query(None, description="Filter by code or name"),
     publisher: User = Depends(require_publisher),
     db: Session = Depends(get_db),
 ):
     """
-    Return all students belonging to this publisher, ordered by student_number.
+    Return students belonging to this publisher.
+    Pass assessment_id to scope to one cohort; omit to see all students across all assessments.
     Optionally filter by student_code or display_name (case-insensitive).
     """
+    parsed_assessment_id = None
+    if assessment_id is not None:
+        _require_own_assessment(assessment_id, publisher, db)
+        try:
+            parsed_assessment_id = uuid.UUID(assessment_id)
+        except ValueError:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                detail="Invalid assessment_id format.")
+
     students = sae_service.get_publisher_students(
         db=db,
         publisher_id=publisher.id,
+        assessment_id=parsed_assessment_id,
         search=search,
     )
     return [_student_to_row(s, db) for s in students]
@@ -184,8 +257,8 @@ async def submit_on_behalf(
     db: Session = Depends(get_db),
 ):
     """
-    Submit on behalf of a student who has not yet submitted.
-    Blocked if the student has already submitted (409 Conflict).
+    Submit on behalf of a student.
+    Returns 409 if the student has reached the 5-submission limit.
     Runs the same LLM grading pipeline as the Math autograder.
     """
     if not autograder_cache.loaded:
@@ -195,12 +268,6 @@ async def submit_on_behalf(
         )
 
     student = _require_own_student(student_id, publisher, db)
-
-    if student.has_submitted:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            detail="This student has already submitted. Publisher cannot override an existing submission.",
-        )
 
     handwritten_bytes = await student_answer.read()
     webassign_bytes = await webassign_pdf.read()

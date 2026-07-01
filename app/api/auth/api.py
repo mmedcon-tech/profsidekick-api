@@ -102,7 +102,7 @@ async def refresh_token(current_user: User = Depends(get_current_user)):
     try:
         # Generate new token for current user
         token_data = auth_service.create_access_token(
-            str(current_user.id), current_user.username
+            str(current_user.id), current_user.username, current_user.token_version or 1
         )
 
         return RefreshTokenResponse(

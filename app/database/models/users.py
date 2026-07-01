@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -64,6 +64,10 @@ class User(Base):
         ForeignKey("programs.id", ondelete="SET NULL"),
         nullable=True,
     )
+
+    # Incremented when the user's credentials change (e.g. SAE second-use link).
+    # JWTs issued before the increment become invalid on their next request.
+    token_version = Column(Integer, nullable=False, default=1, server_default="1")
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)

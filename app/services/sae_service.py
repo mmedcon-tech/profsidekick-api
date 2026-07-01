@@ -7,7 +7,7 @@ account activation, and submission recording lives here. Routes stay thin.
 Design rules enforced here:
 - No emails are ever sent to students.
 - Invitation links are returned to the publisher only.
-- Students get exactly one submission (enforced by DB UNIQUE + guard here).
+- Students may submit up to MAX_SUBMISSIONS times; submission_count is the source of truth.
 - Activation is atomic: token invalidation and user creation commit together.
 """
 
@@ -24,20 +24,20 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.database.models import SAEInvitationToken, SAEStudent, SAESubmission, User
+from app.database.models import SAEAssessment, SAEInvitationToken, SAEStudent, SAESubmission, User
 
 
 # ── Code generation ────────────────────────────────────────────────────────────
 
-def _generate_student_code(publisher_id: uuid.UUID, student_number: int) -> str:
+def _generate_student_code(assessment_id: uuid.UUID, student_number: int) -> str:
     """
     Produces a globally unique code like SAE-2025-A1B2-001.
-    The 4-char publisher hash prevents collisions when multiple publishers
+    The 4-char assessment hash prevents collisions when multiple assessments
     both have "Student 1".
     """
     year = datetime.now().year
-    pub_hash = str(publisher_id).replace("-", "")[:4].upper()
-    return f"SAE-{year}-{pub_hash}-{student_number:03d}"
+    assessment_hash = str(assessment_id).replace("-", "")[:4].upper()
+    return f"SAE-{year}-{assessment_hash}-{student_number:03d}"
 
 
 def _generate_invitation_token() -> str:
@@ -50,24 +50,67 @@ def _build_invitation_url(token: str) -> str:
     return f"{base}/sae/setup/{token}"
 
 
+# ── Assessment CRUD ────────────────────────────────────────────────────────────
+
+def create_assessment(
+    db: Session,
+    publisher_id: uuid.UUID,
+    name: str,
+    description: Optional[str] = None,
+    course_id: Optional[uuid.UUID] = None,
+) -> SAEAssessment:
+    """Create a new assessment for a publisher, optionally linked to a course."""
+    assessment = SAEAssessment(
+        publisher_id=publisher_id,
+        course_id=course_id,
+        name=name,
+        description=description,
+        is_active=True,
+    )
+    db.add(assessment)
+    db.commit()
+    db.refresh(assessment)
+    return assessment
+
+
+def get_publisher_assessments(
+    db: Session,
+    publisher_id: uuid.UUID,
+) -> list[SAEAssessment]:
+    """Return all assessments belonging to this publisher, newest first."""
+    return (
+        db.query(SAEAssessment)
+        .filter(SAEAssessment.publisher_id == publisher_id)
+        .order_by(SAEAssessment.created_at.desc())
+        .all()
+    )
+
+
+def get_assessment_by_id(
+    db: Session,
+    assessment_id: uuid.UUID,
+) -> Optional[SAEAssessment]:
+    return db.query(SAEAssessment).filter(SAEAssessment.id == assessment_id).first()
+
+
 # ── Batch student creation ─────────────────────────────────────────────────────
 
 def create_student_batch(
     db: Session,
     publisher_id: uuid.UUID,
+    assessment_id: uuid.UUID,
     count: int,
     expires_days: Optional[int] = None,
 ) -> list[SAEStudent]:
     """
-    Pre-generate `count` student slots + one invitation token each.
+    Pre-generate `count` student slots + one invitation token each under an assessment.
     Returns the committed SAEStudent rows (with .invitation loaded).
     No emails are sent — the caller receives the invitation URLs.
     """
-    # Find the current highest student_number for this publisher so we can
-    # append without gaps or collisions.
+    # Student numbers are now per-assessment so each cohort starts at 1.
     max_num_row = (
         db.query(func.max(SAEStudent.student_number))
-        .filter(SAEStudent.publisher_id == publisher_id)
+        .filter(SAEStudent.assessment_id == assessment_id)
         .scalar()
     )
     start_from = (max_num_row or 0) + 1
@@ -79,7 +122,7 @@ def create_student_batch(
     new_students: list[SAEStudent] = []
     for i in range(count):
         num = start_from + i
-        code = _generate_student_code(publisher_id, num)
+        code = _generate_student_code(assessment_id, num)
         token_value = _generate_invitation_token()
 
         student = SAEStudent(
@@ -87,6 +130,7 @@ def create_student_batch(
             student_code=code,
             display_name=f"Student {num}",
             publisher_id=publisher_id,
+            assessment_id=assessment_id,
         )
         db.add(student)
         db.flush()  # get student.id before creating the token FK
@@ -142,24 +186,29 @@ def validate_invitation_token(
 def activate_student_account(
     db: Session,
     token_value: str,
-    username: str,
-    password: str,
-    country_of_origin: str,
-    curriculum: str,
+    username: Optional[str],
+    password: Optional[str],
+    country_of_origin: Optional[str],
+    curriculum: Optional[str],
 ) -> tuple[bool, str, Optional[User]]:
     """
-    Atomically:
-      1. Re-validates the token (with FOR UPDATE lock to prevent races).
-      2. Checks username uniqueness.
-      3. Creates a users row on first activation; updates the existing one on
-         re-activation (i.e. when student.user_id is already set after a
-         publisher-triggered regeneration).  The User row is NEVER deleted —
-         credentials are simply replaced.
-      4. Links / confirms sae_students.user_id and marks it activated.
-      5. Marks the token as used.
-      6. Commits everything.
+    Atomically handles both uses of an invitation link.
+
+    use_count == 0, user_id is None  → first activation: create User, link student.
+    use_count == 0, user_id is set   → re-activation after publisher regenerate:
+                                        restore credentials on the existing User row.
+    use_count == 1                   → second use of original link: update whichever
+                                        credential fields were supplied (username and/or
+                                        password), increment token_version to invalidate
+                                        sessions on other devices.
+
+    After each successful use:
+      - use_count is incremented.
+      - used_at is refreshed.
+      - When use_count reaches 2, is_used is set to True (link permanently expired).
 
     Returns (success, error_message, user).
+    A conflict on username returns (False, "...", None) without touching use_count.
     """
     # Lock the token row to prevent two simultaneous requests from both succeeding.
     token_row = (
@@ -185,23 +234,52 @@ def activate_student_account(
     if not student:
         return False, "Student record not found.", None
 
-    # Hash the new password once — used by both activation paths.
-    salt = bcrypt.gensalt()
-    password_hash = bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
-
-    # Canonical placeholder email — never emailed; satisfies NOT NULL unique column.
     placeholder_email = f"sae.{student.student_code.lower()}@noreply.internal"
+    use_count = token_row.use_count
 
-    if student.user_id is not None:
-        # ── Re-activation path ──────────────────────────────────────────────
+    if use_count == 0 and student.user_id is None:
+        # ── Path A: first activation — create a new User ────────────────────
+        if not username or not password:
+            return False, "Username and password are required.", None
+        if not country_of_origin or not curriculum:
+            return False, "Country of origin and curriculum are required.", None
+
+        conflict = db.query(User).filter(User.username == username).first()
+        if conflict:
+            return False, "Username already taken. Please choose a different one.", None
+
+        password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+        user = User(
+            username=username,
+            email=placeholder_email,
+            password_hash=password_hash,
+            first_name=student.display_name,
+            last_name="",
+            role="subscriber",
+            email_verified=True,
+            is_approved=True,
+            token_version=1,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+        db.add(user)
+        db.flush()  # populate user.id before writing the FK
+        student.user_id = user.id
+        student.country_of_origin = country_of_origin
+        student.curriculum = curriculum
+
+    elif use_count == 0 and student.user_id is not None:
+        # ── Path B: re-activation after publisher regenerate ─────────────────
         # The publisher called regenerate_student_access(), which mangled the
-        # existing User's credentials without deleting the row.  We update that
-        # same row in-place so no data is lost.
+        # existing User's credentials without deleting the row. We update that
+        # same row in-place so no submission data is lost.
+        if not username or not password:
+            return False, "Username and password are required.", None
+
         existing_user = db.query(User).filter(User.id == student.user_id).first()
         if not existing_user:
             return False, "Linked user account not found. Contact support.", None
 
-        # Username uniqueness — exclude the current user row from the check.
         conflict = (
             db.query(User)
             .filter(User.username == username, User.id != existing_user.id)
@@ -210,42 +288,60 @@ def activate_student_account(
         if conflict:
             return False, "Username already taken. Please choose a different one.", None
 
+        password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
         existing_user.username = username
-        existing_user.email = placeholder_email   # restore canonical email
+        existing_user.email = placeholder_email  # restore canonical email
         existing_user.password_hash = password_hash
         existing_user.updated_at = datetime.utcnow()
         user = existing_user
+
+    elif use_count == 1:
+        # ── Path C: second use of original link — credential change ──────────
+        # The student already has an account. They may update username, password,
+        # or both. At least one must be supplied.
+        if not student.user_id:
+            return False, "No account is linked to this invitation. Please contact your administrator.", None
+
+        existing_user = db.query(User).filter(User.id == student.user_id).first()
+        if not existing_user:
+            return False, "Linked user account not found. Contact support.", None
+
+        if not username and not password:
+            return False, "Please provide a new username, a new password, or both.", None
+
+        if username:
+            conflict = (
+                db.query(User)
+                .filter(User.username == username, User.id != existing_user.id)
+                .first()
+            )
+            if conflict:
+                return False, "Username already taken. Please choose a different one.", None
+            existing_user.username = username
+
+        if password:
+            existing_user.password_hash = bcrypt.hashpw(
+                password.encode("utf-8"), bcrypt.gensalt()
+            ).decode("utf-8")
+
+        # Increment token_version so any JWT issued before this moment is rejected
+        # on the next authenticated request, forcing a re-login on other devices.
+        existing_user.token_version = (existing_user.token_version or 1) + 1
+        existing_user.updated_at = datetime.utcnow()
+        user = existing_user
+
     else:
-        # ── First-activation path ───────────────────────────────────────────
-        conflict = db.query(User).filter(User.username == username).first()
-        if conflict:
-            return False, "Username already taken. Please choose a different one.", None
+        # Defensive: use_count >= 2 should have been caught by is_used check above.
+        return False, "This invitation link has already been used.", None
 
-        user = User(
-            username=username,
-            email=placeholder_email,
-            password_hash=password_hash,
-            first_name=student.display_name,
-            last_name="",
-            role="subscriber",
-            # Bypass normal email verification and admin approval flows —
-            # possession of the invitation link is proof of authorization.
-            email_verified=True,
-            is_approved=True,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
-        )
-        db.add(user)
-        db.flush()  # get user.id before writing the FK
-        student.user_id = user.id
-
-    # Common: mark activated, store educational metadata, consume the token.
+    # ── Common: mark activated, consume one use of the token ─────────────────
     student.is_activated = True
     student.activated_at = datetime.utcnow()
-    student.country_of_origin = country_of_origin
-    student.curriculum = curriculum
-    token_row.is_used = True
+
+    token_row.use_count += 1
     token_row.used_at = datetime.utcnow()
+    if token_row.use_count >= 2:
+        token_row.is_used = True  # permanently expire after second use
 
     db.commit()
     db.refresh(user)
@@ -330,14 +426,16 @@ def regenerate_student_access(
 
 # ── File storage ───────────────────────────────────────────────────────────────
 
-def build_submission_dir(student_code: str) -> Path:
-    """Isolated upload directory for SAE submissions."""
-    submission_dir = Path(settings.upload_dir) / "sae" / student_code
+def build_submission_dir(student_code: str, submission_number: int) -> Path:
+    """Per-submission upload directory so files from different submissions never overwrite."""
+    submission_dir = Path(settings.upload_dir) / "sae" / student_code / str(submission_number)
     submission_dir.mkdir(parents=True, exist_ok=True)
     return submission_dir
 
 
 # ── Grading + submission creation ──────────────────────────────────────────────
+
+MAX_SUBMISSIONS = 5
 
 async def grade_and_save_submission(
     db: Session,
@@ -351,25 +449,48 @@ async def grade_and_save_submission(
 ) -> SAESubmission:
     """
     Runs the LLM grading pipeline (same fallback chain as the Math autograder)
-    then persists the SAESubmission row.
+    then persists a new SAESubmission row.
 
-    Raises HTTPException on grading failure so the route layer can propagate it.
-    Single-submission guard: the DB UNIQUE constraint on student_id is the
-    authoritative check; this function trusts the caller already verified
-    has_submitted == False before invoking it.
+    Flow:
+      1. Re-fetch SAEStudent with SELECT FOR UPDATE to serialise concurrent requests.
+      2. Enforce the MAX_SUBMISSIONS limit (409 if reached).
+      3. Write files to a per-submission directory so nothing is overwritten.
+      4. Grade via the LLM fallback chain.
+      5. Deactivate the previous active submission.
+      6. Insert the new submission (submission_number = submission_count + 1, is_active=True).
+      7. Update SAEStudent counters and commit.
+
+    Raises HTTPException on limit breach or grading failure.
     """
     from app.llm.fallback_provider import get_fallback_provider
     from app.llm.provider import StudentFiles
     from fastapi import HTTPException, status
 
-    # Persist files
-    submission_dir = build_submission_dir(student.student_code)
+    # Step 1 — row lock prevents two simultaneous submissions from both passing the limit check.
+    locked_student = (
+        db.query(SAEStudent)
+        .filter(SAEStudent.id == student.id)
+        .with_for_update()
+        .first()
+    )
+
+    # Step 2 — submission limit
+    if locked_student.submission_count >= MAX_SUBMISSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"You have reached the maximum number of submissions ({MAX_SUBMISSIONS}).",
+        )
+
+    new_submission_number = locked_student.submission_count + 1
+
+    # Step 3 — write files before grading so the path is ready for the DB row.
+    submission_dir = build_submission_dir(locked_student.student_code, new_submission_number)
     hw_path = submission_dir / "handwritten.pdf"
     wa_path = submission_dir / "webassign.pdf"
     hw_path.write_bytes(handwritten_bytes)
     wa_path.write_bytes(webassign_bytes)
 
-    # Encode for LLM provider
+    # Step 4 — grade via LLM
     student_files = StudentFiles(
         webassign_b64=base64.b64encode(webassign_bytes).decode("utf-8"),
         handwritten_b64=base64.b64encode(handwritten_bytes).decode("utf-8"),
@@ -401,8 +522,17 @@ async def grade_and_save_submission(
         },
     }
 
+    # Step 5 — deactivate the previous active submission (if any).
+    db.query(SAESubmission).filter(
+        SAESubmission.student_id == locked_student.id,
+        SAESubmission.is_active == True,  # noqa: E712
+    ).update({"is_active": False}, synchronize_session=False)
+
+    # Step 6 — insert the new submission.
     submission = SAESubmission(
-        student_id=student.id,
+        student_id=locked_student.id,
+        submission_number=new_submission_number,
+        is_active=True,
         submitted_by_publisher=submitted_by_publisher,
         publisher_user_id=publisher_user_id,
         handwritten_filename=handwritten_filename,
@@ -416,12 +546,44 @@ async def grade_and_save_submission(
     )
     db.add(submission)
 
-    student.has_submitted = True
-    student.submitted_at = datetime.utcnow()
+    # Step 7 — update student counters.
+    locked_student.submission_count = new_submission_number
+    locked_student.submitted_at = datetime.utcnow()
 
     db.commit()
     db.refresh(submission)
     return submission
+
+
+# ── Submission history helpers ─────────────────────────────────────────────────
+
+def get_student_submissions(
+    db: Session,
+    sae_student: SAEStudent,
+) -> list[SAESubmission]:
+    """All submissions for this student, oldest first."""
+    return (
+        db.query(SAESubmission)
+        .filter(SAESubmission.student_id == sae_student.id)
+        .order_by(SAESubmission.submission_number.asc())
+        .all()
+    )
+
+
+def get_student_submission_by_id(
+    db: Session,
+    submission_id: uuid.UUID,
+    sae_student: SAEStudent,
+) -> Optional[SAESubmission]:
+    """Return the submission if it belongs to this student, None otherwise."""
+    return (
+        db.query(SAESubmission)
+        .filter(
+            SAESubmission.id == submission_id,
+            SAESubmission.student_id == sae_student.id,
+        )
+        .first()
+    )
 
 
 # ── Dashboard helpers ──────────────────────────────────────────────────────────
@@ -429,12 +591,16 @@ async def grade_and_save_submission(
 def get_publisher_students(
     db: Session,
     publisher_id: uuid.UUID,
+    assessment_id: Optional[uuid.UUID] = None,
     search: Optional[str] = None,
 ) -> list[SAEStudent]:
-    q = (
-        db.query(SAEStudent)
-        .filter(SAEStudent.publisher_id == publisher_id)
-    )
+    """
+    Return students for a publisher.
+    Pass assessment_id to scope to a single cohort; omit for all students across all assessments.
+    """
+    q = db.query(SAEStudent).filter(SAEStudent.publisher_id == publisher_id)
+    if assessment_id is not None:
+        q = q.filter(SAEStudent.assessment_id == assessment_id)
     if search:
         like = f"%{search.upper()}%"
         q = q.filter(

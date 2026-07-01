@@ -122,8 +122,9 @@ from app.database.models.progress import (  # noqa: F401
     AssessmentResult,
 )
 
-# SAE (Self Assessment Exam) system — depends on User only
+# SAE (Self Assessment Exam) system — depends on User and Course
 from app.database.models.sae import (  # noqa: F401
+    SAEAssessment,
     SAEStudent,
     SAEInvitationToken,
     SAESubmission,
@@ -212,6 +213,7 @@ __all__ = [
     "SubscriberCourseProgress",
     "AssessmentResult",
     # SAE system
+    "SAEAssessment",
     "SAEStudent",
     "SAEInvitationToken",
     "SAESubmission",

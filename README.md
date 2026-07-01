@@ -41,6 +41,48 @@ ProfSidekick is an AI-powered teaching assistant that helps educators deliver en
 - OpenAI API Key
 - Docker & Docker Compose (for containerized deployment)
 
+## Vertex AI Setup (Math Autograder)
+
+The autograder uses **Gemini via Vertex AI** as its primary grading provider.  
+Vertex AI authenticates via [Application Default Credentials (ADC)](https://cloud.google.com/docs/authentication/application-default-credentials) — no separate API key is needed, but you must complete a one-time setup per environment.
+
+### Local development (interactive login)
+
+Run these two commands **once** on each developer machine, **outside the app**:
+
+```bash
+gcloud auth application-default login
+gcloud config set project gen-lang-client-0696296026
+```
+
+`gcloud auth application-default login` opens a browser for Google account sign-in and writes a credential file to `~/.config/gcloud/application_default_credentials.json`.  The Vertex AI SDK picks it up automatically.
+
+### CI / Production (non-interactive — no browser available)
+
+`gcloud auth application-default login` is **interactive and will not work in CI or deployed environments**.  Use one of these instead:
+
+**Option A — Service Account JSON** (Railway, Heroku, Docker, GitHub Actions):
+1. Create a service account in [IAM & Admin](https://console.cloud.google.com/iam-admin/serviceaccounts) with the **Vertex AI User** role.
+2. Download a JSON key for that service account.
+3. Set the environment variable:
+   ```
+   GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+   ```
+4. The SDK resolves ADC automatically from that path — no code changes needed.
+
+**Option B — Workload Identity** (GKE, Cloud Run):
+Attach the service account to the workload; ADC is injected via the metadata server.  No key file needed.
+
+### Environment variables (already in `.env`)
+
+| Variable | Value | Purpose |
+|---|---|---|
+| `GOOGLE_CLOUD_PROJECT` | `gen-lang-client-0696296026` | Vertex AI billing project |
+| `VERTEX_AI_LOCATION` | `us-central1` | Model region |
+| `VERTEX_AI_MODEL` | `gemini-1.5-pro` | Model to use for grading |
+
+---
+
 ## 🛠️ Installation
 
 ### Local Development Setup

@@ -29,12 +29,13 @@ class AuthService:
         """Verify a password against its hash"""
         return bcrypt.checkpw(password.encode('utf-8'), hashed_password.encode('utf-8'))
     
-    def create_access_token(self, user_id: str, username: str) -> Dict[str, Any]:
+    def create_access_token(self, user_id: str, username: str, token_version: int = 1) -> Dict[str, Any]:
         """Create a JWT access token"""
         expires_at = datetime.utcnow() + timedelta(hours=self.access_token_expire_hours)
         payload = {
             "user_id": user_id,
             "username": username,
+            "token_version": token_version,
             "exp": expires_at,
             "iat": datetime.utcnow()
         }
@@ -170,7 +171,7 @@ class AuthService:
             )
         
         # Create access token
-        token_data = self.create_access_token(str(user.id), user.username)
+        token_data = self.create_access_token(str(user.id), user.username, user.token_version or 1)
         
         return AuthResponse(
             success=True,

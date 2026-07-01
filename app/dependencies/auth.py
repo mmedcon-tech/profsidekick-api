@@ -46,6 +46,17 @@ async def get_current_user(
             detail="User not found",
         )
 
+    # If the JWT carries a token_version, verify it matches the DB record.
+    # Tokens issued before this field existed won't have it — those pass through
+    # until they expire naturally (24 h). Tokens issued after a credential change
+    # carry the incremented version; stale tokens are rejected immediately.
+    jwt_version = payload.get("token_version")
+    if jwt_version is not None and jwt_version != (user.token_version or 1):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session expired. Please log in again.",
+        )
+
     return user
 
 
