@@ -1,5 +1,6 @@
 from typing import List, Optional
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from datetime import datetime
 from app.database.models import Course, User, CourseStudent, Session as SessionModel, ProgramCourse
 from fastapi import HTTPException, status
@@ -26,8 +27,8 @@ class CourseService:
             user = db.query(User).filter(User.id == course_data.user_id).first()
             if user is None:
                 raise HTTPException(status_code=404, detail="User not found")
-            if user.role != "publisher":
-                raise HTTPException(status_code=403, detail="User is not a publisher")
+            if user.role not in ("publisher", "subscriber", "admin"):
+                raise HTTPException(status_code=403, detail="User is not permitted to create courses")
         else:
             raise HTTPException(status_code=400, detail="User ID is required")
 
@@ -125,8 +126,8 @@ class CourseService:
             elif user.role == "admin":
                 courses = db.query(Course).all()
             else:
-                # Subscriber with no avatar filter: return only enrolled courses.
-                # Private courses are inaccessible without enrollment.
+                # Subscriber with no avatar filter: return enrolled courses plus
+                # any public course (public courses are accessible to all subscribers).
                 enrolled_course_ids = [
                     row[0]
                     for row in db.query(CourseStudent.course_id)
@@ -135,9 +136,14 @@ class CourseService:
                 ]
                 courses = (
                     db.query(Course)
-                    .filter(Course.id.in_(enrolled_course_ids))
+                    .filter(
+                        or_(
+                            Course.id.in_(enrolled_course_ids),
+                            Course.is_public == True,  # noqa: E712
+                        )
+                    )
                     .all()
-                ) if enrolled_course_ids else []
+                )
 
             result = []
             for course in courses:

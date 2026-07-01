@@ -38,6 +38,14 @@ GROUNDING_POLICY_DEFAULT = (
     "rather than drawing on external knowledge."
 )
 
+MATH_FORMATTING_INSTRUCTION = (
+    "[MATH FORMATTING]\n"
+    "When writing any mathematical notation, wrap it in LaTeX delimiters so it renders correctly: "
+    "use $...$ for inline expressions (e.g., $x^2 + 1$) and $$...$$ for standalone/display equations "
+    "(e.g., $$\\frac{d}{dx}x^2 = 2x$$). Never output LaTeX commands (\\frac, \\cdot, ^{}, _{}, etc.) "
+    "without these delimiters."
+)
+
 # ── Legacy fallback (kept for avatars with no published version) ─────────────
 EXAMINER_BASE_PROMPT = """You are an AI oral examiner conducting structured academic assessments. You evaluate reasoning and understanding. You do NOT teach, lecture, or introduce external information beyond the assignment scope.
 
@@ -198,6 +206,7 @@ def build_realtime_instructions(
     # 1. Core persona — mode-resolved prompt
     resolved = _resolve_prompt_for_mode(session_mode, teaching_prompt, examination_prompt, conversation_prompt)
     parts.append(resolved if resolved else EXAMINER_BASE_PROMPT)
+    parts.append(MATH_FORMATTING_INSTRUCTION)
 
     # 1b. Publisher teaching persona (from refined_prompt in PublisherAvatarProfile)
     if refined_prompt and refined_prompt.strip():
@@ -338,6 +347,7 @@ def build_chat_system_prompt(
             f"You are \"{avatar_name}\", an educational AI assistant. "
             "Help the publisher design and refine educational experiences."
         )
+    parts.append(MATH_FORMATTING_INSTRUCTION)
 
     # 1b. Publisher-configured teaching persona (generated from teaching style preferences)
     if refined_prompt and refined_prompt.strip():
