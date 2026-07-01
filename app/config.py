@@ -46,6 +46,14 @@ class Settings(BaseSettings):
     app_version: str = Field("1.0.0", env="APP_VERSION")
     debug: bool = Field(False, env="DEBUG")
     secret_key: str = Field("dev-secret-key-change-in-production", env="SECRET_KEY")
+
+    # Temporary demo layer (see app/services/demo_service.py) — OFF by default.
+    # When on, the chat + realtime memory-fetch call sites skip the UserMemory
+    # DB query entirely and use demo_service.get_demo_memories() (a hardcoded
+    # list) instead, so Teaching Mode appears to "remember" a scripted mistake
+    # deterministically — no DB writes, no DB timing/ranking dependency.
+    # Safe to delete entirely once real mistake-detection/memory ships.
+    demo_mode: bool = Field(False, env="DEMO_MODE")
     
     # File Upload Configuration
     upload_dir: str = Field("./uploads", env="UPLOAD_DIR")

@@ -27,6 +27,7 @@ from app.database.models import (
     AvatarTemplateVersion,
 )
 from app.services.context_builder import build_chat_system_prompt
+from app.services.summarization_service import get_recent_session_summary, get_user_memories
 
 _openai = AsyncOpenAI(api_key=settings.openai_api_key)
 _CHAT_MODEL = "gpt-4o"
@@ -151,6 +152,16 @@ async def send_message(
     slides = _student_slides(parent)
     av_ctx = _resolve_avatar_context(db, parent)
 
+    # Parity with the realtime/voice pipeline (sessions/api.py ephemeral-token endpoint):
+    # same session summary + long-term memory lookup, keyed by the student's user_id.
+    session_summary = get_recent_session_summary(db, parent.session_id, exclude_run_id=session_run_id)
+    if settings.demo_mode:
+        # TEMP demo layer: skip DB retrieval, use scripted memory for determinism.
+        from app.services import demo_service
+        memories = demo_service.get_demo_memories()
+    else:
+        memories = get_user_memories(db, user_id=run.user_id, avatar_id=parent.avatar_id)
+
     system_prompt = build_chat_system_prompt(
         avatar_name=av_ctx["avatar_name"],
         conversation_prompt=av_ctx["conversation_prompt"],
@@ -163,6 +174,8 @@ async def send_message(
         knowledge_chunks=av_ctx["knowledge_chunks"],
         reference_solutions=av_ctx["reference_solutions"],
         session_slides=slides,
+        session_summary=session_summary,
+        memories=memories,
         preferences={},
     )
 
