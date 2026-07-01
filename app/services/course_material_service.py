@@ -5,7 +5,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from fastapi import BackgroundTasks, HTTPException, UploadFile
-from app.database.models import CourseMaterial, Course, SessionMaterial, MaterialType
+from app.database.models import CourseMaterial, Course, CourseStudent, SessionMaterial, MaterialType
 from app.schemas.schemas import (
     CourseMaterialCreate, CourseMaterialUpdate, CourseMaterialResponse,
     SessionMaterialCreate, SessionMaterialUpdate, SessionMaterialResponse,
@@ -197,12 +197,19 @@ class CourseMaterialService:
         include_inactive: bool = False
     ) -> List[CourseMaterialResponse]:
         """Get all materials for a course"""
-        
-        # Verify course access (course_id is string-based identifier)
-        course = db.query(Course).filter(
-            and_(Course.course_id == course_id, Course.user_id == user_id)
-        ).first()
-        
+
+        # Verify course access (course_id is string-based identifier).
+        # Accessible if the user owns the course, is enrolled in it, or it is public.
+        course = db.query(Course).filter(Course.course_id == course_id).first()
+        if course:
+            is_owner = course.user_id == user_id
+            is_enrolled = db.query(CourseStudent).filter(
+                CourseStudent.course_id == course.id,
+                CourseStudent.user_id == user_id,
+            ).first() is not None
+            if not (is_owner or is_enrolled or course.is_public):
+                course = None
+
         if not course:
             raise HTTPException(status_code=404, detail="Course not found or access denied")
         

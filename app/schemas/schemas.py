@@ -1427,6 +1427,7 @@ class AvatarResponse(BaseModel):
 class AvatarPublicResponse(BaseModel):
     """Subscriber-facing — no configuration, no template metadata."""
     id: UUID
+    template_id: Optional[UUID] = None
     name: str
     description: Optional[str] = None
     is_published: bool

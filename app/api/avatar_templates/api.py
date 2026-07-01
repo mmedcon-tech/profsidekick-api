@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
 from app.database.models import User
-from app.dependencies.auth import require_admin, require_publisher
+from app.dependencies.auth import require_admin, require_publisher, require_subscriber
 from app.schemas.schemas import (
     AvatarTemplateCreate,
     AvatarTemplateDetailResponse,
@@ -486,7 +486,7 @@ async def list_active_templates_for_publisher(
 )
 async def get_template_roles_for_publisher(
     template_id: UUID,
-    current_user: User = Depends(require_publisher),
+    current_user: User = Depends(require_subscriber),
     db: Session = Depends(get_db),
 ):
     """

@@ -35,6 +35,8 @@ async def get_course_materials(
             db, course_id, current_user.id, include_inactive
         )
         return CourseMaterialsListResponse(materials=materials, total=len(materials))
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"❌ Error getting course materials: {e}")
         raise HTTPException(
