@@ -135,29 +135,8 @@ async def create_session(
                 detail="courseId is required in session details"
             )
 
-        # ── Subscriber session-creation gate (fail fast, before any file I/O) ──
-        if current_user.role == "subscriber":
-            course_id_str = session_details_dict['courseId']
-            gate_course = db.query(Course).filter(Course.course_id == course_id_str).first()
-            if not gate_course:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Course not found.",
-                )
-            if not gate_course.allow_subscriber_sessions:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="This course does not allow subscribers to create sessions.",
-                )
-            gate_enrollment = db.query(CourseStudent).filter(
-                CourseStudent.course_id == gate_course.id,
-                CourseStudent.user_id == current_user.id,
-            ).first()
-            if not gate_enrollment:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="You must be enrolled in this course to create a session.",
-                )
+        # Subscriber session-creation gates (enrollment / allow_subscriber_sessions)
+        # are temporarily disabled — subscribers can freely create their own sessions.
 
         # Read student file content
         logger.info(f"📂 Reading file content: {presentation.filename}")
@@ -392,54 +371,14 @@ async def check_session_eligibility(
     start this session and a list of human-readable blocking issues.
     Publishers/admins always get eligible=True.
     """
-    issues = []
-
     db_session = db.query(Session).filter(Session.session_id == session_id).first()
     if not db_session:
         return {"eligible": False, "issues": [{"code": "not_found", "message": "Session not found."}]}
 
-    if current_user.role in ("publisher", "admin"):
-        return {"eligible": True, "issues": []}
-
-    # Gate 1: course must allow subscriber sessions
-    course = db_session.course
-    if not course:
-        issues.append({"code": "no_course", "message": "Session has no associated course."})
-        return {"eligible": False, "issues": issues}
-
-    if not course.allow_subscriber_sessions:
-        issues.append({"code": "course_disabled", "message": "This course does not allow sessions."})
-
-    # Gate 2: enrolled
-    enrolled = db.query(CourseStudent).filter_by(
-        course_id=db_session.course_id,
-        user_id=current_user.id,
-    ).first()
-    if not enrolled:
-        issues.append({"code": "not_enrolled", "message": "You are not enrolled in this course."})
-
-    # Gate 3: published
-    if not getattr(db_session, "is_published", False):
-        issues.append({"code": "not_published", "message": "This session has not been published yet."})
-
-    # Gate 4: subscription (only meaningful if enrolled and published)
-    if not issues:
-        try:
-            session_resolution_service.resolve_session_avatar(db_session, current_user.id, db)
-        except HTTPException as e:
-            if e.status_code == status.HTTP_403_FORBIDDEN:
-                issues.append({"code": "no_subscription", "message": e.detail})
-
-    # Gate 5: credits
-    from app.services import billing_service as _billing
-    balance_info = _billing.get_active_balance(current_user.id, db)
-    if balance_info["balance"] <= 0:
-        issues.append({
-            "code": "no_credits",
-            "message": "You have no credits. Redeem an access code to start a session.",
-        })
-
-    return {"eligible": len(issues) == 0, "issues": issues}
+    # Subscriber gates (course opt-in, enrollment, published-only, avatar
+    # subscription, credit balance) are temporarily disabled — every
+    # subscriber is eligible to start any session.
+    return {"eligible": True, "issues": []}
 
 
 @router.patch("/sessions/{session_id}/publish")
@@ -764,56 +703,11 @@ async def start_session_run(
         db_session_raw = db.query(Session).filter(Session.session_id == session_id).first()
         _avatar_resolution = None  # populated below for subscribers (Wave 4 — R52)
 
-        if current_user.role == "subscriber":
-            if not db_session_raw:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found.")
-
-            # Gate 1: course must exist and allow subscriber sessions
-            course = db.query(Course).filter(Course.id == db_session_raw.course_id).first()
-            if not course:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Session has no associated course.",
-                )
-            if not course.allow_subscriber_sessions:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="This course does not allow subscriber sessions.",
-                )
-
-            # Gate 2: subscriber must be enrolled
-            enrolled = db.query(CourseStudent).filter_by(
-                course_id=db_session_raw.course_id,
-                user_id=current_user.id,
-            ).first()
-            if not enrolled:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="You must be enrolled in this course to start a session.",
-                )
-
-            # Gate 3 (Wave 4 — R73): session must be published before subscribers can run it
-            if not getattr(db_session_raw, "is_published", False):
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="This session has not been published and is not yet accessible to subscribers.",
-                )
-
-            # Gate 4 (Wave 4 — R52): resolve avatar via course-linked subscriptions.
-            # Raises 403 if avatars are configured but subscriber has no active subscription.
-            # Returns None when the session has no avatar requirement.
-            _avatar_resolution = session_resolution_service.resolve_session_avatar(
-                db_session_raw, current_user.id, db
-            )
-
-            # Gate 5: pre-flight credit check — subscriber must have a positive balance
-            from app.services import billing_service as _billing
-            balance_info = _billing.get_active_balance(current_user.id, db)
-            if balance_info["balance"] <= 0:
-                raise HTTPException(
-                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
-                    detail="Insufficient credits. Redeem an access code to start a session.",
-                )
+        # Subscriber gates (enrollment, allow_subscriber_sessions, published-only,
+        # avatar subscription, credit balance) are temporarily disabled — subscribers
+        # can freely create and run their own realtime sessions.
+        if current_user.role == "subscriber" and not db_session_raw:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found.")
         # ─────────────────────────────────────────────────────────────────────
 
         # ── Resolve effective runtime mode ────────────────────────────────────
@@ -1043,6 +937,41 @@ async def stop_session_run(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error stopping session run: {e}"
         )
+
+@router.patch("/sessions/{session_id}/run/{session_run_id}/transition")
+async def transition_session_run(
+    session_id: str,
+    session_run_id: str,
+    request_data: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Record a mid-run mode switch (e.g. "Continue in Chat" from a realtime
+    voice session) on the SessionRun. Metadata-only bookkeeping — does not
+    stop or otherwise affect the run's active status. Called fire-and-forget
+    by the frontend, so failures here must never block the client-side
+    transition to chat mode.
+
+    Body: { runtime_mode_used: "chat" }
+    """
+    try:
+        runtime_mode_used = request_data.get("runtime_mode_used", "chat")
+        session_run = await session_service.transition_session_run(
+            db, session_id, session_run_id, runtime_mode_used
+        )
+        if not session_run:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session run not found")
+        return {"sessionRunId": session_run_id, "runtimeModeUsed": session_run.runtime_mode_used}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error transitioning session run: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error transitioning session run: {e}"
+        )
+
 
 @router.post("/sessions/{session_id}/run/{session_run_id}/stop/guest", response_model=SessionRunDetails)
 async def stop_session_run(
@@ -1509,7 +1438,11 @@ async def get_ephemeral_token(
             db, session_id, exclude_run_id=session_run_id
         )
         memories: list = []
-        if db_session_raw:
+        if settings.demo_mode:
+            # TEMP demo layer: skip DB retrieval, use scripted memory for determinism.
+            from app.services import demo_service
+            memories = demo_service.get_demo_memories()
+        elif db_session_raw:
             memories = get_user_memories(
                 db,
                 user_id=db_session_raw.user_id,
