@@ -1275,6 +1275,46 @@ async def submit_transcript_feedback(
     )
 
 
+@router.post("/sessions/{session_id}/run/{session_run_id}/transcript")
+async def append_transcript_turn(
+    session_id: str,
+    session_run_id: str,
+    request_data: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Persist a single transcript turn (user or assistant) for a session run.
+
+    Stores each turn inside session_run_metadata.transcript[] so that
+    transcripts survive beyond the ephemeral WebRTC session.
+    """
+    role = request_data.get("role")
+    text = (request_data.get("text") or "").strip()
+    if role not in ("user", "assistant"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="role must be 'user' or 'assistant'",
+        )
+    if not text:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="text is required",
+        )
+
+    captured_at = request_data.get("captured_at", datetime.utcnow().isoformat())
+    turn_index = request_data.get("turn_index")
+
+    ok = await session_service.append_transcript_turn(
+        db, session_id, session_run_id, role, text, captured_at, turn_index,
+    )
+    if not ok:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session or session run not found",
+        )
+    return {"success": True}
+
+
 @router.get("/sessions/{session_id}/run/{session_run_id}", response_model=SessionRunDetails)
 async def get_session_run(
     session_id: str,

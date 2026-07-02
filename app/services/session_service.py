@@ -529,3 +529,49 @@ class SessionService:
             run_summaries.append(run_summary)
         
         return run_summaries, len(run_summaries)
+
+    async def append_transcript_turn(
+        self,
+        db: Session,
+        session_id: str,
+        session_run_id: str,
+        role: str,
+        text: str,
+        captured_at: str,
+        turn_index: Optional[int] = None,
+    ) -> bool:
+        """Append a single transcript turn to session_run_metadata.transcript[].
+
+        Stores turns inside the existing JSONB column to avoid a migration.
+        Returns True on success, False if the session run was not found.
+        """
+        db_session = db.query(SessionModel).filter(
+            SessionModel.session_id == session_id
+        ).first()
+        if not db_session:
+            return False
+
+        session_run = db.query(SessionRun).filter(
+            SessionRun.session_id == db_session.id,
+            SessionRun.session_run_id == session_run_id,
+        ).first()
+        if not session_run:
+            return False
+
+        # Initialise metadata dict if absent
+        metadata = dict(session_run.session_run_metadata or {})
+        transcript = list(metadata.get("transcript", []))
+        transcript.append({
+            "role": role,
+            "text": text,
+            "captured_at": captured_at,
+            "turn_index": turn_index,
+        })
+        metadata["transcript"] = transcript
+
+        # Write back — use flag_modified so SQLAlchemy detects the JSONB change
+        from sqlalchemy.orm.attributes import flag_modified
+        session_run.session_run_metadata = metadata
+        flag_modified(session_run, "session_run_metadata")
+        db.commit()
+        return True

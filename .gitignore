@@ -12,3 +12,5 @@ static"venv/"
 !.env.example
 venv/
 static/
+
+c829271c20c4_compatibility_bridge.py
