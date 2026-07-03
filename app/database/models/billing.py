@@ -70,6 +70,12 @@ class UsageRecord(Base):
     # W1A addition
     ai_provider = Column(String(50), nullable=False, default="openai", server_default="openai")
 
+    # Dual voice pipeline billing — caller-supplied key so a retried/duplicate
+    # charge request (e.g. a client firing the same TTS-usage POST twice)
+    # cannot deduct credits more than once. Nullable: existing token-based
+    # charge sites (session_run) don't supply one.
+    idempotency_key = Column(String(100), nullable=True, unique=True, index=True)
+
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User")

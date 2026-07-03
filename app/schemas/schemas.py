@@ -37,6 +37,13 @@ class EphemeralTokenResponse(BaseModel):
     heygen_access_token: Optional[str] = None
     session_language: Optional[str] = None
     session_mode: Optional[str] = None
+    # Dual voice pipeline — resolved via voice_resolution_service.resolve_session_voice()
+    # so the frontend plays the actual resolved voice instead of guessing gender
+    # from the 3-D avatar's library entry.
+    voice_provider: Optional[str] = None   # 'openai' | 'elevenlabs'
+    voice_id: Optional[str] = None
+    voice_dialect: Optional[str] = None
+    voice_source: Optional[str] = None     # 'subscriber' | 'publisher'
 
 class InputAudioNoiseReduction(BaseModel):
     type: str
@@ -2465,4 +2472,75 @@ class AssistantChatResponse(BaseModel):
     message_id: UUID
     reply: str
     turn_number: int
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Dual Voice Pipeline — subscriber voice override, catalog, usage billing
+# ═══════════════════════════════════════════════════════════════════
+
+VALID_VOICE_PROVIDERS = {"openai", "elevenlabs"}
+
+
+class ResolvedVoiceResponse(BaseModel):
+    provider: str
+    voice_id: str
+    dialect: Optional[str] = None
+    source: str  # 'subscriber' | 'publisher'
+
+
+class VoicePreferenceUpdate(BaseModel):
+    provider: str = Field(..., pattern="^(openai|elevenlabs)$")
+    voice_id: str = Field(..., min_length=1, max_length=200)
+    dialect: Optional[str] = Field(None, max_length=50)
+
+
+class VoicePreferenceResponse(BaseModel):
+    id: UUID
+    provider: str
+    voice_id: Optional[str] = None
+    dialect: Optional[str] = None
+    is_valid: bool
     created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class VoicePreferenceWithResolutionResponse(BaseModel):
+    preference: Optional[VoicePreferenceResponse] = None
+    resolved: ResolvedVoiceResponse
+
+
+class VoiceCatalogEntry(BaseModel):
+    id: str
+    name: str
+    dialects: List[str]
+
+
+class VoiceCatalogResponse(BaseModel):
+    provider: str
+    voices: List[VoiceCatalogEntry]
+    cost_per_1k_characters_usd: Decimal
+
+
+class VoiceUsageRequest(BaseModel):
+    provider: str = Field(..., pattern="^(openai|elevenlabs)$")
+    character_count: int = Field(..., gt=0, le=50000)
+    idempotency_key: str = Field(..., min_length=1, max_length=100)
+
+
+class VoiceUsageResponse(BaseModel):
+    operation_type: str
+    credits_charged: Decimal
+    new_balance: Decimal
+
+
+class ProviderAvailability(BaseModel):
+    available: bool
+    reason: Optional[str] = None  # 'platform_quota_exceeded' | 'unreachable' | None
+
+
+class VoiceAvailabilityResponse(BaseModel):
+    openai: ProviderAvailability
+    elevenlabs: ProviderAvailability

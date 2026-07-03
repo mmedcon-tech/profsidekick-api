@@ -11,6 +11,7 @@ from app.database.models import (
     ProgramAvatar,
 )
 from app.services.prompt_generator import generate_teaching_persona_prompt
+from app.services.voice_catalog_service import infer_provider_from_voice
 from app.schemas.schemas import (
     AvatarCreate, AvatarUpdate,
     AvatarConfigurationCreate, AvatarConfigurationUpdate,
@@ -215,6 +216,19 @@ class AvatarService:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Avatar must have a configuration before it can be published",
+            )
+        if not avatar.configuration.voice:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Avatar configuration must have a voice selected "
+                "before it can be published",
+            )
+        # Backfill tts_provider for configs saved before the field existed,
+        # so publish-time validation doesn't force publishers to re-save
+        # every existing avatar.
+        if not avatar.configuration.tts_provider:
+            avatar.configuration.tts_provider = infer_provider_from_voice(
+                avatar.configuration.voice
             )
 
         avatar.is_published = True
