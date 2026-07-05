@@ -14,7 +14,6 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
-from app.database.models.sae import SAEStudent
 from app.schemas.sae import SAEInviteSetupRequest, SAESetupResponse, SAETokenValidationResponse
 from app.services import sae_service
 from app.services.auth_service import AuthService
@@ -72,7 +71,7 @@ async def setup_account(
     Returns a fresh JWT so the student is immediately logged in regardless of use.
     No email is ever sent at any point.
     """
-    success, error_msg, new_user = sae_service.activate_student_account(
+    success, error_msg, new_user, activated_student = sae_service.activate_student_account(
         db=db,
         token_value=token,
         username=body.username.strip() if body.username else None,
@@ -92,12 +91,8 @@ async def setup_account(
     # immediately logged in and any stale tokens on other devices are rejected.
     token_data = _auth.create_access_token(str(new_user.id), new_user.username, new_user.token_version or 1)
 
-    sae_student = db.query(SAEStudent).filter(
-        SAEStudent.user_id == new_user.id
-    ).first()
-
     return SAESetupResponse(
         access_token=token_data["token"],
-        student_code=sae_student.student_code if sae_student else "",
-        display_name=sae_student.display_name if sae_student else new_user.first_name,
+        student_code=activated_student.student_code if activated_student else "",
+        display_name=activated_student.display_name if activated_student else new_user.first_name,
     )

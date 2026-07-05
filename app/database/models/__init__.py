@@ -135,6 +135,12 @@ from app.database.models.autograder import (  # noqa: F401
     Student,
     AutograderSubmission,
 )
+
+# Prompt system — must come after User and Avatar
+from app.database.models.prompts import (  # noqa: F401
+    PromptTemplate,
+    AvatarPromptConfig,
+)
 # Third-party integration tokens — depends on User only
 from app.database.models.integrations import BrightspaceToken  # noqa: F401
 
@@ -224,4 +230,7 @@ __all__ = [
     "BrightspaceToken",
     # legacy
     "ProfessorPersona",
+    # prompt system
+    "PromptTemplate",
+    "AvatarPromptConfig",
 ]

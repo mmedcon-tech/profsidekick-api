@@ -49,6 +49,7 @@ class FallbackProvider:
         self,
         student_files: StudentFiles,
         request_id: str | None = None,
+        grading_prompt: str | None = None,
     ) -> GradingResult:
         t_chain_start = time.monotonic()
         last_error: Exception | None = None
@@ -104,7 +105,7 @@ class FallbackProvider:
                     )
 
                 try:
-                    result = await provider.grade(student_files)
+                    result = await provider.grade(student_files, grading_prompt=grading_prompt)
                     duration_ms = _ms(t_provider_start)
                     print(
                         f"[TRACE] request_id={rid} provider_success "

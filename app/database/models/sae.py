@@ -30,10 +30,24 @@ class SAEAssessment(Base):
     name         = Column(String(200), nullable=False)
     description  = Column(Text, nullable=True)
     is_active    = Column(Boolean, nullable=False, default=True)
+    # Phase 3: grading prompt (p1004)
+    grading_prompt_template_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("prompt_templates.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    grading_prompt_snapshot = Column(Text, nullable=True)
+    # Phase 4: avatar linkage (p1006) — grading prompt resolved from avatar at creation
+    avatar_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("avatars.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     created_at   = Column(DateTime, default=datetime.utcnow)
 
     publisher = relationship("User", foreign_keys=[publisher_id])
     course    = relationship("Course", foreign_keys=[course_id])
+    avatar    = relationship("Avatar", foreign_keys=[avatar_id])
     students  = relationship("SAEStudent", back_populates="assessment")
 
 

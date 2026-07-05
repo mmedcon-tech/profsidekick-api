@@ -38,13 +38,13 @@ class GeminiProvider(LLMProvider):
     def max_attempts(self) -> int:
         return 2 if self._tier == "pro" else 1
 
-    async def grade(self, student_files: StudentFiles) -> GradingResult:
+    async def grade(self, student_files: StudentFiles, grading_prompt: str | None = None) -> GradingResult:
         url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/"
             f"{self._model}:generateContent?key={self._api_key}"
         )
         headers = {"Content-Type": "application/json"}
-        payload = self._make_payload(student_files)
+        payload = self._make_payload(student_files, grading_prompt=grading_prompt)
         parts = payload["contents"][0]["parts"]
 
         has_uris = bool(autograder_cache.gemini_uris.get(self._tier))
@@ -57,7 +57,7 @@ class GeminiProvider(LLMProvider):
         )
 
         t0 = time.monotonic()
-        async with httpx.AsyncClient(timeout=350.0) as client:
+        async with httpx.AsyncClient(timeout=120.0) as client:
             resp = await client.post(url, json=payload, headers=headers)
             elapsed_ms = int((time.monotonic() - t0) * 1000)
 
@@ -84,7 +84,7 @@ class GeminiProvider(LLMProvider):
                 )
                 await asyncio.to_thread(refresh_static_uris_for_tier, self._api_key, self._tier)
                 t1 = time.monotonic()
-                resp = await client.post(url, json=self._make_payload(student_files), headers=headers)
+                resp = await client.post(url, json=self._make_payload(student_files, grading_prompt=grading_prompt), headers=headers)
                 elapsed_ms = int((time.monotonic() - t1) * 1000)
                 print(
                     f"[TRACE] gemini_response_status={resp.status_code} "
@@ -112,16 +112,16 @@ class GeminiProvider(LLMProvider):
     # Payload construction
     # ------------------------------------------------------------------
 
-    def _make_payload(self, student_files: StudentFiles) -> dict:
+    def _make_payload(self, student_files: StudentFiles, grading_prompt: str | None = None) -> dict:
         return {
-            "contents": [{"role": "user", "parts": self._build_parts(student_files)}],
+            "contents": [{"role": "user", "parts": self._build_parts(student_files, grading_prompt=grading_prompt)}],
             "generationConfig": {
                 "temperature": 0,
                 "responseMimeType": "application/json",
             },
         }
 
-    def _build_parts(self, student_files: StudentFiles) -> list:
+    def _build_parts(self, student_files: StudentFiles, grading_prompt: str | None = None) -> list:
         tier_uris = autograder_cache.gemini_uris.get(self._tier, {})
 
         if tier_uris.get("rubric"):
@@ -144,7 +144,7 @@ class GeminiProvider(LLMProvider):
             # Student files — always inline, never cached or reused.
             {"inline_data": {"mime_type": "application/pdf", "data": student_files.webassign_b64}},
             {"inline_data": {"mime_type": "application/pdf", "data": student_files.handwritten_b64}},
-            {"text": autograder_cache.grading_prompt},
+            {"text": grading_prompt or autograder_cache.grading_prompt},
         ]
 
     # ------------------------------------------------------------------

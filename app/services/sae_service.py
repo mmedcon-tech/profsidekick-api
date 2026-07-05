@@ -11,6 +11,7 @@ Design rules enforced here:
 - Activation is atomic: token invalidation and user creation commit together.
 """
 
+import asyncio
 import base64
 import copy
 import secrets
@@ -58,16 +59,73 @@ def create_assessment(
     name: str,
     description: Optional[str] = None,
     course_id: Optional[uuid.UUID] = None,
+    grading_prompt_template_id: Optional[uuid.UUID] = None,
+    avatar_id: Optional[uuid.UUID] = None,
 ) -> SAEAssessment:
-    """Create a new assessment for a publisher, optionally linked to a course."""
+    """
+    Create a new assessment for a publisher, optionally linked to a course and/or avatar.
+
+    Grading prompt snapshot priority:
+      1. grading_prompt_template_id (explicit template) — resolved and frozen.
+      2. avatar_id — grading.assessment prompt resolved from avatar's AvatarPromptConfig.
+      3. Neither — no snapshot; system default is used at grade time.
+    """
+    from app.services.prompt_resolution_service import PromptResolutionService
+
+    grading_prompt_snapshot: Optional[str] = None
+    if grading_prompt_template_id is not None:
+        grading_prompt_snapshot = PromptResolutionService()._resolve_direct_template(
+            db, grading_prompt_template_id
+        )
+    elif avatar_id is not None:
+        grading_prompt_snapshot = PromptResolutionService().resolve(
+            db, avatar_id, "grading.assessment"
+        )
+
     assessment = SAEAssessment(
         publisher_id=publisher_id,
         course_id=course_id,
         name=name,
         description=description,
         is_active=True,
+        grading_prompt_template_id=grading_prompt_template_id,
+        grading_prompt_snapshot=grading_prompt_snapshot,
+        avatar_id=avatar_id,
     )
     db.add(assessment)
+    db.commit()
+    db.refresh(assessment)
+    return assessment
+
+
+def link_avatar_to_assessment(
+    db: Session,
+    assessment: SAEAssessment,
+    avatar_id: Optional[uuid.UUID],
+) -> SAEAssessment:
+    """
+    Link (or unlink) an avatar to an existing assessment and re-snapshot the
+    grading prompt from the avatar's current grading.assessment AvatarPromptConfig.
+
+    Passing avatar_id=None unlinks the avatar. The existing grading_prompt_snapshot
+    is cleared so grading falls back to the system default going forward.
+
+    The snapshot is intentionally re-frozen here — callers must make an explicit
+    PATCH request to update it. Auto-updating on every avatar prompt change would
+    break fairness for in-progress assessments.
+    """
+    from app.services.prompt_resolution_service import PromptResolutionService
+
+    assessment.avatar_id = avatar_id
+
+    if avatar_id is not None:
+        snapshot = PromptResolutionService().resolve(db, avatar_id, "grading.assessment")
+        assessment.grading_prompt_snapshot = snapshot
+        assessment.grading_prompt_template_id = None
+    else:
+        assessment.grading_prompt_snapshot = None
+        assessment.grading_prompt_template_id = None
+
     db.commit()
     db.refresh(assessment)
     return assessment
@@ -150,6 +208,144 @@ def create_student_batch(
     return new_students
 
 
+# ── Multi-assessment enrollment ────────────────────────────────────────────────
+
+def ensure_student_access(
+    db: Session,
+    user_id: uuid.UUID,
+    publisher_id: uuid.UUID,
+    country_of_origin: Optional[str] = None,
+    curriculum: Optional[str] = None,
+) -> list[SAEStudent]:
+    """
+    Guarantee the user has an activated SAEStudent row for every active assessment
+    owned by publisher_id. Safe to call repeatedly — fully idempotent.
+
+    For each active assessment (ordered by id to prevent deadlocks):
+      1. Skip if the user already has an activated row for that assessment.
+      2. Lock the assessment row to serialise concurrent enrollments.
+      3. Re-check after the lock (another session may have just enrolled).
+      4. Claim an existing unactivated pre-created slot so publisher-assigned
+         student numbers and codes are preserved.
+      5. If no pre-created slot is available, create a fresh row.
+
+    country_of_origin / curriculum are propagated to any newly created rows.
+    When both are None the function looks them up from the user's existing rows.
+
+    Does NOT commit — the caller is responsible for committing the transaction.
+    Flushes so that changes are visible to subsequent queries in the same session.
+    """
+    # If educational metadata not supplied, copy from an existing row for this publisher.
+    if country_of_origin is None or curriculum is None:
+        source = (
+            db.query(SAEStudent)
+            .filter(
+                SAEStudent.publisher_id == publisher_id,
+                SAEStudent.user_id == user_id,
+                SAEStudent.country_of_origin.isnot(None),
+            )
+            .first()
+        )
+        if source:
+            country_of_origin = country_of_origin or source.country_of_origin
+            curriculum = curriculum or source.curriculum
+
+    # Sort by id for deterministic lock ordering — prevents deadlocks when two
+    # sessions concurrently enroll different users in the same publisher's assessments.
+    active_assessments = (
+        db.query(SAEAssessment)
+        .filter(
+            SAEAssessment.publisher_id == publisher_id,
+            SAEAssessment.is_active == True,  # noqa: E712
+        )
+        .order_by(SAEAssessment.id)
+        .all()
+    )
+
+    for assessment in active_assessments:
+        # Fast-path: already enrolled — no lock needed.
+        already = (
+            db.query(SAEStudent)
+            .filter(
+                SAEStudent.assessment_id == assessment.id,
+                SAEStudent.user_id == user_id,
+            )
+            .first()
+        )
+        if already:
+            continue
+
+        # Lock the assessment row so concurrent sessions serialise here.
+        db.query(SAEAssessment).filter(
+            SAEAssessment.id == assessment.id
+        ).with_for_update().first()
+
+        # Re-check after acquiring the lock.
+        already = (
+            db.query(SAEStudent)
+            .filter(
+                SAEStudent.assessment_id == assessment.id,
+                SAEStudent.user_id == user_id,
+            )
+            .first()
+        )
+        if already:
+            continue
+
+        now = datetime.now(timezone.utc)
+
+        # Prefer claiming an existing unactivated publisher-created slot so that
+        # student numbers/codes match what the publisher generated.
+        slot = (
+            db.query(SAEStudent)
+            .filter(
+                SAEStudent.assessment_id == assessment.id,
+                SAEStudent.user_id.is_(None),
+                SAEStudent.is_activated == False,  # noqa: E712
+            )
+            .first()
+        )
+
+        if slot:
+            slot.user_id = user_id
+            slot.is_activated = True
+            slot.activated_at = now
+            if country_of_origin:
+                slot.country_of_origin = country_of_origin
+            if curriculum:
+                slot.curriculum = curriculum
+        else:
+            max_num = (
+                db.query(func.max(SAEStudent.student_number))
+                .filter(SAEStudent.assessment_id == assessment.id)
+                .scalar()
+            ) or 0
+            new_row = SAEStudent(
+                student_number=max_num + 1,
+                student_code=_generate_student_code(assessment.id, max_num + 1),
+                display_name=f"Student {max_num + 1}",
+                publisher_id=publisher_id,
+                assessment_id=assessment.id,
+                user_id=user_id,
+                is_activated=True,
+                activated_at=now,
+                country_of_origin=country_of_origin,
+                curriculum=curriculum,
+            )
+            db.add(new_row)
+
+    db.flush()
+
+    return (
+        db.query(SAEStudent)
+        .filter(
+            SAEStudent.publisher_id == publisher_id,
+            SAEStudent.user_id == user_id,
+        )
+        .all()
+    )
+
+
 # ── Token validation ───────────────────────────────────────────────────────────
 
 def validate_invitation_token(
@@ -190,25 +386,32 @@ def activate_student_account(
     password: Optional[str],
     country_of_origin: Optional[str],
     curriculum: Optional[str],
-) -> tuple[bool, str, Optional[User]]:
+) -> tuple[bool, str, Optional[User], Optional[SAEStudent]]:
     """
     Atomically handles both uses of an invitation link.
 
-    use_count == 0, user_id is None  → first activation: create User, link student.
-    use_count == 0, user_id is set   → re-activation after publisher regenerate:
+    use_count == 0, user_id is None, username is new
+                                     → Path A: first activation — create User, link student.
+    use_count == 0, user_id is None, username belongs to existing User with matching password
+                                     → Path A2: existing-account login — link that User to this
+                                        student slot and enroll in all active assessments.
+    use_count == 0, user_id is set   → Path B: re-activation after publisher regenerate —
                                         restore credentials on the existing User row.
-    use_count == 1                   → second use of original link: update whichever
+    use_count == 1                   → Path C: second use of original link — update whichever
                                         credential fields were supplied (username and/or
                                         password), increment token_version to invalidate
                                         sessions on other devices.
+
+    Paths A, A2, and B all call ensure_student_access so the user gains rows for every
+    active assessment owned by the publisher, not just the one tied to this token.
 
     After each successful use:
       - use_count is incremented.
       - used_at is refreshed.
       - When use_count reaches 2, is_used is set to True (link permanently expired).
 
-    Returns (success, error_message, user).
-    A conflict on username returns (False, "...", None) without touching use_count.
+    Returns (success, error_message, user, activated_student).
+    On failure returns (False, reason, None, None) without touching use_count.
     """
     # Lock the token row to prevent two simultaneous requests from both succeeding.
     token_row = (
@@ -218,55 +421,74 @@ def activate_student_account(
         .first()
     )
     if not token_row:
-        return False, "Invalid invitation link.", None
+        return False, "Invalid invitation link.", None, None
     if token_row.is_used:
-        return False, "This invitation link has already been used.", None
+        return False, "This invitation link has already been used.", None, None
     if token_row.expires_at is not None:
         exp = token_row.expires_at
         if exp.tzinfo is None:
             exp = exp.replace(tzinfo=timezone.utc)
         if datetime.now(timezone.utc) > exp:
-            return False, "This invitation link has expired.", None
+            return False, "This invitation link has expired.", None, None
 
     student = db.query(SAEStudent).filter(
         SAEStudent.id == token_row.student_id
     ).first()
     if not student:
-        return False, "Student record not found.", None
+        return False, "Student record not found.", None, None
 
     placeholder_email = f"sae.{student.student_code.lower()}@noreply.internal"
     use_count = token_row.use_count
 
     if use_count == 0 and student.user_id is None:
-        # ── Path A: first activation — create a new User ────────────────────
         if not username or not password:
-            return False, "Username and password are required.", None
-        if not country_of_origin or not curriculum:
-            return False, "Country of origin and curriculum are required.", None
+            return False, "Username and password are required.", None, None
 
-        conflict = db.query(User).filter(User.username == username).first()
-        if conflict:
-            return False, "Username already taken. Please choose a different one.", None
+        existing_user = db.query(User).filter(User.username == username).first()
 
-        password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-        user = User(
-            username=username,
-            email=placeholder_email,
-            password_hash=password_hash,
-            first_name=student.display_name,
-            last_name="",
-            role="subscriber",
-            email_verified=True,
-            is_approved=True,
-            token_version=1,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
-        )
-        db.add(user)
-        db.flush()  # populate user.id before writing the FK
-        student.user_id = user.id
-        student.country_of_origin = country_of_origin
-        student.curriculum = curriculum
+        if existing_user:
+            # ── Path A2: existing account — verify password and link ─────────
+            # The student already has an account from a previous invitation.
+            # Authenticate them instead of creating a duplicate account.
+            # Return the same 409-style message on wrong password so that we do
+            # not leak whether the username exists to a malicious actor.
+            if not bcrypt.checkpw(
+                password.encode("utf-8"),
+                existing_user.password_hash.encode("utf-8"),
+            ):
+                return False, "Username already taken. Please choose a different one.", None, None
+            user = existing_user
+            student.user_id = user.id
+            # Preserve any educational metadata supplied by the form (may be empty
+            # for returning users who skipped those fields).
+            if country_of_origin:
+                student.country_of_origin = country_of_origin
+            if curriculum:
+                student.curriculum = curriculum
+        else:
+            # ── Path A: first activation — create a new User ─────────────────
+            if not country_of_origin or not curriculum:
+                return False, "Country of origin and curriculum are required.", None, None
+
+            password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+            user = User(
+                username=username,
+                email=placeholder_email,
+                password_hash=password_hash,
+                first_name=student.display_name,
+                last_name="",
+                role="subscriber",
+                email_verified=True,
+                is_approved=True,
+                token_version=1,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow(),
+            )
+            db.add(user)
+            db.flush()  # populate user.id before writing the FK
+            student.user_id = user.id
+            student.country_of_origin = country_of_origin
+            student.curriculum = curriculum
 
     elif use_count == 0 and student.user_id is not None:
         # ── Path B: re-activation after publisher regenerate ─────────────────
@@ -274,11 +496,11 @@ def activate_student_account(
         # existing User's credentials without deleting the row. We update that
         # same row in-place so no submission data is lost.
         if not username or not password:
-            return False, "Username and password are required.", None
+            return False, "Username and password are required.", None, None
 
         existing_user = db.query(User).filter(User.id == student.user_id).first()
         if not existing_user:
-            return False, "Linked user account not found. Contact support.", None
+            return False, "Linked user account not found. Contact support.", None, None
 
         conflict = (
             db.query(User)
@@ -286,7 +508,7 @@ def activate_student_account(
             .first()
         )
         if conflict:
-            return False, "Username already taken. Please choose a different one.", None
+            return False, "Username already taken. Please choose a different one.", None, None
 
         password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
         existing_user.username = username
@@ -300,14 +522,14 @@ def activate_student_account(
         # The student already has an account. They may update username, password,
         # or both. At least one must be supplied.
         if not student.user_id:
-            return False, "No account is linked to this invitation. Please contact your administrator.", None
+            return False, "No account is linked to this invitation. Please contact your administrator.", None, None
 
         existing_user = db.query(User).filter(User.id == student.user_id).first()
         if not existing_user:
-            return False, "Linked user account not found. Contact support.", None
+            return False, "Linked user account not found. Contact support.", None, None
 
         if not username and not password:
-            return False, "Please provide a new username, a new password, or both.", None
+            return False, "Please provide a new username, a new password, or both.", None, None
 
         if username:
             conflict = (
@@ -316,7 +538,7 @@ def activate_student_account(
                 .first()
             )
             if conflict:
-                return False, "Username already taken. Please choose a different one.", None
+                return False, "Username already taken. Please choose a different one.", None, None
             existing_user.username = username
 
         if password:
@@ -332,7 +554,7 @@ def activate_student_account(
 
     else:
         # Defensive: use_count >= 2 should have been caught by is_used check above.
-        return False, "This invitation link has already been used.", None
+        return False, "This invitation link has already been used.", None, None
 
     # ── Common: mark activated, consume one use of the token ─────────────────
     student.is_activated = True
@@ -343,11 +565,24 @@ def activate_student_account(
     if token_row.use_count >= 2:
         token_row.is_used = True  # permanently expire after second use
 
+    # Enroll the user in all active assessments for this publisher.
+    # Runs for Paths A, A2, and B (use_count was 0). Skipped for Path C
+    # (credential change only — no new assessment rows needed).
+    if use_count == 0:
+        db.flush()  # make student.user_id and is_activated visible within this tx
+        ensure_student_access(
+            db,
+            user_id=user.id,
+            publisher_id=student.publisher_id,
+            country_of_origin=student.country_of_origin,
+            curriculum=student.curriculum,
+        )
+
     db.commit()
     db.refresh(user)
     db.refresh(student)
 
-    return True, "", user
+    return True, "", user, student
 
 
 # ── Access regeneration ────────────────────────────────────────────────────────
@@ -446,6 +681,7 @@ async def grade_and_save_submission(
     webassign_filename: str,
     submitted_by_publisher: bool = False,
     publisher_user_id: Optional[uuid.UUID] = None,
+    request_id: Optional[str] = None,
 ) -> SAESubmission:
     """
     Runs the LLM grading pipeline (same fallback chain as the Math autograder)
@@ -483,40 +719,80 @@ async def grade_and_save_submission(
 
     new_submission_number = locked_student.submission_count + 1
 
-    # Step 3 — persist files before grading so the path is ready for the DB row.
-    # Try R2 cloud storage first (production); fall back to local disk for local testing.
     from app.services.r2_service import r2
 
     hw_key = f"autograder/sae/{locked_student.student_code}/{new_submission_number}/handwritten.pdf"
     wa_key = f"autograder/sae/{locked_student.student_code}/{new_submission_number}/webassign.pdf"
 
-    if r2.enabled:
-        r2.upload(hw_key, handwritten_bytes)
-        r2.upload(wa_key, webassign_bytes)
-        hw_stored = hw_key
-        wa_stored = wa_key
-    else:
-        submission_dir = build_submission_dir(locked_student.student_code, new_submission_number)
-        hw_path = submission_dir / "handwritten.pdf"
-        wa_path = submission_dir / "webassign.pdf"
-        hw_path.write_bytes(handwritten_bytes)
-        wa_path.write_bytes(webassign_bytes)
-        hw_stored = str(hw_path)
-        wa_stored = str(wa_path)
+    # Steps 3+4 — storage and LLM grading run concurrently.
+    #
+    # The LLM only needs in-memory bytes (StudentFiles); stored file paths are
+    # only needed for the DB row written AFTER grading.  Running them in parallel
+    # hides R2/disk latency (typically 6–20 s) behind the LLM call (30–120 s).
+    # R2 uploads use asyncio.to_thread so boto3 (sync) cannot block the event loop.
 
-    # Step 4 — grade via LLM
-    student_files = StudentFiles(
-        webassign_b64=base64.b64encode(webassign_bytes).decode("utf-8"),
-        handwritten_b64=base64.b64encode(handwritten_bytes).decode("utf-8"),
+    # b64 encode both PDFs off the main thread — CPU-bound for large files.
+    hw_b64, wa_b64 = await asyncio.gather(
+        asyncio.to_thread(lambda: base64.b64encode(handwritten_bytes).decode("utf-8")),
+        asyncio.to_thread(lambda: base64.b64encode(webassign_bytes).decode("utf-8")),
     )
+    student_files = StudentFiles(webassign_b64=wa_b64, handwritten_b64=hw_b64)
 
     fp = get_fallback_provider()
+
+    # Resolve the grading prompt for this submission: use the assessment's frozen
+    # snapshot if present; otherwise fall back to the live resolution chain.
+    grading_prompt_for_run: str | None = None
+    if locked_student.assessment and locked_student.assessment.grading_prompt_snapshot:
+        grading_prompt_for_run = locked_student.assessment.grading_prompt_snapshot
+    else:
+        from app.services.prompt_resolution_service import PromptResolutionService
+        grading_prompt_for_run = PromptResolutionService()._resolve_system_default(
+            db, "grading.assessment"
+        )
+
+    if r2.enabled:
+        async def _store_r2() -> tuple[str, str]:
+            await asyncio.gather(
+                asyncio.to_thread(r2.upload, hw_key, handwritten_bytes),
+                asyncio.to_thread(r2.upload, wa_key, webassign_bytes),
+            )
+            return hw_key, wa_key
+
+        storage_coro = _store_r2()
+    else:
+        async def _store_local() -> tuple[str, str]:
+            def _write() -> tuple[str, str]:
+                sub_dir = build_submission_dir(locked_student.student_code, new_submission_number)
+                hw_path = sub_dir / "handwritten.pdf"
+                wa_path = sub_dir / "webassign.pdf"
+                hw_path.write_bytes(handwritten_bytes)
+                wa_path.write_bytes(webassign_bytes)
+                return str(hw_path), str(wa_path)
+            return await asyncio.to_thread(_write)
+
+        storage_coro = _store_local()
+
     try:
-        result = await fp.grade(student_files, request_id=None)
+        (hw_stored, wa_stored), result = await asyncio.gather(
+            storage_coro,
+            fp.grade(student_files, request_id=request_id, grading_prompt=grading_prompt_for_run),
+        )
     except RuntimeError as exc:
+        msg = str(exc)
+        prefix = "File storage failed" if "R2 upload" in msg or "upload failed" in msg.lower() else "Grading failed"
+        if request_id:
+            from app.llm.event_bus import event_bus as _event_bus
+            await _event_bus.publish(request_id, {
+                "event": "grading_failed",
+                "request_id": request_id,
+                "provider": None,
+                "reason": msg,
+                "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+            })
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Grading failed: {exc}",
+            detail=f"{prefix}: {msg}",
         )
 
     result_data = {
@@ -566,6 +842,17 @@ async def grade_and_save_submission(
 
     db.commit()
     db.refresh(submission)
+
+    if request_id:
+        from app.llm.event_bus import event_bus as _event_bus
+        await _event_bus.publish(request_id, {
+            "event": "grading_complete",
+            "request_id": request_id,
+            "submission_id": str(submission.id),
+            "provider": result.model_used,
+            "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+        })
+
     return submission
 
 

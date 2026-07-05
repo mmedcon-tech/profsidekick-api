@@ -1,4 +1,5 @@
 import logging
+import uuid
 from datetime import datetime
 from PIL import Image
 import json
@@ -37,6 +38,7 @@ from app.services.session_service import SessionService
 from app.services.rag_service import ingest_session_document_background, retrieve_context
 from app.services import session_resolution_service
 from app.services.avatar_variant_service import resolve_default_variant, build_variant_snapshot
+from app.services.prompt_resolution_service import PromptResolutionService
 from app.dependencies.auth import get_current_user, get_optional_user
 from app.config import settings
 
@@ -112,7 +114,7 @@ async def _process_upload(
 @router.post("/sessions/create", response_model=SessionDetails)
 async def create_session(
     background_tasks: BackgroundTasks,
-    presentation: UploadFile = File(...),
+    presentation: Optional[UploadFile] = File(None),
     solution_file: Optional[UploadFile] = File(None),
     sessionDetails: str = Form(...),
     current_user: User = Depends(get_current_user),
@@ -138,81 +140,173 @@ async def create_session(
         # Subscriber session-creation gates (enrollment / allow_subscriber_sessions)
         # are temporarily disabled — subscribers can freely create their own sessions.
 
-        # Read student file content
-        logger.info(f"📂 Reading file content: {presentation.filename}")
-        file_content = await presentation.read()
-        logger.info(f"✅ File read successfully, size: {len(file_content)} bytes")
+        source = session_details_dict.get("source", "upload")
 
-        # Enforce size cap before any processing
-        if len(file_content) > settings.max_file_size:
-            raise HTTPException(
-                status_code=413,
-                detail=f"File too large. Maximum allowed size is {settings.max_file_size // (1024 * 1024)} MB. Your file is {len(file_content) / (1024 * 1024):.1f} MB."
-            )
-
-        # Validate student file
-        logger.info(f"🔍 Validating file: {presentation.filename}")
-        is_valid, error_message = file_processor.validate_file(file_content, presentation.filename)
-        if not is_valid:
-            logger.error(f"❌ File validation failed: {error_message}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"File validation failed: {error_message}"
-            )
-
-        # Generate session ID
+        # Generate session ID (needed by both branches for output image paths)
         logger.info(f"🆔 Generating session ID")
         session_id = session_service.generate_session_id()
         logger.info(f"✅ Session ID generated: {session_id}")
 
-        # Save student file
-        file_path = await file_processor.save_uploaded_file(file_content, presentation.filename, session_id)
-        logger.info(f"✅ File saved to: {file_path}")
+        if source == "upload":
+            # ── Upload branch: existing behaviour ──────────────────────────────
+            if presentation is None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="presentation file is required when source is 'upload'"
+                )
 
-        presentation_details_dict = {
-            "filename": presentation.filename,
-            "filePath": file_path,
-            "fileSize": len(file_content),
-            "fileType": Path(presentation.filename).suffix.lower(),
-        }
+            logger.info(f"📂 Reading file content: {presentation.filename}")
+            file_content = await presentation.read()
+            logger.info(f"✅ File read successfully, size: {len(file_content)} bytes")
 
-        # ── Process student file: PDF → Vision pipeline; PPTX/DOCX → text extraction ──
-        student_slides = await _process_upload(
-            file_processor, openai_service,
-            file_path, presentation.filename, session_id,
-            source="student",
-            vision_instructions=session_details_dict.get('visionInstructions'),
-            vision_model=session_details_dict.get('visionModel'),
-        )
-        logger.info(f"✅ Student slides processed ({len(student_slides)} slides)")
-
-        # Process professor solution file if provided
-        solution_slides = []
-        if solution_file and solution_file.filename:
-            logger.info(f"📂 Reading solution file: {solution_file.filename}")
-            sol_content = await solution_file.read()
-            if len(sol_content) > settings.max_file_size:
+            if len(file_content) > settings.max_file_size:
                 raise HTTPException(
                     status_code=413,
-                    detail=f"Solution file too large. Maximum allowed size is {settings.max_file_size // (1024 * 1024)} MB. Your file is {len(sol_content) / (1024 * 1024):.1f} MB."
+                    detail=f"File too large. Maximum allowed size is {settings.max_file_size // (1024 * 1024)} MB. Your file is {len(file_content) / (1024 * 1024):.1f} MB."
                 )
-            sol_valid, sol_error = file_processor.validate_file(sol_content, solution_file.filename)
-            if not sol_valid:
+
+            logger.info(f"🔍 Validating file: {presentation.filename}")
+            is_valid, error_message = file_processor.validate_file(file_content, presentation.filename)
+            if not is_valid:
+                logger.error(f"❌ File validation failed: {error_message}")
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Solution file validation failed: {sol_error}"
+                    detail=f"File validation failed: {error_message}"
                 )
-            sol_path = await file_processor.save_uploaded_file(sol_content, solution_file.filename, session_id)
-            solution_slides = await _process_upload(
+
+            file_path = await file_processor.save_uploaded_file(file_content, presentation.filename, session_id)
+            logger.info(f"✅ File saved to: {file_path}")
+
+            presentation_details_dict = {
+                "filename": presentation.filename,
+                "filePath": file_path,
+                "fileSize": len(file_content),
+                "fileType": Path(presentation.filename).suffix.lower(),
+            }
+
+            student_slides = await _process_upload(
                 file_processor, openai_service,
-                sol_path, solution_file.filename, session_id,
-                source="solution",
+                file_path, presentation.filename, session_id,
+                source="student",
                 vision_instructions=session_details_dict.get('visionInstructions'),
                 vision_model=session_details_dict.get('visionModel'),
             )
-            logger.info(f"✅ Solution slides processed ({len(solution_slides)} slides)")
+            logger.info(f"✅ Student slides processed ({len(student_slides)} slides)")
 
-        slides_details = student_slides + solution_slides
+            solution_slides = []
+            if solution_file and solution_file.filename:
+                logger.info(f"📂 Reading solution file: {solution_file.filename}")
+                sol_content = await solution_file.read()
+                if len(sol_content) > settings.max_file_size:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"Solution file too large. Maximum allowed size is {settings.max_file_size // (1024 * 1024)} MB. Your file is {len(sol_content) / (1024 * 1024):.1f} MB."
+                    )
+                sol_valid, sol_error = file_processor.validate_file(sol_content, solution_file.filename)
+                if not sol_valid:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Solution file validation failed: {sol_error}"
+                    )
+                sol_path = await file_processor.save_uploaded_file(sol_content, solution_file.filename, session_id)
+                solution_slides = await _process_upload(
+                    file_processor, openai_service,
+                    sol_path, solution_file.filename, session_id,
+                    source="solution",
+                    vision_instructions=session_details_dict.get('visionInstructions'),
+                    vision_model=session_details_dict.get('visionModel'),
+                )
+                logger.info(f"✅ Solution slides processed ({len(solution_slides)} slides)")
+
+            slides_details = student_slides + solution_slides
+
+        elif source == "assessment":
+            # ── Assessment branch: process files from an existing autograder submission ──
+            # NOTE: autograder files are local-disk only (no R2/S3). This branch
+            # requires the session API and autograder to share the same filesystem.
+            submission_id_str = session_details_dict.get("submissionId")
+            if not submission_id_str:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="submissionId is required in sessionDetails when source is 'assessment'"
+                )
+            try:
+                submission_uuid = uuid.UUID(submission_id_str)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="submissionId must be a valid UUID"
+                )
+
+            from app.database.models.autograder import AutograderSubmission
+            submission = db.query(AutograderSubmission).filter(
+                AutograderSubmission.id == submission_uuid
+            ).first()
+            if not submission:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Autograder submission not found"
+                )
+            if submission.submitted_by != current_user.id and current_user.role != "admin":
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You do not have access to this submission"
+                )
+
+            handwritten_path = submission.handwritten_file_path
+            webassign_path = submission.webassign_file_path
+            if not handwritten_path or not Path(handwritten_path).exists():
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Handwritten PDF for this submission is not available on disk"
+                )
+            if not webassign_path or not Path(webassign_path).exists():
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="WebAssign PDF for this submission is not available on disk"
+                )
+
+            handwritten_filename = submission.handwritten_filename or Path(handwritten_path).name
+            webassign_filename = submission.webassign_filename or Path(webassign_path).name
+
+            presentation_details_dict = {
+                "filename": handwritten_filename,
+                "filePath": handwritten_path,
+                "fileSize": 0,
+                "fileType": Path(handwritten_path).suffix.lower(),
+            }
+
+            # Inject submissionId into assistantParameters JSONB so the
+            # ephemeral endpoint can retrieve grading feedback at session start
+            ap = session_details_dict.get("assistantParameters") or {}
+            ap["submissionId"] = submission_id_str
+            session_details_dict["assistantParameters"] = ap
+
+            handwritten_slides = await _process_upload(
+                file_processor, openai_service,
+                handwritten_path, handwritten_filename, session_id,
+                source="handwritten",
+                vision_instructions=session_details_dict.get('visionInstructions'),
+                vision_model=session_details_dict.get('visionModel'),
+            )
+            logger.info(f"✅ Handwritten slides processed ({len(handwritten_slides)} slides)")
+
+            question_slides = await _process_upload(
+                file_processor, openai_service,
+                webassign_path, webassign_filename, session_id,
+                source="question",
+                vision_instructions=session_details_dict.get('visionInstructions'),
+                vision_model=session_details_dict.get('visionModel'),
+            )
+            logger.info(f"✅ Question slides processed ({len(question_slides)} slides)")
+
+            slides_details = handwritten_slides + question_slides
+
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid source value: '{source}'. Must be 'upload' or 'assessment'."
+            )
 
         # Create session with slides
         logger.info(f"📚 Creating session with slides")
@@ -1458,6 +1552,35 @@ async def get_ephemeral_token(
 
         rag_context: str | None = "\n\n".join(rag_parts) if rag_parts else None
 
+        # ── Grading feedback (assessment sessions only) ───────────────────────
+        # Read submissionId from raw JSONB — Pydantic drops it from session.assistantParameters
+        grading_feedback: dict | None = None
+        _submission_id_str = (db_session_raw.assistant_parameters or {}).get("submissionId") if db_session_raw else None
+        if _submission_id_str:
+            from app.database.models.autograder import AutograderSubmission as _AS
+            try:
+                _sub_uuid = uuid.UUID(_submission_id_str)
+                _sub = db.query(_AS).filter(_AS.id == _sub_uuid).first()
+                if _sub and _sub.result_json:
+                    grading_feedback = _sub.result_json
+            except Exception as _ge:
+                logger.warning("Could not load grading feedback for session %s: %s", session_id, _ge)
+
+        # ── Resolve prompt via PromptResolutionService ────────────────────────
+        # Map session_mode → use_case string then resolve; falls back to None so
+        # the legacy template-version path in build_realtime_instructions applies.
+        _use_case_map = {
+            "teaching": "session.teaching",
+            "examination": "session.examination",
+            "consultation": "session.conversation",
+        }
+        _use_case = _use_case_map.get((session_mode or "teaching").lower(), "session.teaching")
+        _avatar_id = db_session_raw.avatar_id if db_session_raw else None
+        _session_prompt_id = db_session_raw.prompt_template_id if db_session_raw else None
+        resolved_system_prompt: str | None = PromptResolutionService().resolve(
+            db, _avatar_id, _use_case, prompt_template_id=_session_prompt_id
+        )
+
         token_data = await openai_service.generate_ephemeral_token(
             _ap,
             student_slide_list,
@@ -1472,6 +1595,8 @@ async def get_ephemeral_token(
             memories=memories,
             refined_prompt=refined_prompt,
             rag_context=rag_context,
+            resolved_system_prompt=resolved_system_prompt,
+            grading_feedback=grading_feedback,
         )
         # ── Build avatar display config from variant_snapshot ─────────────────
         snapshot = getattr(session_run, "variant_snapshot", None) or {}

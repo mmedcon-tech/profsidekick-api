@@ -52,8 +52,8 @@ class VertexAIProvider(LLMProvider):
     def max_attempts(self) -> int:
         return 1
 
-    async def grade(self, student_files: StudentFiles) -> GradingResult:
-        contents = self._build_parts(student_files)
+    async def grade(self, student_files: StudentFiles, grading_prompt: str | None = None) -> GradingResult:
+        contents = self._build_parts(student_files, grading_prompt=grading_prompt)
         using_gcs = bool(autograder_cache.vertex_gcs_uris)
 
         gen_config = GenerationConfig(
@@ -101,7 +101,7 @@ class VertexAIProvider(LLMProvider):
                     f"[TRACE] vertex_gcs_failure_fallback "
                     f"retrying inline model={self._model_name}"
                 )
-                contents = self._build_inline_parts(student_files)
+                contents = self._build_inline_parts(student_files, grading_prompt=grading_prompt)
                 try:
                     response = await self._model.generate_content_async(
                         contents, generation_config=gen_config,
@@ -127,7 +127,7 @@ class VertexAIProvider(LLMProvider):
     # Part construction
     # ------------------------------------------------------------------
 
-    def _build_parts(self, student_files: StudentFiles) -> list:
+    def _build_parts(self, student_files: StudentFiles, grading_prompt: str | None = None) -> list:
         """
         Build the content parts list for the Vertex AI request.
 
@@ -162,16 +162,16 @@ class VertexAIProvider(LLMProvider):
             *static_parts,
             self._pdf_inline(student_files.webassign_b64),
             self._pdf_inline(student_files.handwritten_b64),
-            Part.from_text(autograder_cache.grading_prompt),
+            Part.from_text(grading_prompt or autograder_cache.grading_prompt),
         ]
 
-    def _build_inline_parts(self, student_files: StudentFiles) -> list:
+    def _build_inline_parts(self, student_files: StudentFiles, grading_prompt: str | None = None) -> list:
         """Always-inline version used as GCS fallback."""
         return [
             *self._inline_static_parts(),
             self._pdf_inline(student_files.webassign_b64),
             self._pdf_inline(student_files.handwritten_b64),
-            Part.from_text(autograder_cache.grading_prompt),
+            Part.from_text(grading_prompt or autograder_cache.grading_prompt),
         ]
 
     def _inline_static_parts(self) -> list:

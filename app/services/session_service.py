@@ -92,6 +92,16 @@ class SessionService:
             raw_runtime_mode = session_details.get('subscriberRuntimeMode') or 'avatar'
             subscriber_runtime_mode = raw_runtime_mode if raw_runtime_mode in ('avatar', 'chat', 'choice') else 'avatar'
 
+        # Resolve optional per-session prompt template
+        raw_prompt_template_id = session_details.get('promptTemplateId')
+        prompt_template_id = None
+        if raw_prompt_template_id:
+            try:
+                import uuid as _uuid
+                prompt_template_id = _uuid.UUID(str(raw_prompt_template_id))
+            except (ValueError, AttributeError):
+                pass
+
         db_session = SessionModel(
             session_id=session_id,
             user_id=user_id,
@@ -109,6 +119,7 @@ class SessionService:
             avatar_id=avatar_id,
             selected_role_id=selected_role_id,
             role_label=role_label,
+            prompt_template_id=prompt_template_id,
         )
         
         db.add(db_session)

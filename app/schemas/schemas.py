@@ -115,6 +115,8 @@ class SessionCreateRequest(BaseModel):
     sessionMode: Optional[str] = Field("teaching", pattern="^(teaching|examination|consultation)$")
     # Subscriber runtime mode: determines what experience subscribers get
     subscriberRuntimeMode: Optional[str] = Field("avatar", pattern="^(avatar|chat|choice)$")
+    # Optional per-session prompt override (Phase 2)
+    promptTemplateId: Optional[UUID] = None
 
 class SessionUpdateDetails(BaseModel):
     # courseName: str = Field(..., min_length=1, max_length=200)
@@ -2465,3 +2467,66 @@ class AssistantChatResponse(BaseModel):
     reply: str
     turn_number: int
     created_at: datetime
+
+
+# ---------------------------------------------------------------------------
+# Prompt System — admin templates and avatar prompt configs
+# ---------------------------------------------------------------------------
+
+class PromptTemplateCreate(BaseModel):
+    name: str
+    use_case: str
+    body: str
+    description: Optional[str] = None
+
+
+class PromptTemplateUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    use_case: Optional[str] = None
+    body: Optional[str] = None
+
+
+class PromptTemplateResponse(BaseModel):
+    id: UUID
+    name: str
+    description: Optional[str] = None
+    use_case: str
+    body: str
+    is_system: bool
+    is_active: bool
+    version: int
+    created_by: Optional[UUID] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AvatarPromptConfigUpsert(BaseModel):
+    prompt_template_id: Optional[UUID] = None
+    is_enabled: bool = True
+    override_body: Optional[str] = None
+    override_name: Optional[str] = None
+    is_custom: bool = False
+
+
+class AvatarPromptConfigResponse(BaseModel):
+    id: UUID
+    avatar_id: UUID
+    prompt_template_id: Optional[UUID] = None
+    use_case: str
+    is_enabled: bool
+    override_body: Optional[str] = None
+    override_name: Optional[str] = None
+    pinned_version: Optional[int] = None
+    is_custom: bool
+    created_at: datetime
+    updated_at: datetime
+    # Computed by the endpoint: True when the admin template has been edited
+    # since the publisher last saved their override (pinned_version < current version).
+    is_stale: Optional[bool] = None
+
+    class Config:
+        from_attributes = True

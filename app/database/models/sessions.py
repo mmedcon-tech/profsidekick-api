@@ -39,6 +39,14 @@ class Session(Base):
     session_mode = Column(String(20), nullable=False, default="teaching", server_default="teaching")
     subscriber_runtime_mode = Column(String(20), nullable=False, default="avatar", server_default="avatar")
 
+    # Per-session prompt override (Phase 2 — p1003)
+    # SET NULL so deleting the template never cascades to the session.
+    prompt_template_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("prompt_templates.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
     # W1A additions
     is_published = Column(Boolean, nullable=False, default=False, server_default="false")
     title = Column(String(255), nullable=True)

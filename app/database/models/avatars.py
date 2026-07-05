@@ -44,6 +44,10 @@ class Avatar(Base):
     # W3 additions
     avatar_courses = relationship("AvatarCourse", back_populates="avatar", cascade="all, delete-orphan")
     access_codes = relationship("AvatarAccessCode", back_populates="avatar", cascade="all, delete-orphan")
+    # Prompt system — publisher-configured prompt overrides for this avatar
+    prompt_configs = relationship(
+        "AvatarPromptConfig", back_populates="avatar", cascade="all, delete-orphan"
+    )
 
 
 class PublisherAvatarProfile(Base):

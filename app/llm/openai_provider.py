@@ -50,7 +50,7 @@ class OpenAIProvider(LLMProvider):
     def max_attempts(self) -> int:
         return 1
 
-    async def grade(self, student_files: StudentFiles) -> GradingResult:
+    async def grade(self, student_files: StudentFiles, grading_prompt: str | None = None) -> GradingResult:
         sdk_version = getattr(openai, "VERSION", getattr(openai, "version", "unknown"))
         has_responses = hasattr(self._client, "responses")
         available_attrs = [a for a in dir(self._client) if not a.startswith("_")]
@@ -75,7 +75,7 @@ class OpenAIProvider(LLMProvider):
         try:
             response = await self._client.responses.create(
                 model=self._model,
-                input=self._build_input(student_files),
+                input=self._build_input(student_files, grading_prompt=grading_prompt),
                 text={"format": {"type": "json_object"}},
             )
         except openai.RateLimitError as exc:
@@ -112,7 +112,7 @@ class OpenAIProvider(LLMProvider):
     # Request construction
     # ------------------------------------------------------------------
 
-    def _build_input(self, student_files: StudentFiles) -> list:
+    def _build_input(self, student_files: StudentFiles, grading_prompt: str | None = None) -> list:
         """
         Constructs the Responses API input list.
 
@@ -129,7 +129,7 @@ class OpenAIProvider(LLMProvider):
             _pdf_part("student_webassign.pdf", student_files.webassign_b64),
             _pdf_part("student_handwritten.pdf", student_files.handwritten_b64),
             # --- Grading instruction (last, after all documents are presented) ---
-            {"type": "input_text", "text": autograder_cache.grading_prompt},
+            {"type": "input_text", "text": grading_prompt or autograder_cache.grading_prompt},
         ]
         return [{"role": "user", "content": content}]
 

@@ -1,13 +1,14 @@
 """
 Publisher-only SAE management routes.
 
-POST  /api/sae/publisher/assessments                      → create a new assessment (optional course link)
-GET   /api/sae/publisher/assessments                      → list all assessments for this publisher
-POST  /api/sae/publisher/students/batch                   → pre-generate N students under an assessment
-GET   /api/sae/publisher/students                         → list students (all or filtered by assessment)
-GET   /api/sae/publisher/students/{student_id}            → single student detail + submission
-POST  /api/sae/publisher/students/{student_id}/submit     → submit on behalf of a student
-PATCH /api/sae/publisher/students/{student_id}/submission → instructor edits to grading result
+POST  /api/sae/publisher/assessments                          → create a new assessment (optional course/avatar link)
+GET   /api/sae/publisher/assessments                          → list all assessments for this publisher
+PATCH /api/sae/publisher/assessments/{assessment_id}/avatar   → link/unlink an avatar and re-snapshot grading prompt
+POST  /api/sae/publisher/students/batch                       → pre-generate N students under an assessment
+GET   /api/sae/publisher/students                             → list students (all or filtered by assessment)
+GET   /api/sae/publisher/students/{student_id}                → single student detail + submission
+POST  /api/sae/publisher/students/{student_id}/submit         → submit on behalf of a student
+PATCH /api/sae/publisher/students/{student_id}/submission     → instructor edits to grading result
 """
 
 import os
@@ -15,7 +16,7 @@ import uuid
 from pathlib import Path
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
@@ -24,6 +25,7 @@ from app.database.models import SAEAssessment, SAEInvitationToken, SAEStudent, S
 from app.dependencies.auth import require_publisher
 from app.schemas.sae import (
     SAEAssessmentCreate,
+    SAEAssessmentLinkAvatarRequest,
     SAEAssessmentRow,
     SAEBatchCreateRequest,
     SAEBatchCreateResponse,
@@ -117,6 +119,7 @@ def _sub_to_result_publisher(sub: SAESubmission) -> SAESubmissionResultPublisher
 def _student_to_detail(student: SAEStudent, db: Session) -> SAEStudentDetail:
     inv = _get_active_token(student, db)
     all_subs = sae_service.get_student_submissions(db, student)
+    assessment = sae_service.get_assessment_by_id(db, student.assessment_id)
     return SAEStudentDetail(
         id=student.id,
         student_number=student.student_number,
@@ -129,6 +132,7 @@ def _student_to_detail(student: SAEStudent, db: Session) -> SAEStudentDetail:
         submitted_at=student.submitted_at,
         submission_count=student.submission_count,
         submissions=[_sub_to_result_publisher(s) for s in all_subs],
+        grading_prompt_snapshot=assessment.grading_prompt_snapshot if assessment else None,
     )
 
 
@@ -165,15 +169,64 @@ def create_assessment(
     """
     Create a new assessment.
     Optionally pass course_id to link it to an existing course the publisher owns.
+    Optionally pass avatar_id to link the assessment to an avatar and snapshot its grading prompt.
+    grading_prompt_template_id takes priority over avatar_id if both are provided.
     """
+    if body.avatar_id is not None:
+        from app.database.models.avatars import Avatar
+        av = db.query(Avatar).filter(
+            Avatar.id == body.avatar_id,
+            Avatar.publisher_id == publisher.id,
+        ).first()
+        if not av:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Avatar not found or not owned by you.")
+
     assessment = sae_service.create_assessment(
         db=db,
         publisher_id=publisher.id,
         name=body.name,
         description=body.description,
         course_id=body.course_id,
+        grading_prompt_template_id=body.grading_prompt_template_id,
+        avatar_id=body.avatar_id,
     )
     return assessment
+
+
+@router.patch("/assessments/{assessment_id}/avatar", response_model=SAEAssessmentRow)
+def link_avatar(
+    assessment_id: str,
+    body: SAEAssessmentLinkAvatarRequest,
+    publisher: User = Depends(require_publisher),
+    db: Session = Depends(get_db),
+):
+    """
+    Link or unlink an avatar from an existing assessment.
+
+    When avatar_id is provided the assessment's grading prompt snapshot is
+    re-resolved from the avatar's current grading.assessment AvatarPromptConfig
+    and refrozen.  This is an explicit action — changing the avatar's prompt
+    config later does NOT automatically update in-progress assessments.
+
+    Pass avatar_id=null to unlink the avatar and clear the snapshot.
+    """
+    assessment = _require_own_assessment(assessment_id, publisher, db)
+
+    if body.avatar_id is not None:
+        from app.database.models.avatars import Avatar
+        av = db.query(Avatar).filter(
+            Avatar.id == body.avatar_id,
+            Avatar.publisher_id == publisher.id,
+        ).first()
+        if not av:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Avatar not found or not owned by you.")
+
+    updated = sae_service.link_avatar_to_assessment(
+        db=db,
+        assessment=assessment,
+        avatar_id=body.avatar_id,
+    )
+    return updated
 
 
 @router.get("/assessments", response_model=list[SAEAssessmentRow])
@@ -255,6 +308,7 @@ async def submit_on_behalf(
     student_id: str,
     student_answer: UploadFile = File(..., description="Handwritten exam PDF"),
     webassign_pdf: UploadFile = File(..., description="WebAssign questions PDF"),
+    request_id: Optional[str] = Form(None, description="Client-generated UUID for SSE correlation"),
     publisher: User = Depends(require_publisher),
     db: Session = Depends(get_db),
 ):
@@ -262,6 +316,8 @@ async def submit_on_behalf(
     Submit on behalf of a student.
     Returns 409 if the student has reached the 5-submission limit.
     Runs the same LLM grading pipeline as the Math autograder.
+    Pass request_id (UUID) to stream live grading events via
+    GET /api/autograder/grade/events/{request_id}.
     """
     if not autograder_cache.loaded:
         raise HTTPException(
@@ -283,6 +339,7 @@ async def submit_on_behalf(
         webassign_filename=webassign_pdf.filename or "webassign.pdf",
         submitted_by_publisher=True,
         publisher_user_id=publisher.id,
+        request_id=request_id,
     )
     return _sub_to_result_publisher(submission)
 

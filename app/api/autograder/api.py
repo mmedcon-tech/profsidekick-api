@@ -17,6 +17,7 @@ from app.llm.event_bus import event_bus
 from app.llm.fallback_provider import get_fallback_provider
 from app.llm.provider import StudentFiles
 from app.services.gemini_file_cache import autograder_cache
+from app.services.prompt_resolution_service import PromptResolutionService
 
 router = APIRouter(prefix="/api/autograder", tags=["autograder"])
 
@@ -40,6 +41,7 @@ async def grade_submission(
     webassign_pdf: UploadFile = File(...),
     student_id: str = Form(...),
     request_id: Optional[str] = Form(default=None),
+    avatar_id: Optional[str] = Form(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -136,8 +138,20 @@ async def grade_submission(
             f"provider_chain={fp.provider_names}"
         )
 
+        # Resolve grading prompt: avatar config → system default → startup file
+        _grading_avatar_id = None
+        if avatar_id:
+            try:
+                _grading_avatar_id = uuid.UUID(avatar_id)
+            except ValueError:
+                pass
+        _resolved_grading_prompt: str | None = PromptResolutionService().resolve(
+            db, _grading_avatar_id, "grading.assessment"
+        )
+        grading_prompt: str = _resolved_grading_prompt or autograder_cache.grading_prompt
+
         try:
-            result = await fp.grade(student_files, request_id=_rid)
+            result = await fp.grade(student_files, request_id=_rid, grading_prompt=grading_prompt)
         except RuntimeError as exc:
             total_ms = int((time.monotonic() - t_request_start) * 1000)
             print(

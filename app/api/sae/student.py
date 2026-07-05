@@ -4,15 +4,16 @@ Student-facing SAE routes.
 Access is split into two levels:
   - View access  (get_optional_sae_student): any authenticated subscriber.
     Returns None when the caller has no SAE enrolment — endpoints handle gracefully.
-  - Submit access (require_sae_submit_access): only users linked to an SAEStudent row.
-    Raises 403 for regular subscribers.
+  - Submit access: only users with an activated SAEStudent row for the target assessment.
+    Raises 403 for regular subscribers or wrong assessment_id.
 
-GET  /api/sae/student/me                              → enrolment state + profile
+GET  /api/sae/student/me                              → enrolment state + triggers sync
+GET  /api/sae/student/enrollments                     → all active enrolments (triggers sync)
 GET  /api/sae/student/submission                      → active submission (legacy single)
-GET  /api/sae/student/submissions                     → all submissions, oldest first
-GET  /api/sae/student/submissions/{id}                → single historical submission
+GET  /api/sae/student/submissions                     → all submissions; optional ?assessment_id
+GET  /api/sae/student/submissions/{id}                → single historical submission (any enrolment)
 GET  /api/sae/student/submissions/{id}/files/{type}   → PDF for a historical submission
-POST /api/sae/student/submit                          → file upload + grading (enrolment required)
+POST /api/sae/student/submit                          → file upload + grading; requires assessment_id form field
 GET  /api/sae/student/files/{type}                   → active submission PDF (legacy)
 """
 
@@ -21,14 +22,14 @@ import os
 from pathlib import Path
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
-from app.database.models import SAEStudent, User
+from app.database.models import SAEAssessment, SAEStudent, SAESubmission, User
 from app.dependencies.auth import require_subscriber
-from app.schemas.sae import SAEStudentMe, SAESubmissionResult
+from app.schemas.sae import SAEStudentEnrollment, SAEStudentMe, SAESubmissionResult
 from app.services import sae_service
 from app.services.gemini_file_cache import autograder_cache
 from app.services.r2_service import r2
@@ -43,9 +44,9 @@ async def get_optional_sae_student(
     db: Session = Depends(get_db),
 ) -> Optional[SAEStudent]:
     """
-    Require a valid subscriber JWT, then resolve the caller's SAEStudent row.
+    Require a valid subscriber JWT, then resolve the caller's first SAEStudent row.
     Returns None when the user is a regular subscriber not enrolled in the SAE.
-    Never raises on missing enrolment — callers decide how to handle that case.
+    Used by legacy single-assessment endpoints (submission, files).
     """
     return (
         db.query(SAEStudent)
@@ -54,26 +55,24 @@ async def get_optional_sae_student(
     )
 
 
-async def require_sae_submit_access(
-    current_user: User = Depends(require_subscriber),
-    db: Session = Depends(get_db),
-) -> SAEStudent:
+# ── Sync helper ────────────────────────────────────────────────────────────────
+
+def _sync_enrollments(db: Session, user_id: _uuid.UUID) -> None:
     """
-    Require the caller to be an enrolled SAE student.
-    Raises 403 for regular subscribers who have not been invited.
-    Used exclusively on the submit endpoint.
+    Ensure the user has SAEStudent rows for every active assessment across all
+    publishers they have access to. Commits if any rows were created.
+    Called on /me and /enrollments so new assessments auto-appear on dashboard load.
     """
-    sae_student = (
-        db.query(SAEStudent)
-        .filter(SAEStudent.user_id == current_user.id)
-        .first()
+    publisher_ids = (
+        db.query(SAEStudent.publisher_id)
+        .filter(SAEStudent.user_id == user_id)
+        .distinct()
+        .all()
     )
-    if not sae_student:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You don't have enough credits.",
-        )
-    return sae_student
+    for (pid,) in publisher_ids:
+        sae_service.ensure_student_access(db, user_id, pid)
+    if publisher_ids:
+        db.commit()
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -94,19 +93,47 @@ def _sub_to_result(sub: "SAESubmission") -> SAESubmissionResult:  # type: ignore
     )
 
 
+def _stream_file(file_path: str, filename: str) -> Response:
+    """Serve a PDF from R2 or local disk."""
+    if r2.enabled and not os.path.isabs(file_path):
+        data = r2.download(file_path)
+        return Response(
+            content=data,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        )
+    disk_path = Path(file_path)
+    if not disk_path.exists():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File not found on server.")
+    return FileResponse(
+        path=str(disk_path),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
+
 # ── Endpoints ──────────────────────────────────────────────────────────────────
 
 @router.get("/me", response_model=SAEStudentMe)
 def get_my_profile(
-    sae_student: Optional[SAEStudent] = Depends(get_optional_sae_student),
+    current_user: User = Depends(require_subscriber),
+    db: Session = Depends(get_db),
 ):
     """
     Return the SAE enrolment state for the currently authenticated user.
-    Regular subscribers who are not in the SAE system receive is_enrolled=False;
-    all profile fields are None in that case.
+    Triggers a background sync so any new active assessments auto-appear.
+    Returns the first enrolment for backward compatibility; use /enrollments for the full list.
+    Regular subscribers who are not in the SAE system receive is_enrolled=False.
     """
+    _sync_enrollments(db, current_user.id)
+
+    sae_student = db.query(SAEStudent).filter(SAEStudent.user_id == current_user.id).first()
     if not sae_student:
         return SAEStudentMe(is_enrolled=False)
+
+    assessment = db.query(SAEAssessment).filter(
+        SAEAssessment.id == sae_student.assessment_id
+    ).first()
     return SAEStudentMe(
         is_enrolled=True,
         id=sae_student.id,
@@ -117,7 +144,52 @@ def get_my_profile(
         submission_count=sae_student.submission_count,
         country_of_origin=sae_student.country_of_origin,
         curriculum=sae_student.curriculum,
+        assessment_id=sae_student.assessment_id,
+        assessment_name=assessment.name if assessment else None,
     )
+
+
+@router.get("/enrollments", response_model=list[SAEStudentEnrollment])
+def get_my_enrollments(
+    current_user: User = Depends(require_subscriber),
+    db: Session = Depends(get_db),
+):
+    """
+    Return all active SAE enrolments for the authenticated student.
+    Triggers a sync so any new active assessments auto-appear without requiring
+    the student to re-use their invitation link.
+    Returns an empty list for regular subscribers not enrolled in any assessment.
+    """
+    _sync_enrollments(db, current_user.id)
+
+    students = (
+        db.query(SAEStudent)
+        .filter(
+            SAEStudent.user_id == current_user.id,
+            SAEStudent.is_activated == True,  # noqa: E712
+        )
+        .order_by(SAEStudent.created_at.asc())
+        .all()
+    )
+
+    result: list[SAEStudentEnrollment] = []
+    for s in students:
+        assessment = db.query(SAEAssessment).filter(
+            SAEAssessment.id == s.assessment_id
+        ).first()
+        result.append(SAEStudentEnrollment(
+            id=s.id,
+            student_number=s.student_number,
+            student_code=s.student_code,
+            display_name=s.display_name,
+            is_activated=s.is_activated,
+            submission_count=s.submission_count,
+            country_of_origin=s.country_of_origin,
+            curriculum=s.curriculum,
+            assessment_id=s.assessment_id,
+            assessment_name=assessment.name if assessment else None,
+        ))
+    return result
 
 
 @router.get("/submission", response_model=SAESubmissionResult)
@@ -141,13 +213,20 @@ def get_my_submission(
 
 @router.get("/submissions", response_model=list[SAESubmissionResult])
 def list_my_submissions(
-    sae_student: Optional[SAEStudent] = Depends(get_optional_sae_student),
+    assessment_id: Optional[str] = None,
+    current_user: User = Depends(require_subscriber),
     db: Session = Depends(get_db),
 ):
     """
     Return all submissions for the authenticated student, ordered oldest-first.
+    Pass ?assessment_id=<uuid> to scope to a specific assessment.
+    Without the param, returns submissions for the student's first enrolled assessment.
     Returns an empty list for regular subscribers or students who have not submitted.
     """
+    q = db.query(SAEStudent).filter(SAEStudent.user_id == current_user.id)
+    if assessment_id:
+        q = q.filter(SAEStudent.assessment_id == assessment_id)
+    sae_student = q.first()
     if not sae_student:
         return []
     return [_sub_to_result(sub) for sub in sae_service.get_student_submissions(db, sae_student)]
@@ -156,22 +235,28 @@ def list_my_submissions(
 @router.get("/submissions/{submission_id}", response_model=SAESubmissionResult)
 def get_my_submission_by_id(
     submission_id: str,
-    sae_student: Optional[SAEStudent] = Depends(get_optional_sae_student),
+    current_user: User = Depends(require_subscriber),
     db: Session = Depends(get_db),
 ):
     """
     Return a single historical submission by ID.
-    Students can only access their own submissions.
+    Searches across all of the student's enrolments so assessment_id is not needed.
     Returns 404 for non-enrolled callers or unknown/unowned submission IDs.
     """
-    if not sae_student:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Submission not found.")
     try:
         sub_uuid = _uuid.UUID(submission_id)
     except ValueError:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid submission ID.")
 
-    sub = sae_service.get_student_submission_by_id(db, sub_uuid, sae_student)
+    sub = (
+        db.query(SAESubmission)
+        .join(SAEStudent, SAESubmission.student_id == SAEStudent.id)
+        .filter(
+            SAESubmission.id == sub_uuid,
+            SAEStudent.user_id == current_user.id,
+        )
+        .first()
+    )
     if not sub:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Submission not found.")
     return _sub_to_result(sub)
@@ -181,71 +266,76 @@ def get_my_submission_by_id(
 def get_my_submission_file(
     submission_id: str,
     file_type: Literal["handwritten", "webassign"],
-    sae_student: Optional[SAEStudent] = Depends(get_optional_sae_student),
+    current_user: User = Depends(require_subscriber),
     db: Session = Depends(get_db),
 ):
     """
     Stream a PDF from a specific historical submission.
-    Students can only access their own files.
+    Searches across all of the student's enrolments — assessment_id not needed.
     Returns 404 for non-enrolled callers or unknown/unowned submission IDs.
     """
-    if not sae_student:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Submission not found.")
     try:
         sub_uuid = _uuid.UUID(submission_id)
     except ValueError:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid submission ID.")
 
-    sub = sae_service.get_student_submission_by_id(db, sub_uuid, sae_student)
+    sub = (
+        db.query(SAESubmission)
+        .join(SAEStudent, SAESubmission.student_id == SAEStudent.id)
+        .filter(
+            SAESubmission.id == sub_uuid,
+            SAEStudent.user_id == current_user.id,
+        )
+        .first()
+    )
     if not sub:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Submission not found.")
 
     file_path = sub.handwritten_file_path if file_type == "handwritten" else sub.webassign_file_path
-    filename = (sub.handwritten_filename if file_type == "handwritten" else sub.webassign_filename) or f"{file_type}.pdf"
+    filename = (
+        sub.handwritten_filename if file_type == "handwritten" else sub.webassign_filename
+    ) or f"{file_type}.pdf"
 
     if not file_path:
         raise HTTPException(
             status.HTTP_404_NOT_FOUND,
             detail="File path not recorded for this submission.",
         )
-
-    if r2.enabled and not os.path.isabs(file_path):
-        data = r2.download(file_path)
-        return Response(
-            content=data,
-            media_type="application/pdf",
-            headers={"Content-Disposition": f'inline; filename="{filename}"'},
-        )
-
-    disk_path = Path(file_path)
-    if not disk_path.exists():
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File not found on server.")
-
-    return FileResponse(
-        path=str(disk_path),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="{filename}"'},
-    )
+    return _stream_file(file_path, filename)
 
 
 @router.post("/submit", response_model=SAESubmissionResult)
 async def submit(
     student_answer: UploadFile = File(..., description="Handwritten exam PDF"),
     webassign_pdf: UploadFile = File(..., description="WebAssign questions PDF"),
-    sae_student: SAEStudent = Depends(require_sae_submit_access),
+    assessment_id: Optional[str] = Form(None, description="UUID of the assessment to submit to"),
+    current_user: User = Depends(require_subscriber),
     db: Session = Depends(get_db),
 ):
     """
     Exam submission. Requires SAE enrolment (403 otherwise).
+    Pass assessment_id as a form field to target a specific assessment; if omitted and
+    the student has exactly one enrolment, that assessment is used automatically.
     Returns 409 if the student has reached the 5-submission limit.
-
-    Files are stored at uploads/sae/{student_code}/{submission_number}/ and graded
-    using the same LLM fallback chain as the Math Placement autograder.
     """
     if not autograder_cache.loaded:
         raise HTTPException(
             status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Autograder not ready. Check server startup logs.",
+        )
+
+    q = db.query(SAEStudent).filter(
+        SAEStudent.user_id == current_user.id,
+        SAEStudent.is_activated == True,  # noqa: E712
+    )
+    if assessment_id:
+        q = q.filter(SAEStudent.assessment_id == assessment_id)
+
+    sae_student = q.first()
+    if not sae_student:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have access to this assessment.",
         )
 
     handwritten_bytes = await student_answer.read()
@@ -280,28 +370,13 @@ def get_my_file(
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="No submission found.")
 
     file_path = sub.handwritten_file_path if file_type == "handwritten" else sub.webassign_file_path
-    filename = (sub.handwritten_filename if file_type == "handwritten" else sub.webassign_filename) or f"{file_type}.pdf"
+    filename = (
+        sub.handwritten_filename if file_type == "handwritten" else sub.webassign_filename
+    ) or f"{file_type}.pdf"
 
     if not file_path:
         raise HTTPException(
             status.HTTP_404_NOT_FOUND,
             detail="File path not recorded for this submission.",
         )
-
-    if r2.enabled and not os.path.isabs(file_path):
-        data = r2.download(file_path)
-        return Response(
-            content=data,
-            media_type="application/pdf",
-            headers={"Content-Disposition": f'inline; filename="{filename}"'},
-        )
-
-    disk_path = Path(file_path)
-    if not disk_path.exists():
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File not found on server.")
-
-    return FileResponse(
-        path=str(disk_path),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="{filename}"'},
-    )
+    return _stream_file(file_path, filename)

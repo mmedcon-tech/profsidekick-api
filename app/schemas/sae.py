@@ -14,6 +14,21 @@ class SAEAssessmentCreate(BaseModel):
         None,
         description="Link to an existing course. Omit for a standalone assessment."
     )
+    grading_prompt_template_id: Optional[UUID] = Field(
+        None,
+        description="Prompt template to use for grading. Resolved and snapshotted at creation. Takes priority over avatar_id."
+    )
+    avatar_id: Optional[UUID] = Field(
+        None,
+        description="Avatar to link to this assessment. Its grading.assessment prompt config is resolved and snapshotted at creation (unless grading_prompt_template_id is also set)."
+    )
+
+
+class SAEAssessmentLinkAvatarRequest(BaseModel):
+    avatar_id: Optional[UUID] = Field(
+        None,
+        description="Avatar to link. Pass null to unlink. Re-snapshots the grading prompt from the avatar's current grading.assessment config."
+    )
 
 
 class SAEBatchCreateRequest(BaseModel):
@@ -59,6 +74,9 @@ class SAEAssessmentRow(BaseModel):
     name: str
     description: Optional[str]
     is_active: bool
+    grading_prompt_template_id: Optional[UUID] = None
+    grading_prompt_snapshot: Optional[str] = None
+    avatar_id: Optional[UUID] = None
     created_at: datetime
 
     class Config:
@@ -139,6 +157,7 @@ class SAEStudentDetail(BaseModel):
     submitted_at: Optional[datetime]
     submission_count: int
     submissions: List[SAESubmissionResultPublisher]
+    grading_prompt_snapshot: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -147,6 +166,50 @@ class SAEStudentDetail(BaseModel):
 class SAERegenerateResponse(BaseModel):
     invitation_url: str
     invitation_token: str
+
+
+class SAEAdminAssessmentRow(BaseModel):
+    id: UUID
+    name: str
+    description: Optional[str]
+    created_at: datetime
+    publisher_id: UUID
+    publisher_username: str
+    enrolled_count: int
+
+
+class SAEAdminStudentRow(BaseModel):
+    id: UUID
+    student_code: str
+    is_activated: bool
+    activation_date: Optional[datetime]
+    submission_count: int
+    created_at: datetime
+    assessment_id: UUID
+    assessment_name: str
+    publisher_username: str
+    user_username: Optional[str]
+
+
+class SAEStudentEnrollment(BaseModel):
+    """
+    One assessment enrollment for an authenticated student.
+    Returned as a list by GET /api/sae/student/enrollments.
+    All fields are guaranteed non-null (unlike SAEStudentMe which can be empty).
+    """
+    id: UUID
+    student_number: int
+    student_code: str
+    display_name: str
+    is_activated: bool
+    submission_count: int
+    country_of_origin: Optional[str] = None
+    curriculum: Optional[str] = None
+    assessment_id: UUID
+    assessment_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
 
 
 class SAEStudentMe(BaseModel):
@@ -164,6 +227,8 @@ class SAEStudentMe(BaseModel):
     submission_count: Optional[int] = None
     country_of_origin: Optional[str] = None
     curriculum: Optional[str] = None
+    assessment_id: Optional[UUID] = None
+    assessment_name: Optional[str] = None
 
     class Config:
         from_attributes = True
