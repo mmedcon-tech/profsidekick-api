@@ -1,0 +1,948 @@
+{
+  "pages": [
+    {
+      "index": 0,
+      "markdown": "Test 1-1\n\nStudent 1\n\n\u2460\n\n1\n\nsince the end points\nare not included,\n\n(-1,1)\n\n$$-1 < \\omega < 1$$\n\nAns: $$-1 < \\omega < 1$$\n\n2. (a)\n\n$$64^{1/3} = 4$$\n\nAns: 4\n\n(b) $$(-27)^{1/3} = 3$$\n\nAns: 3\n\n(c) $$\\left(-\\frac{1}{27}\\right)^{1/3} = -\\frac{1}{3}$$\n\nAns: $$\\boxed{-\\frac{1}{3}}$$\n\n3. $$(6x-9)(x^2-x+1)$$\n\n$$= 6x^3 - 6x^2 + 6x - 9x^2 + 9x - 9$$\n\n$$= 6x^3 - 15x^2 + 15x + 9$$\n\nAns: $$6x^3 - 15x^2 + 15x + 9$$\n\nCS\n\nCamScanner",
+      "images": [],
+      "tables": [],
+      "hyperlinks": [
+        "https://v3.camscanner.com/user/download"
+      ],
+      "header": null,
+      "footer": null,
+      "dimensions": {
+        "dpi": 87,
+        "height": 1018,
+        "width": 719
+      },
+      "confidence_scores": null,
+      "blocks": [
+        {
+          "top_left_x": 55,
+          "top_left_y": 10,
+          "bottom_right_x": 133,
+          "bottom_right_y": 33,
+          "content": "Test 1-1",
+          "type": "header"
+        },
+        {
+          "top_left_x": 242,
+          "top_left_y": 8,
+          "bottom_right_x": 324,
+          "bottom_right_y": 25,
+          "content": "Student 1",
+          "type": "header"
+        },
+        {
+          "top_left_x": 558,
+          "top_left_y": 15,
+          "bottom_right_x": 579,
+          "bottom_right_y": 41,
+          "content": "\u2460",
+          "type": "header"
+        },
+        {
+          "top_left_x": 47,
+          "top_left_y": 152,
+          "bottom_right_x": 65,
+          "bottom_right_y": 172,
+          "content": "1",
+          "type": "text"
+        },
+        {
+          "top_left_x": 103,
+          "top_left_y": 237,
+          "bottom_right_x": 286,
+          "bottom_right_y": 302,
+          "content": "since the end points\nare not included,",
+          "type": "text"
+        },
+        {
+          "top_left_x": 310,
+          "top_left_y": 214,
+          "bottom_right_x": 369,
+          "bottom_right_y": 245,
+          "content": "(-1,1)",
+          "type": "text"
+        },
+        {
+          "top_left_x": 327,
+          "top_left_y": 263,
+          "bottom_right_x": 433,
+          "bottom_right_y": 290,
+          "content": "$$-1 < \\omega < 1$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 103,
+          "top_left_y": 306,
+          "bottom_right_x": 291,
+          "bottom_right_y": 357,
+          "content": "Ans: $$-1 < \\omega < 1$$",
+          "type": "text"
+        },
+        {
+          "top_left_x": 65,
+          "top_left_y": 384,
+          "bottom_right_x": 145,
+          "bottom_right_y": 411,
+          "content": "2. (a)",
+          "type": "text"
+        },
+        {
+          "top_left_x": 166,
+          "top_left_y": 414,
+          "bottom_right_x": 281,
+          "bottom_right_y": 453,
+          "content": "$$64^{1/3} = 4$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 125,
+          "top_left_y": 463,
+          "bottom_right_x": 225,
+          "bottom_right_y": 498,
+          "content": "Ans: 4",
+          "type": "text"
+        },
+        {
+          "top_left_x": 83,
+          "top_left_y": 510,
+          "bottom_right_x": 324,
+          "bottom_right_y": 552,
+          "content": "(b) $$(-27)^{1/3} = 3$$",
+          "type": "text"
+        },
+        {
+          "top_left_x": 103,
+          "top_left_y": 568,
+          "bottom_right_x": 202,
+          "bottom_right_y": 603,
+          "content": "Ans: 3",
+          "type": "text"
+        },
+        {
+          "top_left_x": 70,
+          "top_left_y": 628,
+          "bottom_right_x": 355,
+          "bottom_right_y": 680,
+          "content": "(c) $$\\left(-\\frac{1}{27}\\right)^{1/3} = -\\frac{1}{3}$$",
+          "type": "text"
+        },
+        {
+          "top_left_x": 101,
+          "top_left_y": 692,
+          "bottom_right_x": 219,
+          "bottom_right_y": 759,
+          "content": "Ans: $$\\boxed{-\\frac{1}{3}}$$",
+          "type": "text"
+        },
+        {
+          "top_left_x": 76,
+          "top_left_y": 770,
+          "bottom_right_x": 346,
+          "bottom_right_y": 815,
+          "content": "3. $$(6x-9)(x^2-x+1)$$",
+          "type": "text"
+        },
+        {
+          "top_left_x": 137,
+          "top_left_y": 802,
+          "bottom_right_x": 471,
+          "bottom_right_y": 845,
+          "content": "$$= 6x^3 - 6x^2 + 6x - 9x^2 + 9x - 9$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 140,
+          "top_left_y": 847,
+          "bottom_right_x": 401,
+          "bottom_right_y": 880,
+          "content": "$$= 6x^3 - 15x^2 + 15x + 9$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 96,
+          "top_left_y": 885,
+          "bottom_right_x": 424,
+          "bottom_right_y": 939,
+          "content": "Ans: $$6x^3 - 15x^2 + 15x + 9$$",
+          "type": "text"
+        },
+        {
+          "top_left_x": 584,
+          "top_left_y": 977,
+          "bottom_right_x": 613,
+          "bottom_right_y": 1006,
+          "content": "CS",
+          "type": "footer"
+        },
+        {
+          "top_left_x": 616,
+          "top_left_y": 985,
+          "bottom_right_x": 697,
+          "bottom_right_y": 1001,
+          "content": "CamScanner",
+          "type": "footer"
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "markdown": "2\n\n4.\n\n$$\\begin{aligned} & \\frac{x^2 - 81}{x^2 - 25} \\cdot \\frac{x+5}{x+9} \\\\ &= \\frac{(x-9)(x+9)}{(x-5)(x+5)} \\cdot \\frac{(x+5)}{(x+9)} \\\\ &= \\frac{x-9}{x-5} \\end{aligned}$$\n\nAns: $\\boxed{\\frac{x-9}{x-5}}$\n\n5.\n\n$$\\frac{9}{x-9} - \\frac{18}{x^2} = 0$$\n\n$$9x^2 = 18(x-9)$$\n\n$$x^2 = 2x - 18$$\n\n$$x^2 - 2x + 18 = 0, \\quad x = \\frac{2 \\pm \\sqrt{4+72}}{2}$$\n\n$$x = \\frac{2 \\pm \\sqrt{76}}{2}$$\n\nAns: $\\boxed{\\frac{2 \\pm \\sqrt{76}}{2}}$\n\n6. $x(2x+5) \\geq 0, \\quad x=0, \\quad x=-\\frac{5}{2}$\n\nTesting intervals: $(-\\infty, -\\frac{5}{2}) \\rightarrow +$\n$(-\\frac{5}{2}, 0) \\rightarrow -$\n\nInclude points $(0, \\infty) \\rightarrow +$\n\nAns: $\\boxed{(-\\infty, -\\frac{5}{2}] \\cup [0, \\infty)}$\n\nCS CamScanner",
+      "images": [],
+      "tables": [],
+      "hyperlinks": [
+        "https://v3.camscanner.com/user/download"
+      ],
+      "header": null,
+      "footer": null,
+      "dimensions": {
+        "dpi": 87,
+        "height": 1018,
+        "width": 719
+      },
+      "confidence_scores": null,
+      "blocks": [
+        {
+          "top_left_x": 592,
+          "top_left_y": 10,
+          "bottom_right_x": 629,
+          "bottom_right_y": 46,
+          "content": "2",
+          "type": "header"
+        },
+        {
+          "top_left_x": 78,
+          "top_left_y": 44,
+          "bottom_right_x": 104,
+          "bottom_right_y": 67,
+          "content": "4.",
+          "type": "text"
+        },
+        {
+          "top_left_x": 130,
+          "top_left_y": 56,
+          "bottom_right_x": 405,
+          "bottom_right_y": 274,
+          "content": "$$\\begin{aligned} & \\frac{x^2 - 81}{x^2 - 25} \\cdot \\frac{x+5}{x+9} \\\\ &= \\frac{(x-9)(x+9)}{(x-5)(x+5)} \\cdot \\frac{(x+5)}{(x+9)} \\\\ &= \\frac{x-9}{x-5} \\end{aligned}$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 71,
+          "top_left_y": 274,
+          "bottom_right_x": 279,
+          "bottom_right_y": 355,
+          "content": "Ans: $\\boxed{\\frac{x-9}{x-5}}$",
+          "type": "text"
+        },
+        {
+          "top_left_x": 71,
+          "top_left_y": 359,
+          "bottom_right_x": 99,
+          "bottom_right_y": 380,
+          "content": "5.",
+          "type": "text"
+        },
+        {
+          "top_left_x": 125,
+          "top_left_y": 383,
+          "bottom_right_x": 441,
+          "bottom_right_y": 449,
+          "content": "$$\\frac{9}{x-9} - \\frac{18}{x^2} = 0$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 143,
+          "top_left_y": 465,
+          "bottom_right_x": 335,
+          "bottom_right_y": 499,
+          "content": "$$9x^2 = 18(x-9)$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 143,
+          "top_left_y": 505,
+          "bottom_right_x": 338,
+          "bottom_right_y": 535,
+          "content": "$$x^2 = 2x - 18$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 150,
+          "top_left_y": 515,
+          "bottom_right_x": 619,
+          "bottom_right_y": 580,
+          "content": "$$x^2 - 2x + 18 = 0, \\quad x = \\frac{2 \\pm \\sqrt{4+72}}{2}$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 163,
+          "top_left_y": 571,
+          "bottom_right_x": 354,
+          "bottom_right_y": 624,
+          "content": "$$x = \\frac{2 \\pm \\sqrt{76}}{2}$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 112,
+          "top_left_y": 627,
+          "bottom_right_x": 328,
+          "bottom_right_y": 706,
+          "content": "Ans: $\\boxed{\\frac{2 \\pm \\sqrt{76}}{2}}$",
+          "type": "text"
+        },
+        {
+          "top_left_x": 75,
+          "top_left_y": 734,
+          "bottom_right_x": 570,
+          "bottom_right_y": 781,
+          "content": "6. $x(2x+5) \\geq 0, \\quad x=0, \\quad x=-\\frac{5}{2}$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 112,
+          "top_left_y": 778,
+          "bottom_right_x": 549,
+          "bottom_right_y": 859,
+          "content": "Testing intervals: $(-\\infty, -\\frac{5}{2}) \\rightarrow +$\n$(-\\frac{5}{2}, 0) \\rightarrow -$",
+          "type": "text"
+        },
+        {
+          "top_left_x": 148,
+          "top_left_y": 859,
+          "bottom_right_x": 482,
+          "bottom_right_y": 896,
+          "content": "Include points $(0, \\infty) \\rightarrow +$",
+          "type": "text"
+        },
+        {
+          "top_left_x": 108,
+          "top_left_y": 893,
+          "bottom_right_x": 476,
+          "bottom_right_y": 949,
+          "content": "Ans: $\\boxed{(-\\infty, -\\frac{5}{2}] \\cup [0, \\infty)}$",
+          "type": "text"
+        },
+        {
+          "top_left_x": 583,
+          "top_left_y": 976,
+          "bottom_right_x": 697,
+          "bottom_right_y": 1004,
+          "content": "CS CamScanner",
+          "type": "footer"
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "markdown": "\u2462\n\n7. $$\\text{slope} = \\frac{6}{7}$$ , $$y\\text{-intercept} = 5$$\n\n$$y = mx + b$$ , $$y = \\frac{6}{7}x + 5$$\n\n$$\\text{Ans: } \\boxed{y = \\frac{6}{7}x + 5}$$\n\n8.\n\n$$f(z) = 5 - 4z^2$$\n\n$$f(-2) = 5 - 4(4) = -11$$\n\n$$f(0) = 5$$\n\n$$\\text{Net change: } 5 - (-11) = 16$$\n\n$$\\text{Average rate of change: } \\frac{16}{0 - (-2)} = \\frac{16}{2} = 8$$\n\n$$\\text{Ans: Net change} = 16$$\n\n$$\\text{Average rate} = 8$$\n\n9. $$g(x) = x^2 - x - 20$$\n\n$$= (x-5)(x+4)$$\n\n$$\\text{Zeros: } x = 5, -4$$\n\n$$\\text{Vertex } x = \\frac{1}{2}$$\n\nLooks like the graph in the $$[-7, 7]$$ window\n\n$$\\text{Ans: } \\boxed{[-7, 7] \\text{ by } [-25, 20]}$$\n\nCS\n\nCamScanner",
+      "images": [],
+      "tables": [],
+      "hyperlinks": [
+        "https://v3.camscanner.com/user/download"
+      ],
+      "header": null,
+      "footer": null,
+      "dimensions": {
+        "dpi": 87,
+        "height": 1018,
+        "width": 719
+      },
+      "confidence_scores": null,
+      "blocks": [
+        {
+          "top_left_x": 614,
+          "top_left_y": 8,
+          "bottom_right_x": 647,
+          "bottom_right_y": 41,
+          "content": "\u2462",
+          "type": "header"
+        },
+        {
+          "top_left_x": 61,
+          "top_left_y": 46,
+          "bottom_right_x": 507,
+          "bottom_right_y": 100,
+          "content": "7. $$\\text{slope} = \\frac{6}{7}$$ , $$y\\text{-intercept} = 5$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 137,
+          "top_left_y": 104,
+          "bottom_right_x": 442,
+          "bottom_right_y": 153,
+          "content": "$$y = mx + b$$ , $$y = \\frac{6}{7}x + 5$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 83,
+          "top_left_y": 157,
+          "bottom_right_x": 324,
+          "bottom_right_y": 220,
+          "content": "$$\\text{Ans: } \\boxed{y = \\frac{6}{7}x + 5}$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 78,
+          "top_left_y": 248,
+          "bottom_right_x": 108,
+          "bottom_right_y": 269,
+          "content": "8.",
+          "type": "text"
+        },
+        {
+          "top_left_x": 150,
+          "top_left_y": 258,
+          "bottom_right_x": 343,
+          "bottom_right_y": 310,
+          "content": "$$f(z) = 5 - 4z^2$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 163,
+          "top_left_y": 303,
+          "bottom_right_x": 415,
+          "bottom_right_y": 341,
+          "content": "$$f(-2) = 5 - 4(4) = -11$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 152,
+          "top_left_y": 347,
+          "bottom_right_x": 254,
+          "bottom_right_y": 383,
+          "content": "$$f(0) = 5$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 104,
+          "top_left_y": 380,
+          "bottom_right_x": 433,
+          "bottom_right_y": 426,
+          "content": "$$\\text{Net change: } 5 - (-11) = 16$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 96,
+          "top_left_y": 408,
+          "bottom_right_x": 597,
+          "bottom_right_y": 478,
+          "content": "$$\\text{Average rate of change: } \\frac{16}{0 - (-2)} = \\frac{16}{2} = 8$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 86,
+          "top_left_y": 497,
+          "bottom_right_x": 343,
+          "bottom_right_y": 533,
+          "content": "$$\\text{Ans: Net change} = 16$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 155,
+          "top_left_y": 533,
+          "bottom_right_x": 340,
+          "bottom_right_y": 566,
+          "content": "$$\\text{Average rate} = 8$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 78,
+          "top_left_y": 588,
+          "bottom_right_x": 343,
+          "bottom_right_y": 626,
+          "content": "9. $$g(x) = x^2 - x - 20$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 200,
+          "top_left_y": 615,
+          "bottom_right_x": 379,
+          "bottom_right_y": 652,
+          "content": "$$= (x-5)(x+4)$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 125,
+          "top_left_y": 675,
+          "bottom_right_x": 358,
+          "bottom_right_y": 708,
+          "content": "$$\\text{Zeros: } x = 5, -4$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 131,
+          "top_left_y": 712,
+          "bottom_right_x": 335,
+          "bottom_right_y": 754,
+          "content": "$$\\text{Vertex } x = \\frac{1}{2}$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 84,
+          "top_left_y": 754,
+          "bottom_right_x": 564,
+          "bottom_right_y": 800,
+          "content": "Looks like the graph in the $$[-7, 7]$$ window",
+          "type": "text"
+        },
+        {
+          "top_left_x": 112,
+          "top_left_y": 798,
+          "bottom_right_x": 417,
+          "bottom_right_y": 869,
+          "content": "$$\\text{Ans: } \\boxed{[-7, 7] \\text{ by } [-25, 20]}$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 584,
+          "top_left_y": 977,
+          "bottom_right_x": 613,
+          "bottom_right_y": 1008,
+          "content": "CS",
+          "type": "footer"
+        },
+        {
+          "top_left_x": 615,
+          "top_left_y": 984,
+          "bottom_right_x": 697,
+          "bottom_right_y": 1002,
+          "content": "CamScanner",
+          "type": "footer"
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "markdown": "4\n\n10. (a) $x^2 \\rightarrow 1V$\n\n(b) $x^3 \\rightarrow 1$\n\n(c) $\\sqrt{x} \\rightarrow 1$ , (d) $|x| \\rightarrow 1$\n\nAns: (a) 1V\n\n(b) 1\n\n(c) 1 (d) 1\n\n11. $P(x) = x^3 + x^2 - 20x$\n\nFactor out $x$: $x(x^2 + x - 20)$\n\n$$= x(x+5)(x-4)$$\n\nzeros: $x = -5, 0, 4$\n\nAns: $-5, 0, 4$\n\n12. $A = Pe^{rt}$ , $P = 1000$ , $r = 0.065$\n\nFor $t = 3$ : $A = 1000e^{0.195} \\approx 1200$\n\nFor $t = 6$ : $A = 1000e^{0.195} \\approx 1500$\n\n$$A = 1000e^{0.39} = 1500$$\n\nFor $t = 18$ : $A = 1000e^{1.17} = 3200$\n\nAns: (a) 1200 , (b) 1500\n\n(c) 3200\n\nCS\n\nCamScanner",
+      "images": [],
+      "tables": [],
+      "hyperlinks": [
+        "https://v3.camscanner.com/user/download"
+      ],
+      "header": null,
+      "footer": null,
+      "dimensions": {
+        "dpi": 87,
+        "height": 1018,
+        "width": 719
+      },
+      "confidence_scores": null,
+      "blocks": [
+        {
+          "top_left_x": 633,
+          "top_left_y": 5,
+          "bottom_right_x": 665,
+          "bottom_right_y": 41,
+          "content": "4",
+          "type": "header"
+        },
+        {
+          "top_left_x": 68,
+          "top_left_y": 46,
+          "bottom_right_x": 255,
+          "bottom_right_y": 87,
+          "content": "10. (a) $x^2 \\rightarrow 1V$",
+          "type": "text"
+        },
+        {
+          "top_left_x": 108,
+          "top_left_y": 92,
+          "bottom_right_x": 252,
+          "bottom_right_y": 126,
+          "content": "(b) $x^3 \\rightarrow 1$",
+          "type": "text"
+        },
+        {
+          "top_left_x": 94,
+          "top_left_y": 122,
+          "bottom_right_x": 557,
+          "bottom_right_y": 173,
+          "content": "(c) $\\sqrt{x} \\rightarrow 1$ , (d) $|x| \\rightarrow 1$",
+          "type": "text"
+        },
+        {
+          "top_left_x": 90,
+          "top_left_y": 192,
+          "bottom_right_x": 234,
+          "bottom_right_y": 224,
+          "content": "Ans: (a) 1V",
+          "type": "text"
+        },
+        {
+          "top_left_x": 148,
+          "top_left_y": 229,
+          "bottom_right_x": 227,
+          "bottom_right_y": 260,
+          "content": "(b) 1",
+          "type": "text"
+        },
+        {
+          "top_left_x": 148,
+          "top_left_y": 260,
+          "bottom_right_x": 360,
+          "bottom_right_y": 290,
+          "content": "(c) 1 (d) 1",
+          "type": "text"
+        },
+        {
+          "top_left_x": 76,
+          "top_left_y": 321,
+          "bottom_right_x": 402,
+          "bottom_right_y": 365,
+          "content": "11. $P(x) = x^3 + x^2 - 20x$",
+          "type": "text"
+        },
+        {
+          "top_left_x": 130,
+          "top_left_y": 370,
+          "bottom_right_x": 467,
+          "bottom_right_y": 408,
+          "content": "Factor out $x$: $x(x^2 + x - 20)$",
+          "type": "text"
+        },
+        {
+          "top_left_x": 281,
+          "top_left_y": 410,
+          "bottom_right_x": 478,
+          "bottom_right_y": 448,
+          "content": "$$= x(x+5)(x-4)$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 140,
+          "top_left_y": 459,
+          "bottom_right_x": 413,
+          "bottom_right_y": 501,
+          "content": "zeros: $x = -5, 0, 4$",
+          "type": "text"
+        },
+        {
+          "top_left_x": 119,
+          "top_left_y": 519,
+          "bottom_right_x": 313,
+          "bottom_right_y": 567,
+          "content": "Ans: $-5, 0, 4$",
+          "type": "text"
+        },
+        {
+          "top_left_x": 94,
+          "top_left_y": 590,
+          "bottom_right_x": 592,
+          "bottom_right_y": 633,
+          "content": "12. $A = Pe^{rt}$ , $P = 1000$ , $r = 0.065$",
+          "type": "text"
+        },
+        {
+          "top_left_x": 130,
+          "top_left_y": 639,
+          "bottom_right_x": 557,
+          "bottom_right_y": 677,
+          "content": "For $t = 3$ : $A = 1000e^{0.195} \\approx 1200$",
+          "type": "text"
+        },
+        {
+          "top_left_x": 120,
+          "top_left_y": 696,
+          "bottom_right_x": 564,
+          "bottom_right_y": 738,
+          "content": "For $t = 6$ : $A = 1000e^{0.195} \\approx 1500$",
+          "type": "text"
+        },
+        {
+          "top_left_x": 281,
+          "top_left_y": 740,
+          "bottom_right_x": 528,
+          "bottom_right_y": 776,
+          "content": "$$A = 1000e^{0.39} = 1500$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 113,
+          "top_left_y": 779,
+          "bottom_right_x": 543,
+          "bottom_right_y": 813,
+          "content": "For $t = 18$ : $A = 1000e^{1.17} = 3200$",
+          "type": "text"
+        },
+        {
+          "top_left_x": 119,
+          "top_left_y": 828,
+          "bottom_right_x": 521,
+          "bottom_right_y": 870,
+          "content": "Ans: (a) 1200 , (b) 1500",
+          "type": "text"
+        },
+        {
+          "top_left_x": 198,
+          "top_left_y": 873,
+          "bottom_right_x": 356,
+          "bottom_right_y": 918,
+          "content": "(c) 3200",
+          "type": "text"
+        },
+        {
+          "top_left_x": 584,
+          "top_left_y": 977,
+          "bottom_right_x": 615,
+          "bottom_right_y": 1008,
+          "content": "CS",
+          "type": "footer"
+        },
+        {
+          "top_left_x": 616,
+          "top_left_y": 984,
+          "bottom_right_x": 697,
+          "bottom_right_y": 1002,
+          "content": "CamScanner",
+          "type": "footer"
+        }
+      ]
+    },
+    {
+      "index": 4,
+      "markdown": "5\n\n13. Point:  $(-\\frac{3}{5}, -\\frac{4}{5})$\n\n$$\\sin(t) = y = -\\frac{4}{5}$$\n\n$$\\cos(t) = x = -\\frac{3}{5}$$\n\n$$\\tan(t) = \\frac{-4/5}{-3/5} = \\frac{4}{3}$$\n\nAns:  $\\sin(t) = -\\frac{4}{5}$  ,\n\n$$\\cos(t) = -\\frac{3}{5} , \\quad \\tan(t) = \\frac{4}{3}$$\n\n14. Using Pythagorean theorem,\n\n$$x^2 = 34^2 + 34^2, x = \\sqrt{2312}$$\n\n$$x \\approx 48$$\n\nAns: 48\n\n15.  $\\frac{\\cos(u) \\sec(u)}{\\tan(u)} = \\frac{\\cos(u) \\cdot \\frac{1}{\\cos(u)}}{\\tan(u)}$\n\n$$= \\frac{1}{\\tan(u)}$$\n\nAns:  $\\boxed{\\frac{1}{\\tan(u)}}$\n\nCS CamScanner",
+      "images": [],
+      "tables": [],
+      "hyperlinks": [
+        "https://v3.camscanner.com/user/download"
+      ],
+      "header": null,
+      "footer": null,
+      "dimensions": {
+        "dpi": 87,
+        "height": 1018,
+        "width": 719
+      },
+      "confidence_scores": null,
+      "blocks": [
+        {
+          "top_left_x": 610,
+          "top_left_y": 13,
+          "bottom_right_x": 641,
+          "bottom_right_y": 44,
+          "content": "5",
+          "type": "header"
+        },
+        {
+          "top_left_x": 71,
+          "top_left_y": 59,
+          "bottom_right_x": 464,
+          "bottom_right_y": 114,
+          "content": "13. Point:  $(-\\frac{3}{5}, -\\frac{4}{5})$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 167,
+          "top_left_y": 120,
+          "bottom_right_x": 364,
+          "bottom_right_y": 166,
+          "content": "$$\\sin(t) = y = -\\frac{4}{5}$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 158,
+          "top_left_y": 166,
+          "bottom_right_x": 399,
+          "bottom_right_y": 211,
+          "content": "$$\\cos(t) = x = -\\frac{3}{5}$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 165,
+          "top_left_y": 208,
+          "bottom_right_x": 440,
+          "bottom_right_y": 275,
+          "content": "$$\\tan(t) = \\frac{-4/5}{-3/5} = \\frac{4}{3}$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 104,
+          "top_left_y": 275,
+          "bottom_right_x": 457,
+          "bottom_right_y": 354,
+          "content": "Ans:  $\\sin(t) = -\\frac{4}{5}$  ,",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 167,
+          "top_left_y": 342,
+          "bottom_right_x": 569,
+          "bottom_right_y": 414,
+          "content": "$$\\cos(t) = -\\frac{3}{5} , \\quad \\tan(t) = \\frac{4}{3}$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 75,
+          "top_left_y": 446,
+          "bottom_right_x": 394,
+          "bottom_right_y": 490,
+          "content": "14. Using Pythagorean theorem,",
+          "type": "text"
+        },
+        {
+          "top_left_x": 191,
+          "top_left_y": 478,
+          "bottom_right_x": 549,
+          "bottom_right_y": 527,
+          "content": "$$x^2 = 34^2 + 34^2, x = \\sqrt{2312}$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 211,
+          "top_left_y": 533,
+          "bottom_right_x": 313,
+          "bottom_right_y": 567,
+          "content": "$$x \\approx 48$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 81,
+          "top_left_y": 595,
+          "bottom_right_x": 225,
+          "bottom_right_y": 631,
+          "content": "Ans: 48",
+          "type": "text"
+        },
+        {
+          "top_left_x": 71,
+          "top_left_y": 643,
+          "bottom_right_x": 552,
+          "bottom_right_y": 735,
+          "content": "15.  $\\frac{\\cos(u) \\sec(u)}{\\tan(u)} = \\frac{\\cos(u) \\cdot \\frac{1}{\\cos(u)}}{\\tan(u)}$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 159,
+          "top_left_y": 757,
+          "bottom_right_x": 289,
+          "bottom_right_y": 808,
+          "content": "$$= \\frac{1}{\\tan(u)}$$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 83,
+          "top_left_y": 816,
+          "bottom_right_x": 310,
+          "bottom_right_y": 900,
+          "content": "Ans:  $\\boxed{\\frac{1}{\\tan(u)}}$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 583,
+          "top_left_y": 976,
+          "bottom_right_x": 697,
+          "bottom_right_y": 1004,
+          "content": "CS CamScanner",
+          "type": "footer"
+        }
+      ]
+    },
+    {
+      "index": 5,
+      "markdown": "6\n\n16. $u = \\langle 4, 1 \\rangle$, $v \\langle 1, -3 \\rangle$, $w = \\langle 3, 2 \\rangle$\n\n$u \\cdot v = 4(1) + 1(-3)$, $w =$\n\n$= 1$\n\nAns: 1\n\n17. $\\sum_{k=6}^{9} k(k+3)$\n\nthis becomes: $6+7+8+9+3 = 33$\n\nAns: 33\n\nCS\n\nCamScanner",
+      "images": [],
+      "tables": [],
+      "hyperlinks": [
+        "https://v3.camscanner.com/user/download"
+      ],
+      "header": null,
+      "footer": null,
+      "dimensions": {
+        "dpi": 87,
+        "height": 719,
+        "width": 1018
+      },
+      "confidence_scores": null,
+      "blocks": [
+        {
+          "top_left_x": 807,
+          "top_left_y": 3,
+          "bottom_right_x": 850,
+          "bottom_right_y": 46,
+          "content": "6",
+          "type": "text"
+        },
+        {
+          "top_left_x": 215,
+          "top_left_y": 53,
+          "bottom_right_x": 787,
+          "bottom_right_y": 124,
+          "content": "16. $u = \\langle 4, 1 \\rangle$, $v \\langle 1, -3 \\rangle$, $w = \\langle 3, 2 \\rangle$",
+          "type": "text"
+        },
+        {
+          "top_left_x": 293,
+          "top_left_y": 125,
+          "bottom_right_x": 652,
+          "bottom_right_y": 171,
+          "content": "$u \\cdot v = 4(1) + 1(-3)$, $w =$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 362,
+          "top_left_y": 177,
+          "bottom_right_x": 410,
+          "bottom_right_y": 202,
+          "content": "$= 1$",
+          "type": "equation"
+        },
+        {
+          "top_left_x": 248,
+          "top_left_y": 214,
+          "bottom_right_x": 388,
+          "bottom_right_y": 256,
+          "content": "Ans: 1",
+          "type": "text"
+        },
+        {
+          "top_left_x": 238,
+          "top_left_y": 272,
+          "bottom_right_x": 473,
+          "bottom_right_y": 332,
+          "content": "17. $\\sum_{k=6}^{9} k(k+3)$",
+          "type": "text"
+        },
+        {
+          "top_left_x": 318,
+          "top_left_y": 333,
+          "bottom_right_x": 752,
+          "bottom_right_y": 368,
+          "content": "this becomes: $6+7+8+9+3 = 33$",
+          "type": "text"
+        },
+        {
+          "top_left_x": 255,
+          "top_left_y": 401,
+          "bottom_right_x": 374,
+          "bottom_right_y": 443,
+          "content": "Ans: 33",
+          "type": "text"
+        },
+        {
+          "top_left_x": 881,
+          "top_left_y": 679,
+          "bottom_right_x": 912,
+          "bottom_right_y": 709,
+          "content": "CS",
+          "type": "footer"
+        },
+        {
+          "top_left_x": 913,
+          "top_left_y": 688,
+          "bottom_right_x": 996,
+          "bottom_right_y": 703,
+          "content": "CamScanner",
+          "type": "footer"
+        }
+      ]
+    }
+  ],
+  "model": "mistral-ocr-4-0",
+  "document_annotation": null,
+  "usage_info": {
+    "pages_processed": 6,
+    "doc_size_bytes": 2639420
+  }
+}
