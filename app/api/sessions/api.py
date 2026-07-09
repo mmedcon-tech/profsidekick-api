@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime
+from decimal import Decimal
 from PIL import Image
 import json
 import os
@@ -35,7 +36,11 @@ from app.services.file_processor import FileProcessor
 from app.services.openai_service import OpenAIService
 from app.services.session_service import SessionService
 from app.services.rag_service import ingest_session_document_background, retrieve_context
-from app.services import session_resolution_service
+from app.services import (
+    session_resolution_service,
+    billing_service,
+    voice_resolution_service,
+)
 from app.services.avatar_variant_service import resolve_default_variant, build_variant_snapshot
 from app.dependencies.auth import get_current_user, get_optional_user
 from app.config import settings
@@ -376,9 +381,45 @@ async def check_session_eligibility(
         return {"eligible": False, "issues": [{"code": "not_found", "message": "Session not found."}]}
 
     # Subscriber gates (course opt-in, enrollment, published-only, avatar
-    # subscription, credit balance) are temporarily disabled — every
-    # subscriber is eligible to start any session.
-    return {"eligible": True, "issues": []}
+    # subscription) are temporarily disabled — every subscriber is eligible
+    # on those fronts. The credit-floor check below is re-enabled as part of
+    # the dual voice pipeline's "session start validation" requirement: it
+    # only checks balance, not enrollment/subscription/published-only.
+    if current_user.role in ("admin", "publisher"):
+        return {"eligible": True, "issues": []}
+
+    issues: list = []
+    if db_session.avatar_id:
+        avatar = db.query(Avatar).filter(Avatar.id == db_session.avatar_id).first()
+        if avatar:
+            # Estimate the cost of a minimum-length session using the
+            # resolved voice's per-character TTS rate. This is a heuristic
+            # (average speech rate), not an exact prediction — the real
+            # charge happens per-utterance via POST .../voice-usage.
+            MIN_SESSION_MINUTES = 5
+            ESTIMATED_CHARS_PER_MINUTE = 600
+            try:
+                resolution = await voice_resolution_service.resolve_session_voice(
+                    db, avatar, current_user
+                )
+                estimated_chars = MIN_SESSION_MINUTES * ESTIMATED_CHARS_PER_MINUTE
+                cost = billing_service.calculate_cost(
+                    f"tts_{resolution.provider}", estimated_chars, 0, db
+                )
+                balance_info = billing_service.get_active_balance(current_user.id, db)
+                if balance_info["balance"] < cost["credits_charged"]:
+                    issues.append(
+                        {
+                            "code": "no_credits",
+                            "message": "Insufficient credits for a minimum-length session.",
+                        }
+                    )
+            except HTTPException:
+                # No usable voice configuration — that's a publish-time
+                # validation concern, not something this check should block on.
+                pass
+
+    return {"eligible": len(issues) == 0, "issues": issues}
 
 
 @router.patch("/sessions/{session_id}/publish")
@@ -1381,6 +1422,7 @@ async def get_ephemeral_token(
         examination_prompt: str | None = None
         role_label: str | None = None
         role_context: str | None = None
+        avatar_row: Avatar | None = None
         if db_session_raw and db_session_raw.avatar_id:
             avatar_row = (
                 db.query(Avatar)
@@ -1449,13 +1491,39 @@ async def get_ephemeral_token(
                 avatar_id=db_session_raw.avatar_id,
             )
 
-        # Merge voice from AvatarConfiguration into assistant_parameters so the
-        # ephemeral token uses the publisher's chosen voice, not the session default.
         _ap = (
             session_run.assistant_parameters.model_dump()
             if hasattr(session_run.assistant_parameters, "model_dump")
             else dict(session_run.assistant_parameters or {})
         )
+
+        # Dual voice pipeline — resolve the actual voice to use (subscriber
+        # override > publisher default) instead of the old ad-hoc merge of
+        # AvatarConfiguration.voice, which the frontend then guessed a gender
+        # for from the 3-D avatar's library entry. `voice_resolution` is
+        # surfaced on the response below so the frontend plays the real
+        # resolved provider/voice.
+        voice_resolution: voice_resolution_service.VoiceResolution | None = None
+        if avatar_row is not None and current_user is not None:
+            try:
+                voice_resolution = await voice_resolution_service.resolve_session_voice(
+                    db, avatar_row, current_user
+                )
+            except HTTPException:
+                # Avatar has no usable voice config — leave voice_resolution
+                # None; the frontend falls back to its own default rather
+                # than failing the whole ephemeral mint over this.
+                logger.warning(
+                    "No usable voice configuration for avatar %s (run %s)",
+                    db_session_raw.avatar_id if db_session_raw else None,
+                    session_run_id,
+                )
+            if voice_resolution and voice_resolution.provider == "openai":
+                # OpenAI Realtime's own audio.output.voice must be an OpenAI
+                # voice name; ElevenLabs voice ids don't apply here since the
+                # frontend runs Realtime in text-only mode and synthesises
+                # separately.
+                _ap["voice"] = voice_resolution.voice_id
 
         # ── Knowledge context: avatar docs + course materials ─────────────────
         # Collect avatar-level knowledge documents (uploaded under the Knowledge tab)
@@ -1470,9 +1538,6 @@ async def get_ephemeral_token(
                 .first()
             )
             if _avcfg:
-                if _avcfg.voice:
-                    _ap["voice"] = _avcfg.voice.lower()
-
                 # Avatar knowledge documents — use extracted content_text (populated
                 # by the background RAG ingestion task on upload).
                 _MAX_CHARS_PER_DOC = 1_200
@@ -1617,6 +1682,10 @@ async def get_ephemeral_token(
             heygen_quality="high",
             session_language=language,
             session_mode=session_mode,
+            voice_provider=voice_resolution.provider if voice_resolution else None,
+            voice_id=voice_resolution.voice_id if voice_resolution else None,
+            voice_dialect=voice_resolution.dialect if voice_resolution else None,
+            voice_source=voice_resolution.source if voice_resolution else None,
         )
 
     except HTTPException:

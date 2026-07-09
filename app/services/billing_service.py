@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -136,14 +137,32 @@ def charge_usage(
     output_tokens: int,
     db: Session,
     session_run_id: Optional[UUID] = None,
+    idempotency_key: Optional[str] = None,
 ) -> UsageRecord:
     """
     Atomically deducts credits from the user's active balance and writes a
     UsageRecord.  Balance deduction and record insert share the same
     transaction so that a failed insert rolls back the deduction.
 
+    If `idempotency_key` is supplied and a UsageRecord already exists for
+    this user with that key, the existing record is returned unchanged and
+    no further deduction happens — guards against a retried/duplicated
+    caller (e.g. a client firing the same TTS-usage POST twice).
+
     Raises HTTP 402 if no balance remains across all sources.
     """
+    if idempotency_key:
+        existing = (
+            db.query(UsageRecord)
+            .filter(
+                UsageRecord.user_id == user_id,
+                UsageRecord.idempotency_key == idempotency_key,
+            )
+            .first()
+        )
+        if existing:
+            return existing
+
     balance_info = get_active_balance(user_id, db)
 
     if balance_info["source"] == "none":
@@ -204,10 +223,30 @@ def charge_usage(
         credits_charged=credits_needed,
         funded_by=funded_by,
         access_code_id=access_code_id,
+        idempotency_key=idempotency_key,
         created_at=datetime.utcnow(),
     )
     db.add(record)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Concurrent duplicate request raced past the upfront idempotency
+        # check and both tried to insert the same idempotency_key — the
+        # unique constraint caught it. Roll back this insert/deduction and
+        # return the record the other request already committed.
+        db.rollback()
+        if idempotency_key:
+            existing = (
+                db.query(UsageRecord)
+                .filter(
+                    UsageRecord.user_id == user_id,
+                    UsageRecord.idempotency_key == idempotency_key,
+                )
+                .first()
+            )
+            if existing:
+                return existing
+        raise
     db.refresh(record)
     logger.info(
         "Charged %s credits (%s) to user %s for %s",
