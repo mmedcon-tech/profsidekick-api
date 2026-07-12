@@ -1,20 +1,19 @@
 """
 Student-facing SAE routes.
 
-Access is split into two levels:
-  - View access  (get_optional_sae_student): any authenticated subscriber.
-    Returns None when the caller has no SAE enrolment — endpoints handle gracefully.
-  - Submit access: only users with an activated SAEStudent row for the target assessment.
-    Raises 403 for regular subscribers or wrong assessment_id.
+Submit access: only users with an activated SAEStudent row for the target assessment.
+Raises 403 for regular subscribers or wrong assessment_id.
 
 GET  /api/sae/student/me                              → enrolment state + triggers sync
 GET  /api/sae/student/enrollments                     → all active enrolments (triggers sync)
-GET  /api/sae/student/submission                      → active submission (legacy single)
 GET  /api/sae/student/submissions                     → all submissions; optional ?assessment_id
 GET  /api/sae/student/submissions/{id}                → single historical submission (any enrolment)
 GET  /api/sae/student/submissions/{id}/files/{type}   → PDF for a historical submission
 POST /api/sae/student/submit                          → file upload + grading; requires assessment_id form field
-GET  /api/sae/student/files/{type}                   → active submission PDF (legacy)
+
+COMMENTED OUT (legacy, no frontend callers):
+  GET /api/sae/student/submission     → superseded by /submissions
+  GET /api/sae/student/files/{type}   → superseded by /submissions/{id}/files/{type}
 """
 
 import uuid as _uuid
@@ -23,7 +22,7 @@ from pathlib import Path
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
@@ -39,20 +38,21 @@ router = APIRouter(prefix="/api/sae/student", tags=["sae-student"])
 
 # ── Auth dependencies ──────────────────────────────────────────────────────────
 
-async def get_optional_sae_student(
-    current_user: User = Depends(require_subscriber),
-    db: Session = Depends(get_db),
-) -> Optional[SAEStudent]:
-    """
-    Require a valid subscriber JWT, then resolve the caller's first SAEStudent row.
-    Returns None when the user is a regular subscriber not enrolled in the SAE.
-    Used by legacy single-assessment endpoints (submission, files).
-    """
-    return (
-        db.query(SAEStudent)
-        .filter(SAEStudent.user_id == current_user.id)
-        .first()
-    )
+# No active callers — only used by legacy endpoints below. Commented out, not deleted.
+# async def get_optional_sae_student(
+#     current_user: User = Depends(require_subscriber),
+#     db: Session = Depends(get_db),
+# ) -> Optional[SAEStudent]:
+#     """
+#     Require a valid subscriber JWT, then resolve the caller's first SAEStudent row.
+#     Returns None when the user is a regular subscriber not enrolled in the SAE.
+#     Used by legacy single-assessment endpoints (submission, files).
+#     """
+#     return (
+#         db.query(SAEStudent)
+#         .filter(SAEStudent.user_id == current_user.id)
+#         .first()
+#     )
 
 
 # ── Sync helper ────────────────────────────────────────────────────────────────
@@ -96,7 +96,13 @@ def _sub_to_result(sub: "SAESubmission") -> SAESubmissionResult:  # type: ignore
 def _stream_file(file_path: str, filename: str) -> Response:
     """Serve a PDF from R2 or local disk."""
     if r2.enabled and not os.path.isabs(file_path):
-        data = r2.download(file_path)
+        try:
+            data = r2.download(file_path)
+        except RuntimeError as exc:
+            raise HTTPException(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to retrieve file from storage: {exc}",
+            )
         return Response(
             content=data,
             media_type="application/pdf",
@@ -105,8 +111,15 @@ def _stream_file(file_path: str, filename: str) -> Response:
     disk_path = Path(file_path)
     if not disk_path.exists():
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File not found on server.")
-    return FileResponse(
-        path=str(disk_path),
+    try:
+        data = disk_path.read_bytes()
+    except OSError as exc:
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to read file: {exc}",
+        )
+    return Response(
+        content=data,
         media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
@@ -192,23 +205,19 @@ def get_my_enrollments(
     return result
 
 
-@router.get("/submission", response_model=SAESubmissionResult)
-def get_my_submission(
-    sae_student: Optional[SAEStudent] = Depends(get_optional_sae_student),
-):
-    """
-    Return the student's active submission.
-    Legacy single-submission endpoint — kept for backward compatibility.
-    Prefer GET /submissions for new frontend work.
-    Returns 404 when not enrolled or not yet submitted.
-    """
-    sub = sae_student.submission if sae_student else None
-    if not sub:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="You have not submitted yet.",
-        )
-    return _sub_to_result(sub)
+# Legacy endpoint — no frontend callers. GET /submissions is the active replacement.
+# Commented out, not deleted.
+# @router.get("/submission", response_model=SAESubmissionResult)
+# def get_my_submission(
+#     sae_student: Optional[SAEStudent] = Depends(get_optional_sae_student),
+# ):
+#     sub = sae_student.submission if sae_student else None
+#     if not sub:
+#         raise HTTPException(
+#             status_code=status.HTTP_404_NOT_FOUND,
+#             detail="You have not submitted yet.",
+#         )
+#     return _sub_to_result(sub)
 
 
 @router.get("/submissions", response_model=list[SAESubmissionResult])
@@ -354,29 +363,23 @@ async def submit(
     return _sub_to_result(submission)
 
 
-@router.get("/files/{file_type}")
-def get_my_file(
-    file_type: Literal["handwritten", "webassign"],
-    sae_student: Optional[SAEStudent] = Depends(get_optional_sae_student),
-):
-    """
-    Stream the student's active submission PDF.
-    Legacy endpoint targeting the active submission only.
-    Prefer GET /submissions/{id}/files/{type} for historical submissions.
-    Returns 404 when not enrolled or no submission exists.
-    """
-    sub = sae_student.submission if sae_student else None
-    if not sub:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="No submission found.")
-
-    file_path = sub.handwritten_file_path if file_type == "handwritten" else sub.webassign_file_path
-    filename = (
-        sub.handwritten_filename if file_type == "handwritten" else sub.webassign_filename
-    ) or f"{file_type}.pdf"
-
-    if not file_path:
-        raise HTTPException(
-            status.HTTP_404_NOT_FOUND,
-            detail="File path not recorded for this submission.",
-        )
-    return _stream_file(file_path, filename)
+# Legacy endpoint — no frontend callers. GET /submissions/{id}/files/{type} is the active replacement.
+# Commented out, not deleted.
+# @router.get("/files/{file_type}")
+# def get_my_file(
+#     file_type: Literal["handwritten", "webassign"],
+#     sae_student: Optional[SAEStudent] = Depends(get_optional_sae_student),
+# ):
+#     sub = sae_student.submission if sae_student else None
+#     if not sub:
+#         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="No submission found.")
+#     file_path = sub.handwritten_file_path if file_type == "handwritten" else sub.webassign_file_path
+#     filename = (
+#         sub.handwritten_filename if file_type == "handwritten" else sub.webassign_filename
+#     ) or f"{file_type}.pdf"
+#     if not file_path:
+#         raise HTTPException(
+#             status.HTTP_404_NOT_FOUND,
+#             detail="File path not recorded for this submission.",
+#         )
+#     return _stream_file(file_path, filename)

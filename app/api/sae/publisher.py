@@ -1,14 +1,17 @@
 """
 Publisher-only SAE management routes.
 
-POST  /api/sae/publisher/assessments                          → create a new assessment (optional course/avatar link)
-GET   /api/sae/publisher/assessments                          → list all assessments for this publisher
-PATCH /api/sae/publisher/assessments/{assessment_id}/avatar   → link/unlink an avatar and re-snapshot grading prompt
-POST  /api/sae/publisher/students/batch                       → pre-generate N students under an assessment
-GET   /api/sae/publisher/students                             → list students (all or filtered by assessment)
-GET   /api/sae/publisher/students/{student_id}                → single student detail + submission
-POST  /api/sae/publisher/students/{student_id}/submit         → submit on behalf of a student
-PATCH /api/sae/publisher/students/{student_id}/submission     → instructor edits to grading result
+POST  /api/sae/publisher/assessments                            → create a new assessment (optional course/avatar link)
+GET   /api/sae/publisher/assessments                            → list all assessments for this publisher
+PATCH /api/sae/publisher/assessments/{assessment_id}/avatar     → link/unlink an avatar and re-snapshot grading prompt
+PATCH /api/sae/publisher/assessments/{assessment_id}/prompt     → set or replace the grading prompt for an assessment
+GET   /api/sae/publisher/default-grading-prompt                 → return the system default grading prompt text
+POST   /api/sae/publisher/students/batch                        → pre-generate N students under an assessment
+GET    /api/sae/publisher/students                              → list students (all or filtered by assessment)
+GET    /api/sae/publisher/students/{student_id}                 → single student detail + submission
+DELETE /api/sae/publisher/students/{student_id}                 → delete an unused (not activated, no submissions) student slot
+POST   /api/sae/publisher/students/{student_id}/submit          → submit on behalf of a student
+PATCH  /api/sae/publisher/students/{student_id}/submission      → instructor edits to grading result
 """
 
 import os
@@ -17,7 +20,7 @@ from pathlib import Path
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
@@ -27,6 +30,7 @@ from app.schemas.sae import (
     SAEAssessmentCreate,
     SAEAssessmentLinkAvatarRequest,
     SAEAssessmentRow,
+    SAEAssessmentUpdatePromptRequest,
     SAEBatchCreateRequest,
     SAEBatchCreateResponse,
     SAERegenerateResponse,
@@ -238,6 +242,51 @@ def list_assessments(
     return sae_service.get_publisher_assessments(db=db, publisher_id=publisher.id)
 
 
+@router.patch("/assessments/{assessment_id}/prompt", response_model=SAEAssessmentRow)
+def update_assessment_prompt(
+    assessment_id: str,
+    body: SAEAssessmentUpdatePromptRequest,
+    publisher: User = Depends(require_publisher),
+    db: Session = Depends(get_db),
+):
+    """
+    Set or replace the grading prompt for an assessment.
+
+    The submitted text is frozen as grading_prompt_snapshot and used verbatim
+    for every subsequent grading run on this assessment.
+
+    Pass grading_prompt=null to restore the system default (the hardcoded Math
+    prompt from data/grading_prompt.txt).  The reset is immediate and affects
+    all future submissions; past submissions are not re-graded.
+    """
+    assessment = _require_own_assessment(assessment_id, publisher, db)
+    return sae_service.update_assessment_prompt(
+        db=db,
+        assessment=assessment,
+        grading_prompt=body.grading_prompt,
+    )
+
+
+@router.get("/default-grading-prompt")
+def get_default_grading_prompt(
+    publisher: User = Depends(require_publisher),
+):
+    """
+    Return the system default grading prompt text.
+
+    The frontend uses this to pre-populate the prompt editor for assessments
+    that have a null snapshot (created before this feature was deployed) and
+    to implement the 'Reset to default' button without a round-trip through
+    the PATCH endpoint.
+    """
+    if not autograder_cache.loaded:
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Autograder not ready. Check server startup logs.",
+        )
+    return {"body": autograder_cache.grading_prompt}
+
+
 @router.post("/students/batch", response_model=SAEBatchCreateResponse)
 def create_student_batch(
     body: SAEBatchCreateRequest,
@@ -422,6 +471,25 @@ def regenerate_access(
     )
 
 
+@router.delete("/students/{student_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_student(
+    student_id: str,
+    publisher: User = Depends(require_publisher),
+    db: Session = Depends(get_db),
+):
+    """
+    Permanently delete a student slot that has never been activated and has no submissions.
+    Use this to remove excess slots created by mistake.
+    Returns 409 if the student has activated their account or has any submissions.
+    """
+    student = _require_own_student(student_id, publisher, db)
+    try:
+        sae_service.delete_student(db=db, student=student)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc))
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get("/students/{student_id}/files/{file_type}")
 def get_student_file(
     student_id: str,
@@ -449,7 +517,13 @@ def get_student_file(
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File path not recorded for this submission.")
 
     if r2.enabled and not os.path.isabs(file_path):
-        data = r2.download(file_path)
+        try:
+            data = r2.download(file_path)
+        except RuntimeError as exc:
+            raise HTTPException(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to retrieve file from storage: {exc}",
+            )
         return Response(
             content=data,
             media_type="application/pdf",
@@ -460,8 +534,15 @@ def get_student_file(
     if not disk_path.exists():
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File not found on server.")
 
-    return FileResponse(
-        path=str(disk_path),
+    try:
+        data = disk_path.read_bytes()
+    except OSError as exc:
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to read file: {exc}",
+        )
+    return Response(
+        content=data,
         media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )

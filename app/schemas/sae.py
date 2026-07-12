@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional, List
 from uuid import UUID
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # ── Request schemas ────────────────────────────────────────────────────────────
@@ -31,6 +31,20 @@ class SAEAssessmentLinkAvatarRequest(BaseModel):
     )
 
 
+class SAEAssessmentUpdatePromptRequest(BaseModel):
+    grading_prompt: Optional[str] = Field(
+        None,
+        description="Full grading prompt text. Pass null to reset to the system default Math prompt.",
+    )
+
+    @field_validator("grading_prompt")
+    @classmethod
+    def _validate_prompt_length(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and len(v.strip()) < 50:
+            raise ValueError("grading_prompt must be at least 50 characters when provided.")
+        return v
+
+
 class SAEBatchCreateRequest(BaseModel):
     assessment_id: UUID = Field(..., description="The assessment to add students to")
     count: int = Field(..., ge=1, le=500,
@@ -47,11 +61,14 @@ class SAEInviteSetupRequest(BaseModel):
     Which fields are required depends on the token's use_count, enforced in the service:
       - First use:  username, password, country_of_origin, curriculum all required.
       - Second use: at least one of username / password required; education fields ignored.
+    is_existing_account signals that the student intentionally chose the login path
+    so the service can return accurate errors instead of generic ones.
     """
     username: Optional[str] = Field(None, min_length=3, max_length=50)
     password: Optional[str] = Field(None, min_length=8)
     country_of_origin: Optional[str] = Field(None, min_length=1, max_length=100)
     curriculum: Optional[str] = Field(None, min_length=1, max_length=200)
+    is_existing_account: bool = Field(False)
 
 
 class SAEQuestionEdit(BaseModel):

@@ -68,9 +68,11 @@ def create_assessment(
     Grading prompt snapshot priority:
       1. grading_prompt_template_id (explicit template) — resolved and frozen.
       2. avatar_id — grading.assessment prompt resolved from avatar's AvatarPromptConfig.
-      3. Neither — no snapshot; system default is used at grade time.
+      3. Neither — snapshot is seeded from the hardcoded system default (autograder_cache).
+    Every assessment is guaranteed to have a non-null snapshot after creation.
     """
     from app.services.prompt_resolution_service import PromptResolutionService
+    from app.services.gemini_file_cache import autograder_cache
 
     grading_prompt_snapshot: Optional[str] = None
     if grading_prompt_template_id is not None:
@@ -81,6 +83,12 @@ def create_assessment(
         grading_prompt_snapshot = PromptResolutionService().resolve(
             db, avatar_id, "grading.assessment"
         )
+
+    # Guarantee a non-null snapshot so grading never falls through to the
+    # resolution service at run time.  The cache is always loaded by the time
+    # any publisher request reaches this path (checked at the API layer).
+    if grading_prompt_snapshot is None:
+        grading_prompt_snapshot = autograder_cache.grading_prompt
 
     assessment = SAEAssessment(
         publisher_id=publisher_id,
@@ -151,6 +159,27 @@ def get_assessment_by_id(
     return db.query(SAEAssessment).filter(SAEAssessment.id == assessment_id).first()
 
 
+def update_assessment_prompt(
+    db: Session,
+    assessment: SAEAssessment,
+    grading_prompt: Optional[str],
+) -> SAEAssessment:
+    """
+    Write a new grading prompt snapshot to an assessment.
+
+    Passing grading_prompt=None (or an empty string) resets the snapshot to the
+    hardcoded system default loaded from data/grading_prompt.txt at startup.
+    The snapshot is what grade_and_save_submission reads at run time — nothing
+    else in the grading pipeline is touched.
+    """
+    from app.services.gemini_file_cache import autograder_cache
+
+    assessment.grading_prompt_snapshot = grading_prompt or autograder_cache.grading_prompt
+    db.commit()
+    db.refresh(assessment)
+    return assessment
+
+
 # ── Batch student creation ─────────────────────────────────────────────────────
 
 def create_student_batch(
@@ -206,6 +235,22 @@ def create_student_batch(
         db.refresh(s)
 
     return new_students
+
+
+# ── Student deletion ──────────────────────────────────────────────────────────
+
+def delete_student(db: Session, student: SAEStudent) -> None:
+    """
+    Permanently remove a student slot that has never been activated and has no submissions.
+    The invitation token cascades automatically via the ORM relationship.
+    Raises ValueError for activated students or those with submissions.
+    """
+    if student.is_activated:
+        raise ValueError("Cannot delete an activated student. Use regenerate access instead.")
+    if student.submission_count > 0:
+        raise ValueError("Cannot delete a student who has already submitted.")
+    db.delete(student)
+    db.commit()
 
 
 # ── Multi-assessment enrollment ────────────────────────────────────────────────
@@ -386,6 +431,7 @@ def activate_student_account(
     password: Optional[str],
     country_of_origin: Optional[str],
     curriculum: Optional[str],
+    is_existing_account: bool = False,
 ) -> tuple[bool, str, Optional[User], Optional[SAEStudent]]:
     """
     Atomically handles both uses of an invitation link.
@@ -448,14 +494,13 @@ def activate_student_account(
 
         if existing_user:
             # ── Path A2: existing account — verify password and link ─────────
-            # The student already has an account from a previous invitation.
-            # Authenticate them instead of creating a duplicate account.
-            # Return the same 409-style message on wrong password so that we do
-            # not leak whether the username exists to a malicious actor.
             if not bcrypt.checkpw(
                 password.encode("utf-8"),
                 existing_user.password_hash.encode("utf-8"),
             ):
+                if is_existing_account:
+                    return False, "Incorrect password. Please try again.", None, None
+                # New-account path: username clash — keep the generic message.
                 return False, "Username already taken. Please choose a different one.", None, None
             user = existing_user
             student.user_id = user.id
@@ -467,6 +512,9 @@ def activate_student_account(
                 student.curriculum = curriculum
         else:
             # ── Path A: first activation — create a new User ─────────────────
+            if is_existing_account:
+                # Student said they have an account but no matching username found.
+                return False, "No account found with that username. Please check your username and try again.", None, None
             if not country_of_origin or not curriculum:
                 return False, "Country of origin and curriculum are required.", None, None
 

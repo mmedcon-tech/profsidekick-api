@@ -78,6 +78,7 @@ async def setup_account(
         password=body.password,
         country_of_origin=body.country_of_origin,
         curriculum=body.curriculum,
+        is_existing_account=body.is_existing_account,
     )
 
     if not success:

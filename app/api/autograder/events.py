@@ -3,11 +3,13 @@ from __future__ import annotations
 import asyncio
 import json
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
 from app.database.models import User
 from app.dependencies.auth import get_current_user
+from app.llm.confirmation_bus import confirmation_bus
 from app.llm.event_bus import event_bus
 
 router = APIRouter(prefix="/api/autograder", tags=["autograder-events"])
@@ -67,3 +69,40 @@ async def grade_events(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+class GradingConfirmRequest(BaseModel):
+    continue_grading: bool
+
+
+@router.post("/grade/confirm/{request_id}", status_code=status.HTTP_200_OK)
+async def grade_confirm(
+    request_id: str,
+    body: GradingConfirmRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Deliver the publisher's decision after a confirmation_required SSE event.
+
+    Called by the frontend when the publisher clicks "Continue with OpenAI" or
+    "Cancel submission" in the fallback confirmation dialog.
+
+    Returns 200 if the decision was delivered to the waiting grading coroutine.
+    Returns 404 if no grading job is currently paused for this request_id
+    (e.g. the 180-second timeout already fired).
+    """
+    delivered = confirmation_bus.resolve(request_id, body.continue_grading)
+    if not delivered:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                "No grading job is currently awaiting confirmation for this "
+                "request_id. The confirmation window may have expired."
+            ),
+        )
+    print(
+        f"[TRACE] grade_confirm request_id={request_id} "
+        f"continue_grading={body.continue_grading} "
+        f"user_id={current_user.id}"
+    )
+    return {"request_id": request_id, "continue_grading": body.continue_grading}

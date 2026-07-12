@@ -17,9 +17,25 @@ from app.llm.event_bus import event_bus
 from app.llm.fallback_provider import get_fallback_provider
 from app.llm.provider import StudentFiles
 from app.services.gemini_file_cache import autograder_cache
-from app.services.prompt_resolution_service import PromptResolutionService
+# SAE-only: avatar-based grading prompt disabled; grading prompt is now hardcoded from data/grading_prompt.txt
+# from app.services.prompt_resolution_service import PromptResolutionService
 
 router = APIRouter(prefix="/api/autograder", tags=["autograder"])
+
+# Absolute upload root — anchored to this file's location so it never depends
+# on the process CWD (which varies by how/where uvicorn is launched).
+# __file__ = profsidekick-api/app/api/autograder/api.py → .parent×3 = profsidekick-api/
+_API_ROOT = Path(__file__).resolve().parent.parent.parent
+UPLOAD_BASE = _API_ROOT / "uploads"
+UPLOAD_BASE.mkdir(parents=True, exist_ok=True)
+
+
+def _resolve_stored_path(stored: str) -> Path:
+    """Return an absolute Path, upgrading legacy relative paths stored in the DB."""
+    p = Path(stored)
+    if p.is_absolute():
+        return p
+    return (_API_ROOT / p).resolve()
 
 
 def require_autograder_role(current_user: User, allowed_roles: list[str]) -> User:
@@ -32,16 +48,18 @@ def require_autograder_role(current_user: User, allowed_roles: list[str]) -> Use
 
 
 # ---------------------------------------------------------------------------
-# Grading endpoint
+# Grading endpoint — disabled; SAE pipeline (sae_service.grade_and_save_submission)
+# is the active grading path.  Remove the comment below to restore.
 # ---------------------------------------------------------------------------
 
-@router.post("/grade")
+# @router.post("/grade")
 async def grade_submission(
     student_answer: UploadFile = File(...),
     webassign_pdf: UploadFile = File(...),
     student_id: str = Form(...),
     request_id: Optional[str] = Form(default=None),
-    avatar_id: Optional[str] = Form(default=None),
+    # SAE-only: avatar_id disabled — grading prompt is now always the hardcoded system default.
+    # avatar_id: Optional[str] = Form(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -88,7 +106,7 @@ async def grade_submission(
         student_content = await student_answer.read()
 
         submission_id = uuid.uuid4()
-        submission_dir = Path("uploads") / "autograder" / str(submission_id)
+        submission_dir = UPLOAD_BASE / "autograder" / str(submission_id)
         submission_dir.mkdir(parents=True, exist_ok=True)
 
         handwritten_orig_filename = student_answer.filename or "handwritten.pdf"
@@ -138,17 +156,20 @@ async def grade_submission(
             f"provider_chain={fp.provider_names}"
         )
 
-        # Resolve grading prompt: avatar config → system default → startup file
-        _grading_avatar_id = None
-        if avatar_id:
-            try:
-                _grading_avatar_id = uuid.UUID(avatar_id)
-            except ValueError:
-                pass
-        _resolved_grading_prompt: str | None = PromptResolutionService().resolve(
-            db, _grading_avatar_id, "grading.assessment"
-        )
-        grading_prompt: str = _resolved_grading_prompt or autograder_cache.grading_prompt
+        # SAE-only: always use hardcoded grading prompt from data/grading_prompt.txt
+        grading_prompt: str = autograder_cache.grading_prompt
+
+        # OLD avatar-based prompt resolution (commented out for reference):
+        # _grading_avatar_id = None
+        # if avatar_id:
+        #     try:
+        #         _grading_avatar_id = uuid.UUID(avatar_id)
+        #     except ValueError:
+        #         pass
+        # _resolved_grading_prompt: str | None = PromptResolutionService().resolve(
+        #     db, _grading_avatar_id, "grading.assessment"
+        # )
+        # grading_prompt: str = _resolved_grading_prompt or autograder_cache.grading_prompt
 
         try:
             result = await fp.grade(student_files, request_id=_rid, grading_prompt=grading_prompt)
@@ -585,11 +606,12 @@ async def get_submission_file(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="File not found for this submission",
             )
-        path = Path(file_path_str)
+        # _resolve_stored_path upgrades legacy relative paths in the DB to absolute.
+        path = _resolve_stored_path(file_path_str)
     else:
         # Grading still in progress — DB row not committed yet.
         # Path is deterministic from submission_id (set before fp.grade() is called).
-        path = Path("uploads") / "autograder" / submission_id / f"{file_type}.pdf"
+        path = UPLOAD_BASE / "autograder" / submission_id / f"{file_type}.pdf"
         display_filename = path.name
 
     if not path.exists():
