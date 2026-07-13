@@ -23,6 +23,7 @@ from app.dependencies.auth import require_publisher
 from app.schemas.sae import (
     SAEBatchCreateRequest,
     SAEBatchCreateResponse,
+    SAEQuestionCommentResponse,
     SAEStudentDetail,
     SAEStudentRow,
     SAESubmissionEditRequest,
@@ -31,6 +32,7 @@ from app.schemas.sae import (
 from app.services import sae_service
 from app.services.gemini_file_cache import autograder_cache
 from app.services.r2_service import r2
+from app.services.sae_transcription_service import (transcribe_sae_handwritten,)
 
 router = APIRouter(prefix="/api/sae/publisher", tags=["sae-publisher"])
 
@@ -79,7 +81,6 @@ def _sub_to_result_publisher(sub: SAESubmission) -> SAESubmissionResultPublisher
     return SAESubmissionResultPublisher(
         id=sub.id,
         score=sub.score,
-        overall_confidence=sub.overall_confidence,
         review_required=sub.review_required,
         result_json=effective_rj,
         submitted_by_publisher=sub.submitted_by_publisher,
@@ -88,6 +89,15 @@ def _sub_to_result_publisher(sub: SAESubmission) -> SAESubmissionResultPublisher
         last_edited_at=sub.last_edited_at,
         handwritten_filename=sub.handwritten_filename,
         webassign_filename=sub.webassign_filename,
+        comments=[
+            SAEQuestionCommentResponse(
+                id=comment.id,
+                question_id=comment.question_id,
+                comment=comment.comment,
+                created_at=comment.created_at,
+                updated_at=comment.updated_at,)
+            for comment in sub.comments
+        ],
     )
 
 
@@ -161,22 +171,29 @@ def get_student(
     return _student_to_detail(student, db)
 
 
-@router.post("/students/{student_id}/submit", response_model=SAESubmissionResultPublisher)
+@router.post("/students/{student_id}/submit", response_model=SAESubmissionResultPublisher,)
 async def submit_on_behalf(
     student_id: str,
-    student_answer: UploadFile = File(..., description="Handwritten exam PDF"),
-    webassign_pdf: UploadFile = File(..., description="WebAssign questions PDF"),
+    student_answer: UploadFile = File(
+        ...,
+        description="Handwritten exam PDF",
+    ),
+    webassign_pdf: UploadFile = File(
+        ...,
+        description="WebAssign questions PDF",
+    ),
     publisher: User = Depends(require_publisher),
     db: Session = Depends(get_db),
 ):
     """
-    Submit on behalf of a student who has not yet submitted.
-    Blocked if the student has already submitted (409 Conflict).
-    Runs the same LLM grading pipeline as the Math autograder.
+    Submit on behalf of a student.
+
+    Saves both PDFs, generates and saves the handwritten transcript,
+    grades using all three student inputs, and records the stored paths.
     """
     if not autograder_cache.loaded:
         raise HTTPException(
-            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Autograder not ready. Check server startup logs.",
         )
 
@@ -184,25 +201,123 @@ async def submit_on_behalf(
 
     if student.has_submitted:
         raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            detail="This student has already submitted. Publisher cannot override an existing submission.",
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "This student has already submitted. "
+                "Publisher cannot override an existing submission."
+            ),
         )
 
     handwritten_bytes = await student_answer.read()
     webassign_bytes = await webassign_pdf.read()
 
+    if not handwritten_bytes or not webassign_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Both uploaded PDFs must contain data.",
+        )
+
+    handwritten_filename = (
+        student_answer.filename or "handwritten.pdf"
+    )
+    webassign_filename = (
+        webassign_pdf.filename or "webassign.pdf"
+    )
+
+    handwritten_key = sae_service.build_submission_storage_key(
+        student.student_code,
+        "handwritten.pdf",
+    )
+    webassign_key = sae_service.build_submission_storage_key(
+        student.student_code,
+        "webassign.pdf",
+    )
+    transcript_key = sae_service.build_submission_storage_key(
+        student.student_code,
+        "handwritten_transcript.md",
+    )
+
+    try:
+        handwritten_transcript_result = (
+            await transcribe_sae_handwritten(
+                handwritten_bytes=handwritten_bytes,
+                webassign_bytes=webassign_bytes,
+            )
+        )
+
+        handwritten_transcript = (
+            handwritten_transcript_result["latex"]
+        )
+
+        if r2.enabled:
+            r2.upload(
+                handwritten_key,
+                handwritten_bytes,
+                content_type="application/pdf",
+            )
+            r2.upload(
+                webassign_key,
+                webassign_bytes,
+                content_type="application/pdf",
+            )
+            r2.upload(
+                transcript_key,
+                handwritten_transcript.encode("utf-8"),
+                content_type="text/markdown; charset=utf-8",
+            )
+
+            handwritten_stored_path = handwritten_key
+            webassign_stored_path = webassign_key
+            transcript_stored_path = transcript_key
+
+        else:
+            submission_dir = sae_service.build_submission_dir(
+                student.student_code
+            )
+
+            handwritten_path = (
+                submission_dir / "handwritten.pdf"
+            )
+            webassign_path = (
+                submission_dir / "webassign.pdf"
+            )
+            transcript_path = (
+                submission_dir / "handwritten_transcript.md"
+            )
+
+            handwritten_path.write_bytes(handwritten_bytes)
+            webassign_path.write_bytes(webassign_bytes)
+            transcript_path.write_text(
+                handwritten_transcript,
+                encoding="utf-8",
+            )
+
+            handwritten_stored_path = str(handwritten_path)
+            webassign_stored_path = str(webassign_path)
+            transcript_stored_path = str(transcript_path)
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Submission transcription failed: {exc}",
+        )
+
     submission = await sae_service.grade_and_save_submission(
         db=db,
         student=student,
         handwritten_bytes=handwritten_bytes,
-        handwritten_filename=student_answer.filename or "handwritten.pdf",
+        handwritten_filename=handwritten_filename,
         webassign_bytes=webassign_bytes,
-        webassign_filename=webassign_pdf.filename or "webassign.pdf",
+        webassign_filename=webassign_filename,
         submitted_by_publisher=True,
         publisher_user_id=publisher.id,
+        handwritten_transcript=handwritten_transcript,
+        handwritten_file_path=handwritten_stored_path,
+        webassign_file_path=webassign_stored_path,
+        handwritten_transcript_file_path=transcript_stored_path,
     )
-    return _sub_to_result_publisher(submission)
 
+    return _sub_to_result_publisher(submission)
 
 @router.patch("/students/{student_id}/submission", response_model=SAESubmissionResultPublisher)
 def edit_submission(
@@ -247,18 +362,72 @@ def edit_submission(
 @router.get("/students/{student_id}/files/{file_type}")
 def get_student_file(
     student_id: str,
-    file_type: Literal["handwritten", "webassign"],
+    file_type: Literal["handwritten", "webassign", "transcript"],
     publisher: User = Depends(require_publisher),
     db: Session = Depends(get_db),
 ):
     """
-    Stream a student's submitted PDF to the publisher.
-    Ownership is verified — publishers can only access their own students' files.
+    Stream a student's submitted handwritten PDF, WebAssign PDF,
+    or handwritten transcript to the publisher.
+
+    Ownership is verified so publishers can only access their own students.
     """
     student = _require_own_student(student_id, publisher, db)
+
     sub = student.submission
     if not sub:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="No submission found for this student.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No submission found for this student.",
+        )
+
+    if file_type == "transcript":
+        file_path = sub.handwritten_transcript_file_path
+        filename = "handwritten_transcript.md"
+        media_type = "text/markdown; charset=utf-8"
+
+        if not file_path:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Transcript path not recorded for this submission.",
+            )
+
+        if r2.enabled and not os.path.isabs(file_path):
+            try:
+                data = r2.download(file_path)
+            except RuntimeError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Transcript could not be loaded: {exc}",
+                )
+
+            return Response(
+                content=data,
+                media_type=media_type,
+                headers={
+                    "Content-Disposition": (
+                        f'inline; filename="{filename}"'
+                    )
+                },
+            )
+
+        disk_path = Path(file_path)
+
+        if not disk_path.exists():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Transcript file not found on server.",
+            )
+
+        return FileResponse(
+            path=str(disk_path),
+            media_type=media_type,
+            headers={
+                "Content-Disposition": (
+                    f'inline; filename="{filename}"'
+                )
+            },
+        )
 
     if file_type == "handwritten":
         file_path = sub.handwritten_file_path
@@ -268,22 +437,33 @@ def get_student_file(
         filename = sub.webassign_filename or "webassign.pdf"
 
     if not file_path:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File path not recorded for this submission.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="File path not recorded for this submission.",
+        )
 
     if r2.enabled and not os.path.isabs(file_path):
         data = r2.download(file_path)
         return Response(
             content=data,
             media_type="application/pdf",
-            headers={"Content-Disposition": f'inline; filename="{filename}"'},
+            headers={
+                "Content-Disposition": f'inline; filename="{filename}"'
+            },
         )
 
     disk_path = Path(file_path)
+
     if not disk_path.exists():
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File not found on server.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="File not found on server.",
+        )
 
     return FileResponse(
         path=str(disk_path),
         media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        headers={
+            "Content-Disposition": f'inline; filename="{filename}"'
+        },
     )

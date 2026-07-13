@@ -30,6 +30,13 @@ class SAESubmissionEditRequest(BaseModel):
     overall_feedback: Optional[str] = None
     questions: Optional[List[SAEQuestionEdit]] = None
 
+class SAEQuestionCommentRequest(BaseModel):
+    comment: str = Field(
+        ...,
+        min_length=1,
+        max_length=2000,
+        description="Student comment requesting review of a question.",
+    )
 
 # ── Response schemas ───────────────────────────────────────────────────────────
 
@@ -66,18 +73,29 @@ class SAESetupResponse(BaseModel):
     student_code: str
     display_name: str
 
+class SAEQuestionCommentResponse(BaseModel):
+    id: UUID
+    question_id: str
+    comment: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
 
 class SAESubmissionResult(BaseModel):
     """Student-facing submission result. Contains the effective (possibly edited) grading."""
     id: UUID
     score: Optional[int]
-    overall_confidence: Optional[str]
     review_required: bool
     result_json: Optional[dict]
     submitted_by_publisher: bool
     created_at: datetime
     handwritten_filename: Optional[str] = None
     webassign_filename: Optional[str] = None
+    comments: List[SAEQuestionCommentResponse] = Field(
+        default_factory=list
+    )
 
     class Config:
         from_attributes = True
@@ -116,3 +134,4 @@ class SAEStudentMe(BaseModel):
 
     class Config:
         from_attributes = True
+

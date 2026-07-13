@@ -128,6 +128,18 @@ class OpenAIProvider(LLMProvider):
             # --- Student submission (inline per-request, never reused) ---
             _pdf_part("student_webassign.pdf", student_files.webassign_b64),
             _pdf_part("student_handwritten.pdf", student_files.handwritten_b64),
+
+            {
+                "type": "input_text",
+                "text": f"""
+            Additional OCR transcript of the student's handwritten work:
+
+            {student_files.handwritten_transcript or "[No handwritten transcript provided]"}
+
+            Use this transcript only as a readability aid alongside the original handwritten PDF.
+            If the transcript appears inconsistent with the handwritten PDF in a way that may affect grading, flag human review.
+            """,
+            },
             # --- Grading instruction (last, after all documents are presented) ---
             {"type": "input_text", "text": autograder_cache.grading_prompt},
         ]

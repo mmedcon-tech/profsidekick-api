@@ -127,6 +127,7 @@ from app.database.models.sae import (  # noqa: F401
     SAEStudent,
     SAEInvitationToken,
     SAESubmission,
+    SAEQuestionComment,
 )
 
 # Autograder (Math Placement Exam) — depends on User only
@@ -153,6 +154,7 @@ from app.database.models.sae import (  # noqa: F401
     SAEStudent,
     SAEInvitationToken,
     SAESubmission,
+    SAEQuestionComment,
 )
 
 __all__ = [
@@ -230,6 +232,7 @@ __all__ = [
     "SAEStudent",
     "SAEInvitationToken",
     "SAESubmission",
+    "SAEQuestionComment",
     # autograder
     "Student",
     "AutograderDraft",
@@ -246,4 +249,5 @@ __all__ = [
     "SAEStudent",
     "SAEInvitationToken",
     "SAESubmission",
+    "SAEQuestionComment",
 ]

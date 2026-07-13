@@ -12,3 +12,14 @@ static"venv/"
 !.env.example
 venv/
 static/
+
+# Local OCR test assets
+data/gemini_ocr_tests/
+data/mistral_ocr_tests/
+data/T1Student1Ans.pdf
+data/T2Student2Ans.pdf
+data/T3Student1Ans.pdf
+
+# Local OCR test scripts
+scripts/test_gemini_ocr.py
+scripts/test_mistral_ocr.py

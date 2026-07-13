@@ -1,7 +1,9 @@
 """
 Self Assessment Exam (SAE) system models.
 Completely isolated from the Math Placement Exam autograder.
-Three tables: sae_students → sae_invitation_tokens → sae_submissions
+Four tables:
+sae_students → sae_invitation_tokens
+sae_students → sae_submissions → sae_question_comments
 """
 import uuid
 from datetime import datetime
@@ -88,8 +90,8 @@ class SAESubmission(Base):
     handwritten_file_path  = Column(String(500), nullable=True)
     webassign_filename     = Column(String(255), nullable=True)
     webassign_file_path    = Column(String(500), nullable=True)
+    handwritten_transcript_file_path = Column(String(500), nullable=True)
     score                  = Column(Integer, nullable=True)
-    overall_confidence     = Column(String(50), nullable=True)
     review_required        = Column(Boolean, nullable=False, default=False)
     result_json            = Column(JSONB, nullable=True)
     edited_result_json     = Column(JSONB, nullable=True)
@@ -102,3 +104,69 @@ class SAESubmission(Base):
     student        = relationship("SAEStudent", back_populates="submission")
     publisher_user = relationship("User", foreign_keys=[publisher_user_id])
     last_editor    = relationship("User", foreign_keys=[last_edited_by])
+
+    comments = relationship(
+        "SAEQuestionComment",
+        back_populates="submission",
+        cascade="all, delete-orphan",
+        order_by="SAEQuestionComment.created_at",
+    )
+
+class SAEQuestionComment(Base):
+    """
+    A student comment attached to one graded question.
+
+    The unique constraint allows one comment per question per submission.
+    The student may later update the existing comment instead of creating
+    multiple separate comments.
+    """
+    __tablename__ = "sae_question_comments"
+    __table_args__ = (
+        UniqueConstraint(
+            "submission_id",
+            "question_id",
+            name="uq_sae_comment_submission_question",
+        ),
+    )
+
+    id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+
+    submission_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("sae_submissions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    question_id = Column(
+        String(50),
+        nullable=False,
+        index=True,
+    )
+
+    comment = Column(
+        Text,
+        nullable=False,
+    )
+
+    created_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False,
+    )
+
+    updated_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+
+    submission = relationship(
+        "SAESubmission",
+        back_populates="comments",
+    )

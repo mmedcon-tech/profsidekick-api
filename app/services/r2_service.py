@@ -1,9 +1,11 @@
 """
-Cloudflare R2 storage client (S3-compatible API).
+Cloudflare R2 storage client using the S3-compatible API.
 
 Object key convention for SAE submissions:
     sae/{student_code}/handwritten.pdf
     sae/{student_code}/webassign.pdf
+    sae/{student_code}/handwritten_transcript.md
+    sae/{student_code}/metadata.json
 """
 
 import logging
