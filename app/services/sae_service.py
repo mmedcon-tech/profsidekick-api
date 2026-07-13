@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Optional
 
 import bcrypt
-from sqlalchemy import func
+from sqlalchemy import func, update
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -736,13 +736,16 @@ async def grade_and_save_submission(
     then persists a new SAESubmission row.
 
     Flow:
-      1. Re-fetch SAEStudent with SELECT FOR UPDATE to serialise concurrent requests.
+      1. Re-fetch SAEStudent with SELECT FOR UPDATE (short-lived lock).
       2. Enforce the MAX_SUBMISSIONS limit (409 if reached).
-      3. Write files to a per-submission directory so nothing is overwritten.
-      4. Grade via the LLM fallback chain.
-      5. Deactivate the previous active submission.
-      6. Insert the new submission (submission_number = submission_count + 1, is_active=True).
-      7. Update SAEStudent counters and commit.
+      3. Increment submission_count and commit — releases the row lock immediately
+         so concurrent submissions for this student can start their own Gemini calls.
+      4. Write files to a per-submission directory and grade via the LLM fallback
+         chain concurrently (no DB lock held during this step).
+      5. On grading/storage failure: roll back the counter so the slot isn't wasted.
+      6. Deactivate the previous active submission.
+      7. Insert the new submission (submission_number = new_submission_number, is_active=True).
+      8. Update SAEStudent.submitted_at and commit.
 
     Raises HTTPException on limit breach or grading failure.
     """
@@ -758,7 +761,7 @@ async def grade_and_save_submission(
         .first()
     )
 
-    # Step 2 — submission limit
+    # Step 2 — submission limit.
     if locked_student.submission_count >= MAX_SUBMISSIONS:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -767,12 +770,32 @@ async def grade_and_save_submission(
 
     new_submission_number = locked_student.submission_count + 1
 
+    # Capture values needed after commit — commit expires ORM object attributes.
+    student_id = locked_student.id
+    student_code = locked_student.student_code
+
     from app.services.r2_service import r2
 
-    hw_key = f"autograder/sae/{locked_student.student_code}/{new_submission_number}/handwritten.pdf"
-    wa_key = f"autograder/sae/{locked_student.student_code}/{new_submission_number}/webassign.pdf"
+    hw_key = f"autograder/sae/{student_code}/{new_submission_number}/handwritten.pdf"
+    wa_key = f"autograder/sae/{student_code}/{new_submission_number}/webassign.pdf"
 
-    # Steps 3+4 — storage and LLM grading run concurrently.
+    # Resolve grading prompt before committing (needs the assessment relationship).
+    grading_prompt_for_run: str | None = None
+    if locked_student.assessment and locked_student.assessment.grading_prompt_snapshot:
+        grading_prompt_for_run = locked_student.assessment.grading_prompt_snapshot
+    else:
+        from app.services.prompt_resolution_service import PromptResolutionService
+        grading_prompt_for_run = PromptResolutionService()._resolve_system_default(
+            db, "grading.assessment"
+        )
+
+    # Step 3 — increment counter and commit immediately to release the row lock.
+    # Concurrent submissions for this student can now pass the limit check and
+    # start their own Gemini calls without waiting for this one to finish.
+    locked_student.submission_count = new_submission_number
+    db.commit()
+
+    # Steps 4 — storage and LLM grading run concurrently (no DB lock held).
     #
     # The LLM only needs in-memory bytes (StudentFiles); stored file paths are
     # only needed for the DB row written AFTER grading.  Running them in parallel
@@ -788,17 +811,6 @@ async def grade_and_save_submission(
 
     fp = get_fallback_provider()
 
-    # Resolve the grading prompt for this submission: use the assessment's frozen
-    # snapshot if present; otherwise fall back to the live resolution chain.
-    grading_prompt_for_run: str | None = None
-    if locked_student.assessment and locked_student.assessment.grading_prompt_snapshot:
-        grading_prompt_for_run = locked_student.assessment.grading_prompt_snapshot
-    else:
-        from app.services.prompt_resolution_service import PromptResolutionService
-        grading_prompt_for_run = PromptResolutionService()._resolve_system_default(
-            db, "grading.assessment"
-        )
-
     if r2.enabled:
         async def _store_r2() -> tuple[str, str]:
             await asyncio.gather(
@@ -811,7 +823,7 @@ async def grade_and_save_submission(
     else:
         async def _store_local() -> tuple[str, str]:
             def _write() -> tuple[str, str]:
-                sub_dir = build_submission_dir(locked_student.student_code, new_submission_number)
+                sub_dir = build_submission_dir(student_code, new_submission_number)
                 hw_path = sub_dir / "handwritten.pdf"
                 wa_path = sub_dir / "webassign.pdf"
                 hw_path.write_bytes(handwritten_bytes)
@@ -828,6 +840,14 @@ async def grade_and_save_submission(
         )
     except RuntimeError as exc:
         msg = str(exc)
+        # Step 5 — roll back the counter so the student doesn't lose a submission slot.
+        # Use a relative decrement (not absolute set) so concurrent failures compose correctly.
+        db.execute(
+            update(SAEStudent)
+            .where(SAEStudent.id == student_id)
+            .values(submission_count=SAEStudent.submission_count - 1)
+        )
+        db.commit()
         prefix = "File storage failed" if "R2 upload" in msg or "upload failed" in msg.lower() else "Grading failed"
         if request_id:
             from app.llm.event_bus import event_bus as _event_bus
@@ -860,15 +880,15 @@ async def grade_and_save_submission(
         },
     }
 
-    # Step 5 — deactivate the previous active submission (if any).
+    # Step 6 — deactivate the previous active submission (if any).
     db.query(SAESubmission).filter(
-        SAESubmission.student_id == locked_student.id,
+        SAESubmission.student_id == student_id,
         SAESubmission.is_active == True,  # noqa: E712
     ).update({"is_active": False}, synchronize_session=False)
 
-    # Step 6 — insert the new submission.
+    # Step 7 — insert the new submission.
     submission = SAESubmission(
-        student_id=locked_student.id,
+        student_id=student_id,
         submission_number=new_submission_number,
         is_active=True,
         submitted_by_publisher=submitted_by_publisher,
@@ -884,9 +904,12 @@ async def grade_and_save_submission(
     )
     db.add(submission)
 
-    # Step 7 — update student counters.
-    locked_student.submission_count = new_submission_number
-    locked_student.submitted_at = datetime.utcnow()
+    # Step 8 — update submitted_at (submission_count already committed in Step 3).
+    db.execute(
+        update(SAEStudent)
+        .where(SAEStudent.id == student_id)
+        .values(submitted_at=datetime.utcnow())
+    )
 
     db.commit()
     db.refresh(submission)
