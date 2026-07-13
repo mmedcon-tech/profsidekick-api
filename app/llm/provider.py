@@ -34,5 +34,5 @@ class LLMProvider:
         """Maximum number of attempts FallbackProvider will make for this provider."""
         raise NotImplementedError
 
-    async def grade(self, student_files: StudentFiles) -> GradingResult:
+    async def grade(self, student_files: StudentFiles, grading_prompt: str | None = None) -> GradingResult:
         raise NotImplementedError

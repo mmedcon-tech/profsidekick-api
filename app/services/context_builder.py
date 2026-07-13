@@ -186,6 +186,10 @@ def build_realtime_instructions(
     rag_context: Optional[str] = None,
     # Grounding policy injected after the core persona
     grounding_policy: str = GROUNDING_POLICY_DEFAULT,
+    # Pre-resolved prompt from PromptResolutionService — takes priority over template fields
+    resolved_system_prompt: Optional[str] = None,
+    # Structured grading feedback from a prior autograder run (assessment sessions only)
+    grading_feedback: Optional[dict] = None,
 ) -> str:
     """
     Assemble the complete instruction string sent to the OpenAI Realtime API.
@@ -203,8 +207,8 @@ def build_realtime_instructions(
 
     parts: List[str] = []
 
-    # 1. Core persona — mode-resolved prompt
-    resolved = _resolve_prompt_for_mode(session_mode, teaching_prompt, examination_prompt, conversation_prompt)
+    # 1. Core persona — PromptResolutionService result takes priority over template fields
+    resolved = resolved_system_prompt or _resolve_prompt_for_mode(session_mode, teaching_prompt, examination_prompt, conversation_prompt)
     parts.append(resolved if resolved else EXAMINER_BASE_PROMPT)
     parts.append(MATH_FORMATTING_INSTRUCTION)
 
@@ -271,7 +275,33 @@ def build_realtime_instructions(
         if mem_block:
             parts.append(f"[Student Learning Profile]\n{mem_block}")
 
-    # 7b. RAG-retrieved knowledge context
+    # 7b. Grading feedback from prior autograder run (assessment sessions only)
+    if grading_feedback:
+        fb_lines = []
+        if grading_feedback.get("overall_feedback"):
+            fb_lines.append(f"Overall: {grading_feedback['overall_feedback']}")
+        for q in (grading_feedback.get("questions") or []):
+            q_num = q.get("question_number", "?")
+            q_score = q.get("score")
+            q_max = q.get("max_score")
+            q_fb = q.get("feedback", "")
+            score_str = f"{q_score}/{q_max}" if q_score is not None and q_max is not None else ""
+            line = f"- Q{q_num}"
+            if score_str:
+                line += f" ({score_str})"
+            if q_fb:
+                line += f": {q_fb}"
+            fb_lines.append(line)
+        if fb_lines:
+            parts.append(
+                "[PREVIOUS GRADING FEEDBACK]\n"
+                "The student has already submitted this work for grading. Use the feedback below "
+                "to guide your teaching — focus on areas where they lost marks and reinforce "
+                "concepts they misunderstood. Do not simply re-read these notes to the student.\n\n"
+                + "\n".join(fb_lines)
+            )
+
+    # 7c. RAG-retrieved knowledge context
     if rag_context and rag_context.strip():
         parts.append(f"[KNOWLEDGE CONTEXT]\n{rag_context.strip()}")
 

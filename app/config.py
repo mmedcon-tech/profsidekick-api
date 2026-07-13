@@ -75,15 +75,7 @@ class Settings(BaseSettings):
     r2_access_key_id: str = Field("", env="R2_ACCESS_KEY_ID")
     r2_secret_access_key: str = Field("", env="R2_SECRET_ACCESS_KEY")
     r2_bucket_name: str = Field("", env="R2_BUCKET_NAME")
-    r2_public_url: str = Field("", env="R2_PUBLIC_URL")
-    r2_api_token: str = Field("", env="R2_API_TOKEN")
-
-    # ElevenLabs Configuration — server-side voice catalog lookups / reachability
-    # checks for the dual voice pipeline (see voice_catalog_service.py). The
-    # frontend BFF has its own ELEVENLABS_API_KEY for actual synthesis calls;
-    # this is a separate, backend-side use of the same provider account.
-    elevenlabs_api_key: str = Field("", env="ELEVENLABS_API_KEY")
-
+    
     # Poppler path (required on Windows for pdf2image; leave empty on Linux/Docker where poppler-utils is in PATH)
     poppler_path: Optional[str] = Field(None, env="POPPLER_PATH")
 

@@ -54,6 +54,8 @@ from app.api.publisher.api import router as publisher_router
 from app.api.subscriptions.api import router as subscriptions_router
 from app.api.billing.api import router as billing_router
 from app.api.admin.billing_api import router as admin_billing_router
+from app.api.admin.sae import router as admin_sae_router
+from app.api.admin.prompt_templates_api import router as prompt_templates_router
 from app.api.assistant.api import router as assistant_router
 from app.api.admin.models_api import router as admin_3d_models_router  # W2A
 from app.api.avatars.variants import router as avatar_variants_router  # W2A
@@ -73,7 +75,6 @@ from app.api.webhooks.wix import router as wix_router
 from app.api.analytics.api import router as analytics_router              # W6
 from app.api.assistant.api import router as assistant_router              # W7
 from app.api.brightspace.api import router as brightspace_router
-from app.api.voice.api import router as voice_router  # Dual voice pipeline
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -267,6 +268,8 @@ app.include_router(publisher_router)
 app.include_router(subscriptions_router)
 app.include_router(billing_router)
 app.include_router(admin_billing_router)
+app.include_router(admin_sae_router)
+app.include_router(prompt_templates_router)
 app.include_router(assistant_router)
 app.include_router(admin_3d_models_router)   # W2A: admin 3D model catalog
 app.include_router(avatar_variants_router)   # W2A: publisher avatar variants
@@ -286,7 +289,6 @@ app.include_router(wix_router)
 app.include_router(analytics_router)            # W6: subscriber, publisher, admin analytics
 app.include_router(assistant_router)            # W7: multi-role AI navigation assistant
 app.include_router(brightspace_router)          # Brightspace LMS integration
-app.include_router(voice_router)  # Dual voice pipeline: preferences, catalog, usage
 
 # Add middleware for request logging (optional)
 @app.middleware("http")

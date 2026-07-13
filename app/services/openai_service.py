@@ -76,6 +76,10 @@ class OpenAIService:
         rag_context: Optional[str] = None,
         # Grounding policy override
         grounding_policy: str = GROUNDING_POLICY_DEFAULT,
+        # Pre-resolved prompt from PromptResolutionService
+        resolved_system_prompt: Optional[str] = None,
+        # Structured grading feedback from a prior autograder run (assessment sessions only)
+        grading_feedback: Optional[dict] = None,
     ) -> Dict[str, Any]:
         """
         Generate ephemeral token for OpenAI Realtime API using the SDK.
@@ -105,6 +109,8 @@ class OpenAIService:
                 refined_prompt=refined_prompt,
                 rag_context=rag_context,
                 grounding_policy=grounding_policy,
+                resolved_system_prompt=resolved_system_prompt,
+                grading_feedback=grading_feedback,
             )
 
             # ── Build GA audio.input ───────────────────────────────────────────
