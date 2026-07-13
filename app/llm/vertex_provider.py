@@ -52,8 +52,8 @@ class VertexAIProvider(LLMProvider):
     def max_attempts(self) -> int:
         return 1
 
-    async def grade(self, student_files: StudentFiles) -> GradingResult:
-        contents = self._build_parts(student_files)
+    async def grade(self, student_files: StudentFiles, grading_prompt: str | None = None) -> GradingResult:
+        contents = self._build_parts(student_files, grading_prompt=grading_prompt)
         using_gcs = bool(autograder_cache.vertex_gcs_uris)
 
         gen_config = GenerationConfig(
@@ -101,7 +101,7 @@ class VertexAIProvider(LLMProvider):
                     f"[TRACE] vertex_gcs_failure_fallback "
                     f"retrying inline model={self._model_name}"
                 )
-                contents = self._build_inline_parts(student_files)
+                contents = self._build_inline_parts(student_files, grading_prompt=grading_prompt)
                 try:
                     response = await self._model.generate_content_async(
                         contents, generation_config=gen_config,
@@ -121,13 +121,20 @@ class VertexAIProvider(LLMProvider):
                 # surface the full error and let FallbackProvider move to Gemini Pro.
                 raise RetryableError(f"{self.name}: {msg}")
 
-        return self._parse_response(response)
+        try:
+            return self._parse_response(response)
+        except RetryableError:
+            raise
+        except Exception as exc:
+            raise RetryableError(
+                f"{self.name}: Unexpected error in response parsing ({type(exc).__name__}): {exc}"
+            ) from exc
 
     # ------------------------------------------------------------------
     # Part construction
     # ------------------------------------------------------------------
 
-    def _build_parts(self, student_files: StudentFiles) -> list:
+    def _build_parts(self, student_files: StudentFiles, grading_prompt: str | None = None) -> list:
         """
         Build the content parts list for the Vertex AI request.
 
@@ -162,16 +169,16 @@ class VertexAIProvider(LLMProvider):
             *static_parts,
             self._pdf_inline(student_files.webassign_b64),
             self._pdf_inline(student_files.handwritten_b64),
-            Part.from_text(autograder_cache.grading_prompt),
+            Part.from_text(grading_prompt or autograder_cache.grading_prompt),
         ]
 
-    def _build_inline_parts(self, student_files: StudentFiles) -> list:
+    def _build_inline_parts(self, student_files: StudentFiles, grading_prompt: str | None = None) -> list:
         """Always-inline version used as GCS fallback."""
         return [
             *self._inline_static_parts(),
             self._pdf_inline(student_files.webassign_b64),
             self._pdf_inline(student_files.handwritten_b64),
-            Part.from_text(autograder_cache.grading_prompt),
+            Part.from_text(grading_prompt or autograder_cache.grading_prompt),
         ]
 
     def _inline_static_parts(self) -> list:
@@ -201,11 +208,26 @@ class VertexAIProvider(LLMProvider):
             raise RetryableError(f"{self.name}: Model returned empty content.")
 
         cleaned = raw_output.replace("```json", "").replace("```", "").strip()
+
         try:
             parsed = json.loads(cleaned)
         except json.JSONDecodeError as exc:
+            print(
+                f"[ERROR] {self.name}: JSON decode failed at line {exc.lineno} col {exc.colno} "
+                f"— raw preview: {cleaned[:400]!r}"
+            )
             raise RetryableError(
-                f"{self.name}: Invalid JSON at line {exc.lineno}, col {exc.colno}: {exc.msg}"
+                f"{self.name}: Invalid JSON from model (line {exc.lineno}, col {exc.colno}): {exc.msg}"
+            )
+
+        if not isinstance(parsed, dict):
+            print(
+                f"[ERROR] {self.name}: Model returned {type(parsed).__name__} instead of object "
+                f"— raw preview: {cleaned[:400]!r}"
+            )
+            raise RetryableError(
+                f"{self.name}: Expected JSON object at root but got {type(parsed).__name__}. "
+                f"Prompt schema may not have been followed. Falling back to next provider."
             )
 
         questions: list[dict] = []

@@ -10,7 +10,7 @@ import logging
 
 import boto3
 from botocore.config import Config
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 from app.config import settings
 
@@ -51,7 +51,7 @@ class R2StorageService:
                 Body=data,
                 ContentType=content_type,
             )
-        except ClientError as exc:
+        except (ClientError, BotoCoreError) as exc:
             raise RuntimeError(f"R2 upload failed for key '{key}': {exc}") from exc
 
     def download(self, key: str) -> bytes:
@@ -59,7 +59,7 @@ class R2StorageService:
         try:
             resp = self.client.get_object(Bucket=self.bucket, Key=key)
             return resp["Body"].read()
-        except ClientError as exc:
+        except (ClientError, BotoCoreError) as exc:
             raise RuntimeError(f"R2 download failed for key '{key}': {exc}") from exc
 
     def presigned_get_url(self, key: str, expires: int = 600) -> str:
@@ -70,7 +70,7 @@ class R2StorageService:
                 Params={"Bucket": self.bucket, "Key": key},
                 ExpiresIn=expires,
             )
-        except ClientError as exc:
+        except (ClientError, BotoCoreError) as exc:
             raise RuntimeError(f"R2 presign failed for key '{key}': {exc}") from exc
 
 

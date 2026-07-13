@@ -44,6 +44,10 @@ class Avatar(Base):
     # W3 additions
     avatar_courses = relationship("AvatarCourse", back_populates="avatar", cascade="all, delete-orphan")
     access_codes = relationship("AvatarAccessCode", back_populates="avatar", cascade="all, delete-orphan")
+    # Prompt system — publisher-configured prompt overrides for this avatar
+    prompt_configs = relationship(
+        "AvatarPromptConfig", back_populates="avatar", cascade="all, delete-orphan"
+    )
 
 
 class PublisherAvatarProfile(Base):
@@ -78,10 +82,6 @@ class AvatarConfiguration(Base):
     language = Column(String(50), nullable=True)
     difficulty_level = Column(String(50), nullable=True)
     additional_settings = Column(JSONB, nullable=True)
-    # Dual voice pipeline — publisher-default TTS provider for `voice`.
-    # Nullable: legacy rows are backfilled at publish time via
-    # voice_catalog_service.infer_provider_from_voice() rather than migrated.
-    tts_provider = Column(String(20), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
 

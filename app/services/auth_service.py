@@ -29,12 +29,13 @@ class AuthService:
         """Verify a password against its hash"""
         return bcrypt.checkpw(password.encode('utf-8'), hashed_password.encode('utf-8'))
     
-    def create_access_token(self, user_id: str, username: str) -> Dict[str, Any]:
+    def create_access_token(self, user_id: str, username: str, token_version: int = 1) -> Dict[str, Any]:
         """Create a JWT access token"""
         expires_at = datetime.utcnow() + timedelta(hours=self.access_token_expire_hours)
         payload = {
             "user_id": user_id,
             "username": username,
+            "token_version": token_version,
             "exp": expires_at,
             "iat": datetime.utcnow()
         }
@@ -94,13 +95,6 @@ class AuthService:
                 message="Email already registered"
             )
         
-        # Check if role is valid
-        if registration_data.role not in ["publisher", "subscriber", "admin"]:
-            return AuthResponse(
-                success=False,
-                message="Invalid role. Must be publisher, subscriber, or admin."
-            )
-        
         # Generate email verification token
         verification_token = self.generate_token()
         
@@ -113,7 +107,7 @@ class AuthService:
             password_hash=hashed_password,
             first_name=registration_data.firstName,
             last_name=registration_data.lastName,
-            role=registration_data.role,
+            role="subscriber",
             email_verified=settings.bypass_email_verification,
             email_verification_token=verification_token,
             email_verification_sent_at=datetime.utcnow(),
@@ -177,7 +171,7 @@ class AuthService:
             )
         
         # Create access token
-        token_data = self.create_access_token(str(user.id), user.username)
+        token_data = self.create_access_token(str(user.id), user.username, user.token_version or 1)
         
         return AuthResponse(
             success=True,

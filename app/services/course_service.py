@@ -368,15 +368,42 @@ class CourseService:
         if user.role == "publisher" and course.user_id != user_id:
             raise HTTPException(status_code=403, detail="You can only view sessions in your own courses")
         elif user.role == "subscriber":
-            # Subscribers who are not enrolled see an empty session list — not an error
             enrollment = db.query(CourseStudent).filter(
                 CourseStudent.course_id == course.id,
                 CourseStudent.user_id == user_id
             ).first()
             if not enrollment:
-                return []
+                if not course.is_public:
+                    # Private course, not enrolled — no sessions visible
+                    return []
+                # Public course, not enrolled — show published sessions only
+                sessions = db.query(SessionModel).filter(
+                    SessionModel.course_id == course.id,
+                    SessionModel.is_published == True,  # noqa: E712
+                ).all()
+                session_summaries = []
+                for session in sessions:
+                    student_slides = [
+                        s for s in (session.slides_details or [])
+                        if not s.get("solution_slide")
+                    ]
+                    run_count = len(session.session_runs) if session.session_runs else 0
+                    session_summaries.append(CourseSessionSummary(
+                        sessionId=session.session_id,
+                        session_number=session.session_number,
+                        session_date=session.session_date,
+                        class_name=session.class_name,
+                        description=session.description,
+                        duration=session.duration,
+                        total_slides=len(student_slides),
+                        run_count=run_count,
+                        is_published=True,
+                        created_at=session.created_at,
+                        updated_at=session.updated_at
+                    ))
+                return session_summaries
         # admin: no restriction — falls through and returns all sessions
-        
+
         # Get sessions for the course
         sessions = db.query(SessionModel).filter(SessionModel.course_id == course.id).all()
         

@@ -18,11 +18,6 @@ from app.database.models.enums import (  # noqa: F401
 
 # Core entities
 from app.database.models.users import User, UserAgreement  # noqa: F401
-
-# Dual voice pipeline — subscriber override; depends only on User
-from app.database.models.voice_preferences import (
-    SubscriberVoicePreference,
-)  # noqa: F401
 from app.database.models.courses import (  # noqa: F401
     Course,
     CourseMaterial,
@@ -127,8 +122,9 @@ from app.database.models.progress import (  # noqa: F401
     AssessmentResult,
 )
 
-# SAE (Self Assessment Exam) system — depends on User only
+# SAE (Self Assessment Exam) system — depends on User and Course
 from app.database.models.sae import (  # noqa: F401
+    SAEAssessment,
     SAEStudent,
     SAEInvitationToken,
     SAESubmission,
@@ -139,24 +135,17 @@ from app.database.models.autograder import (  # noqa: F401
     Student,
     AutograderSubmission,
 )
+
+# Prompt system — must come after User and Avatar
+from app.database.models.prompts import (  # noqa: F401
+    PromptTemplate,
+    AvatarPromptConfig,
+)
 # Third-party integration tokens — depends on User only
 from app.database.models.integrations import BrightspaceToken  # noqa: F401
 
 # Dormant v1 stubs — keep last; no other models depend on them
 from app.database.models.legacy import ProfessorPersona  # noqa: F401
-
-# Autograder
-from app.database.models.autograder import (  # noqa: F401
-    Student,
-    AutograderSubmission,
-)
-
-# SAE
-from app.database.models.sae import (  # noqa: F401
-    SAEStudent,
-    SAEInvitationToken,
-    SAESubmission,
-)
 
 __all__ = [
     "Base",
@@ -167,8 +156,6 @@ __all__ = [
     # users
     "User",
     "UserAgreement",
-    # voice preferences (dual voice pipeline)
-    "SubscriberVoicePreference",
     # courses
     "Course",
     "CourseMaterial",
@@ -232,6 +219,7 @@ __all__ = [
     "SubscriberCourseProgress",
     "AssessmentResult",
     # SAE system
+    "SAEAssessment",
     "SAEStudent",
     "SAEInvitationToken",
     "SAESubmission",
@@ -242,11 +230,7 @@ __all__ = [
     "BrightspaceToken",
     # legacy
     "ProfessorPersona",
-    # autograder
-    "Student",
-    "AutograderSubmission",
-    # sae
-    "SAEStudent",
-    "SAEInvitationToken",
-    "SAESubmission",
+    # prompt system
+    "PromptTemplate",
+    "AvatarPromptConfig",
 ]

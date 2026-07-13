@@ -1,3 +1,4 @@
+import fnmatch
 import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
@@ -53,6 +54,8 @@ from app.api.publisher.api import router as publisher_router
 from app.api.subscriptions.api import router as subscriptions_router
 from app.api.billing.api import router as billing_router
 from app.api.admin.billing_api import router as admin_billing_router
+from app.api.admin.sae import router as admin_sae_router
+from app.api.admin.prompt_templates_api import router as prompt_templates_router
 from app.api.assistant.api import router as assistant_router
 from app.api.admin.models_api import router as admin_3d_models_router  # W2A
 from app.api.avatars.variants import router as avatar_variants_router  # W2A
@@ -72,7 +75,6 @@ from app.api.webhooks.wix import router as wix_router
 from app.api.analytics.api import router as analytics_router              # W6
 from app.api.assistant.api import router as assistant_router              # W7
 from app.api.brightspace.api import router as brightspace_router
-from app.api.voice.api import router as voice_router  # Dual voice pipeline
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -160,6 +162,44 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory=settings.static_dir), name="static")
 app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
 
+_ALLOWED_ORIGINS = (
+    settings.cors_origins
+    + [
+        "http://localhost:3001",
+        "http://127.0.0.1:3000",
+        "http://192.168.10.174:3001",
+        "https://*.up.railway.app",
+        "https://*.railway.app",
+        "https://profsidekick.vercel.app",
+        "https://*.vercel.app",
+        "https://profsidekick-frontend-3il7.vercel.app",
+        "https://profsidekick-autograder.vercel.app",
+        "https://profsidekick-ai.vercel.app",
+        "https://*.profsidekick-ai.vercel.app",
+        "https://myos.sk",
+        "https://www.myos.sk",
+        "https://*.myos.sk",
+        "https://autograder.myos.sk",
+        "https://app.myos.sk",
+        "https://*.app.myos.sk",
+    ]
+)
+
+
+def _cors_headers(request: Request) -> dict:
+    """Return CORS headers for error responses that bypass CORSMiddleware."""
+    origin = request.headers.get("origin", "")
+    if not origin:
+        return {}
+    for allowed in _ALLOWED_ORIGINS:
+        if origin == allowed or fnmatch.fnmatch(origin, allowed):
+            return {
+                "Access-Control-Allow-Origin": origin,
+                "Access-Control-Allow-Credentials": "true",
+            }
+    return {}
+
+
 # Global exception handler
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
@@ -171,7 +211,8 @@ async def http_exception_handler(request: Request, exc: HTTPException):
             "message": exc.detail,
             "status_code": exc.status_code,
             "path": str(request.url)
-        }
+        },
+        headers=_cors_headers(request),
     )
 
 @app.exception_handler(Exception)
@@ -186,7 +227,8 @@ async def general_exception_handler(request: Request, exc: Exception):
             "message": "An unexpected error occurred" if not settings.debug else str(exc),
             "status_code": 500,
             "path": str(request.url)
-        }
+        },
+        headers=_cors_headers(request),
     )
 
 # Health check endpoint
@@ -226,6 +268,8 @@ app.include_router(publisher_router)
 app.include_router(subscriptions_router)
 app.include_router(billing_router)
 app.include_router(admin_billing_router)
+app.include_router(admin_sae_router)
+app.include_router(prompt_templates_router)
 app.include_router(assistant_router)
 app.include_router(admin_3d_models_router)   # W2A: admin 3D model catalog
 app.include_router(avatar_variants_router)   # W2A: publisher avatar variants
@@ -245,7 +289,6 @@ app.include_router(wix_router)
 app.include_router(analytics_router)            # W6: subscriber, publisher, admin analytics
 app.include_router(assistant_router)            # W7: multi-role AI navigation assistant
 app.include_router(brightspace_router)          # Brightspace LMS integration
-app.include_router(voice_router)  # Dual voice pipeline: preferences, catalog, usage
 
 # Add middleware for request logging (optional)
 @app.middleware("http")

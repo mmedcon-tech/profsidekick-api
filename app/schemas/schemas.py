@@ -37,13 +37,6 @@ class EphemeralTokenResponse(BaseModel):
     heygen_access_token: Optional[str] = None
     session_language: Optional[str] = None
     session_mode: Optional[str] = None
-    # Dual voice pipeline — resolved via voice_resolution_service.resolve_session_voice()
-    # so the frontend plays the actual resolved voice instead of guessing gender
-    # from the 3-D avatar's library entry.
-    voice_provider: Optional[str] = None   # 'openai' | 'elevenlabs'
-    voice_id: Optional[str] = None
-    voice_dialect: Optional[str] = None
-    voice_source: Optional[str] = None     # 'subscriber' | 'publisher'
 
 class InputAudioNoiseReduction(BaseModel):
     type: str
@@ -122,6 +115,8 @@ class SessionCreateRequest(BaseModel):
     sessionMode: Optional[str] = Field("teaching", pattern="^(teaching|examination|consultation)$")
     # Subscriber runtime mode: determines what experience subscribers get
     subscriberRuntimeMode: Optional[str] = Field("avatar", pattern="^(avatar|chat|choice)$")
+    # Optional per-session prompt override (Phase 2)
+    promptTemplateId: Optional[UUID] = None
 
 class SessionUpdateDetails(BaseModel):
     # courseName: str = Field(..., min_length=1, max_length=200)
@@ -161,7 +156,6 @@ class UserRegistration(BaseModel):
     password: str = Field(..., min_length=6)
     firstName: str = Field(..., min_length=1, max_length=100)
     lastName: str = Field(..., min_length=1, max_length=100)
-    role: str = Field(..., min_length=1, max_length=100)
 
 class UserLogin(BaseModel):
     username: str
@@ -2472,34 +2466,37 @@ class AssistantChatResponse(BaseModel):
     message_id: UUID
     reply: str
     turn_number: int
+    created_at: datetime
 
 
-# ═══════════════════════════════════════════════════════════════════
-# Dual Voice Pipeline — subscriber voice override, catalog, usage billing
-# ═══════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
+# Prompt System — admin templates and avatar prompt configs
+# ---------------------------------------------------------------------------
 
-VALID_VOICE_PROVIDERS = {"openai", "elevenlabs"}
-
-
-class ResolvedVoiceResponse(BaseModel):
-    provider: str
-    voice_id: str
-    dialect: Optional[str] = None
-    source: str  # 'subscriber' | 'publisher'
+class PromptTemplateCreate(BaseModel):
+    name: str
+    use_case: str
+    body: str
+    description: Optional[str] = None
 
 
-class VoicePreferenceUpdate(BaseModel):
-    provider: str = Field(..., pattern="^(openai|elevenlabs)$")
-    voice_id: str = Field(..., min_length=1, max_length=200)
-    dialect: Optional[str] = Field(None, max_length=50)
+class PromptTemplateUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    use_case: Optional[str] = None
+    body: Optional[str] = None
 
 
-class VoicePreferenceResponse(BaseModel):
+class PromptTemplateResponse(BaseModel):
     id: UUID
-    provider: str
-    voice_id: Optional[str] = None
-    dialect: Optional[str] = None
-    is_valid: bool
+    name: str
+    description: Optional[str] = None
+    use_case: str
+    body: str
+    is_system: bool
+    is_active: bool
+    version: int
+    created_by: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime
 
@@ -2507,40 +2504,29 @@ class VoicePreferenceResponse(BaseModel):
         from_attributes = True
 
 
-class VoicePreferenceWithResolutionResponse(BaseModel):
-    preference: Optional[VoicePreferenceResponse] = None
-    resolved: ResolvedVoiceResponse
+class AvatarPromptConfigUpsert(BaseModel):
+    prompt_template_id: Optional[UUID] = None
+    is_enabled: bool = True
+    override_body: Optional[str] = None
+    override_name: Optional[str] = None
+    is_custom: bool = False
 
 
-class VoiceCatalogEntry(BaseModel):
-    id: str
-    name: str
-    dialects: List[str]
+class AvatarPromptConfigResponse(BaseModel):
+    id: UUID
+    avatar_id: UUID
+    prompt_template_id: Optional[UUID] = None
+    use_case: str
+    is_enabled: bool
+    override_body: Optional[str] = None
+    override_name: Optional[str] = None
+    pinned_version: Optional[int] = None
+    is_custom: bool
+    created_at: datetime
+    updated_at: datetime
+    # Computed by the endpoint: True when the admin template has been edited
+    # since the publisher last saved their override (pinned_version < current version).
+    is_stale: Optional[bool] = None
 
-
-class VoiceCatalogResponse(BaseModel):
-    provider: str
-    voices: List[VoiceCatalogEntry]
-    cost_per_1k_characters_usd: Decimal
-
-
-class VoiceUsageRequest(BaseModel):
-    provider: str = Field(..., pattern="^(openai|elevenlabs)$")
-    character_count: int = Field(..., gt=0, le=50000)
-    idempotency_key: str = Field(..., min_length=1, max_length=100)
-
-
-class VoiceUsageResponse(BaseModel):
-    operation_type: str
-    credits_charged: Decimal
-    new_balance: Decimal
-
-
-class ProviderAvailability(BaseModel):
-    available: bool
-    reason: Optional[str] = None  # 'platform_quota_exceeded' | 'unreachable' | None
-
-
-class VoiceAvailabilityResponse(BaseModel):
-    openai: ProviderAvailability
-    elevenlabs: ProviderAvailability
+    class Config:
+        from_attributes = True
