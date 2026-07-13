@@ -1,3 +1,4 @@
+import fnmatch
 import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
@@ -160,6 +161,44 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory=settings.static_dir), name="static")
 app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
 
+_ALLOWED_ORIGINS = (
+    settings.cors_origins
+    + [
+        "http://localhost:3001",
+        "http://127.0.0.1:3000",
+        "http://192.168.10.174:3001",
+        "https://*.up.railway.app",
+        "https://*.railway.app",
+        "https://profsidekick.vercel.app",
+        "https://*.vercel.app",
+        "https://profsidekick-frontend-3il7.vercel.app",
+        "https://profsidekick-autograder.vercel.app",
+        "https://profsidekick-ai.vercel.app",
+        "https://*.profsidekick-ai.vercel.app",
+        "https://myos.sk",
+        "https://www.myos.sk",
+        "https://*.myos.sk",
+        "https://autograder.myos.sk",
+        "https://app.myos.sk",
+        "https://*.app.myos.sk",
+    ]
+)
+
+
+def _cors_headers(request: Request) -> dict:
+    """Return CORS headers for error responses that bypass CORSMiddleware."""
+    origin = request.headers.get("origin", "")
+    if not origin:
+        return {}
+    for allowed in _ALLOWED_ORIGINS:
+        if origin == allowed or fnmatch.fnmatch(origin, allowed):
+            return {
+                "Access-Control-Allow-Origin": origin,
+                "Access-Control-Allow-Credentials": "true",
+            }
+    return {}
+
+
 # Global exception handler
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
@@ -171,7 +210,8 @@ async def http_exception_handler(request: Request, exc: HTTPException):
             "message": exc.detail,
             "status_code": exc.status_code,
             "path": str(request.url)
-        }
+        },
+        headers=_cors_headers(request),
     )
 
 @app.exception_handler(Exception)
@@ -186,7 +226,8 @@ async def general_exception_handler(request: Request, exc: Exception):
             "message": "An unexpected error occurred" if not settings.debug else str(exc),
             "status_code": 500,
             "path": str(request.url)
-        }
+        },
+        headers=_cors_headers(request),
     )
 
 # Health check endpoint

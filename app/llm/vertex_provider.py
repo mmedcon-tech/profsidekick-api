@@ -121,7 +121,14 @@ class VertexAIProvider(LLMProvider):
                 # surface the full error and let FallbackProvider move to Gemini Pro.
                 raise RetryableError(f"{self.name}: {msg}")
 
-        return self._parse_response(response)
+        try:
+            return self._parse_response(response)
+        except RetryableError:
+            raise
+        except Exception as exc:
+            raise RetryableError(
+                f"{self.name}: Unexpected error in response parsing ({type(exc).__name__}): {exc}"
+            ) from exc
 
     # ------------------------------------------------------------------
     # Part construction
@@ -201,11 +208,26 @@ class VertexAIProvider(LLMProvider):
             raise RetryableError(f"{self.name}: Model returned empty content.")
 
         cleaned = raw_output.replace("```json", "").replace("```", "").strip()
+
         try:
             parsed = json.loads(cleaned)
         except json.JSONDecodeError as exc:
+            print(
+                f"[ERROR] {self.name}: JSON decode failed at line {exc.lineno} col {exc.colno} "
+                f"— raw preview: {cleaned[:400]!r}"
+            )
             raise RetryableError(
-                f"{self.name}: Invalid JSON at line {exc.lineno}, col {exc.colno}: {exc.msg}"
+                f"{self.name}: Invalid JSON from model (line {exc.lineno}, col {exc.colno}): {exc.msg}"
+            )
+
+        if not isinstance(parsed, dict):
+            print(
+                f"[ERROR] {self.name}: Model returned {type(parsed).__name__} instead of object "
+                f"— raw preview: {cleaned[:400]!r}"
+            )
+            raise RetryableError(
+                f"{self.name}: Expected JSON object at root but got {type(parsed).__name__}. "
+                f"Prompt schema may not have been followed. Falling back to next provider."
             )
 
         questions: list[dict] = []

@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from datetime import datetime, timezone
 
+from app.llm.confirmation_bus import confirmation_bus
 from app.llm.errors import FatalError, RetryableError
 from app.llm.event_bus import event_bus
 from app.llm.provider import GradingResult, LLMProvider, StudentFiles
@@ -78,6 +79,62 @@ class FallbackProvider:
                             **{"from": prev_provider_name, "to": provider.name},
                         ),
                     )
+
+            # Before trying OpenAI, pause and ask the publisher to confirm.
+            # This only fires when (a) we have an SSE channel (request_id is set),
+            # (b) the next provider is OpenAI, and (c) at least one earlier provider
+            # has already failed (i.e. both Gemini Pro attempts are exhausted).
+            if (
+                request_id
+                and provider.name.startswith("openai/")
+                and prev_provider_name is not None
+            ):
+                print(
+                    f"[TRACE] request_id={rid} confirmation_required "
+                    f"pausing_before={provider.name}"
+                )
+                confirmation_bus.register(request_id)
+                await event_bus.publish(
+                    request_id,
+                    _evt(
+                        "confirmation_required",
+                        request_id,
+                        provider.name,
+                        reason="gemini_unavailable",
+                        message=(
+                            "Gemini Pro is currently unavailable or overloaded. "
+                            "Continue grading using OpenAI instead?"
+                        ),
+                    ),
+                )
+
+                decision = await confirmation_bus.wait_for_decision(request_id, timeout=180.0)
+
+                if not decision:
+                    # None = timeout, False = publisher cancelled
+                    reason = (
+                        "Confirmation timed out after 180 seconds."
+                        if decision is None
+                        else "Publisher cancelled fallback to OpenAI."
+                    )
+                    print(
+                        f"[TRACE] request_id={rid} confirmation_cancelled "
+                        f"reason={reason}"
+                    )
+                    if request_id:
+                        await event_bus.publish(
+                            request_id,
+                            {
+                                "event": "grading_failed",
+                                "request_id": request_id,
+                                "provider": None,
+                                "reason": reason,
+                                "timestamp": _now(),
+                            },
+                        )
+                    raise RuntimeError(reason)
+
+                print(f"[TRACE] request_id={rid} confirmation_accepted continuing_with={provider.name}")
 
             t_provider_start = time.monotonic()
             attempts_made = 0
@@ -157,6 +214,17 @@ class FallbackProvider:
                     )
                     last_error = exc
                     break  # no point retrying a fatal error on the same provider
+
+                except Exception as exc:
+                    # Unexpected error (AttributeError, TypeError, etc.) — log it clearly
+                    # and treat it as a fatal failure for this provider so the chain continues.
+                    provider_last_error = f"Unexpected: {exc}"
+                    print(
+                        f"[TRACE] request_id={rid} provider_unexpected_error "
+                        f"name={provider.name} error={type(exc).__name__}: {exc}"
+                    )
+                    last_error = exc
+                    break
 
             providers_tried.append({
                 "name": provider.name,

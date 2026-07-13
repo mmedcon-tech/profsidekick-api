@@ -1,11 +1,17 @@
 """
 Publisher-only SAE management routes.
 
-POST  /api/sae/publisher/students/batch                   → pre-generate N students + tokens
-GET   /api/sae/publisher/students                         → list all students with status
-GET   /api/sae/publisher/students/{student_id}            → single student detail + submission
-POST  /api/sae/publisher/students/{student_id}/submit     → submit on behalf of a student
-PATCH /api/sae/publisher/students/{student_id}/submission → instructor edits to grading result
+POST  /api/sae/publisher/assessments                            → create a new assessment (optional course/avatar link)
+GET   /api/sae/publisher/assessments                            → list all assessments for this publisher
+PATCH /api/sae/publisher/assessments/{assessment_id}/avatar     → link/unlink an avatar and re-snapshot grading prompt
+PATCH /api/sae/publisher/assessments/{assessment_id}/prompt     → set or replace the grading prompt for an assessment
+GET   /api/sae/publisher/default-grading-prompt                 → return the system default grading prompt text
+POST   /api/sae/publisher/students/batch                        → pre-generate N students under an assessment
+GET    /api/sae/publisher/students                              → list students (all or filtered by assessment)
+GET    /api/sae/publisher/students/{student_id}                 → single student detail + submission
+DELETE /api/sae/publisher/students/{student_id}                 → delete an unused (not activated, no submissions) student slot
+POST   /api/sae/publisher/students/{student_id}/submit          → submit on behalf of a student
+PATCH  /api/sae/publisher/students/{student_id}/submission      → instructor edits to grading result
 """
 
 import os
@@ -13,16 +19,21 @@ import uuid
 from pathlib import Path
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
-from fastapi.responses import FileResponse, Response
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
-from app.database.models import SAEStudent, SAESubmission, User
+from app.database.models import SAEAssessment, SAEInvitationToken, SAEStudent, SAESubmission, User
 from app.dependencies.auth import require_publisher
 from app.schemas.sae import (
+    SAEAssessmentCreate,
+    SAEAssessmentLinkAvatarRequest,
+    SAEAssessmentRow,
+    SAEAssessmentUpdatePromptRequest,
     SAEBatchCreateRequest,
     SAEBatchCreateResponse,
+    SAERegenerateResponse,
     SAEStudentDetail,
     SAEStudentRow,
     SAESubmissionEditRequest,
@@ -57,10 +68,24 @@ def _require_own_student(
     return student
 
 
+def _get_active_token(student: SAEStudent, db: Session) -> Optional[SAEInvitationToken]:
+    """Return the latest unused invitation token for this student, or None."""
+    return (
+        db.query(SAEInvitationToken)
+        .filter(
+            SAEInvitationToken.student_id == student.id,
+            SAEInvitationToken.is_used == False,  # noqa: E712
+        )
+        .order_by(SAEInvitationToken.created_at.desc())
+        .first()
+    )
+
+
 def _student_to_row(student: SAEStudent, db: Session) -> SAEStudentRow:
-    inv = student.invitation
+    inv = _get_active_token(student, db)
     return SAEStudentRow(
         id=student.id,
+        assessment_id=student.assessment_id,
         student_number=student.student_number,
         student_code=student.student_code,
         display_name=student.display_name,
@@ -68,8 +93,10 @@ def _student_to_row(student: SAEStudent, db: Session) -> SAEStudentRow:
         invitation_token=inv.token if inv else "",
         is_activated=student.is_activated,
         activated_at=student.activated_at,
-        has_submitted=student.has_submitted,
+        submission_count=student.submission_count,
         submitted_at=student.submitted_at,
+        country_of_origin=student.country_of_origin,
+        curriculum=student.curriculum,
     )
 
 
@@ -78,6 +105,8 @@ def _sub_to_result_publisher(sub: SAESubmission) -> SAESubmissionResultPublisher
     effective_rj = sae_service.get_effective_result_json(sub)
     return SAESubmissionResultPublisher(
         id=sub.id,
+        submission_number=sub.submission_number,
+        is_active=sub.is_active,
         score=sub.score,
         overall_confidence=sub.overall_confidence,
         review_required=sub.review_required,
@@ -92,8 +121,9 @@ def _sub_to_result_publisher(sub: SAESubmission) -> SAESubmissionResultPublisher
 
 
 def _student_to_detail(student: SAEStudent, db: Session) -> SAEStudentDetail:
-    inv = student.invitation
-    sub = student.submission
+    inv = _get_active_token(student, db)
+    all_subs = sae_service.get_student_submissions(db, student)
+    assessment = sae_service.get_assessment_by_id(db, student.assessment_id)
     return SAEStudentDetail(
         id=student.id,
         student_number=student.student_number,
@@ -103,13 +133,159 @@ def _student_to_detail(student: SAEStudent, db: Session) -> SAEStudentDetail:
         invitation_token=inv.token if inv else "",
         is_activated=student.is_activated,
         activated_at=student.activated_at,
-        has_submitted=student.has_submitted,
         submitted_at=student.submitted_at,
-        submission=_sub_to_result_publisher(sub) if sub else None,
+        submission_count=student.submission_count,
+        submissions=[_sub_to_result_publisher(s) for s in all_subs],
+        grading_prompt_snapshot=assessment.grading_prompt_snapshot if assessment else None,
     )
 
 
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _require_own_assessment(
+    assessment_id: str,
+    publisher: User,
+    db: Session,
+) -> SAEAssessment:
+    """Resolve assessment UUID and verify it belongs to the calling publisher."""
+    try:
+        aid = uuid.UUID(assessment_id)
+    except ValueError:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="Invalid assessment_id format.")
+    assessment = db.query(SAEAssessment).filter(SAEAssessment.id == aid).first()
+    if not assessment:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Assessment not found.")
+    if assessment.publisher_id != publisher.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN,
+                            detail="You do not own this assessment.")
+    return assessment
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
+
+@router.post("/assessments", response_model=SAEAssessmentRow, status_code=status.HTTP_201_CREATED)
+def create_assessment(
+    body: SAEAssessmentCreate,
+    publisher: User = Depends(require_publisher),
+    db: Session = Depends(get_db),
+):
+    """
+    Create a new assessment.
+    Optionally pass course_id to link it to an existing course the publisher owns.
+    Optionally pass avatar_id to link the assessment to an avatar and snapshot its grading prompt.
+    grading_prompt_template_id takes priority over avatar_id if both are provided.
+    """
+    if body.avatar_id is not None:
+        from app.database.models.avatars import Avatar
+        av = db.query(Avatar).filter(
+            Avatar.id == body.avatar_id,
+            Avatar.publisher_id == publisher.id,
+        ).first()
+        if not av:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Avatar not found or not owned by you.")
+
+    assessment = sae_service.create_assessment(
+        db=db,
+        publisher_id=publisher.id,
+        name=body.name,
+        description=body.description,
+        course_id=body.course_id,
+        grading_prompt_template_id=body.grading_prompt_template_id,
+        avatar_id=body.avatar_id,
+    )
+    return assessment
+
+
+@router.patch("/assessments/{assessment_id}/avatar", response_model=SAEAssessmentRow)
+def link_avatar(
+    assessment_id: str,
+    body: SAEAssessmentLinkAvatarRequest,
+    publisher: User = Depends(require_publisher),
+    db: Session = Depends(get_db),
+):
+    """
+    Link or unlink an avatar from an existing assessment.
+
+    When avatar_id is provided the assessment's grading prompt snapshot is
+    re-resolved from the avatar's current grading.assessment AvatarPromptConfig
+    and refrozen.  This is an explicit action — changing the avatar's prompt
+    config later does NOT automatically update in-progress assessments.
+
+    Pass avatar_id=null to unlink the avatar and clear the snapshot.
+    """
+    assessment = _require_own_assessment(assessment_id, publisher, db)
+
+    if body.avatar_id is not None:
+        from app.database.models.avatars import Avatar
+        av = db.query(Avatar).filter(
+            Avatar.id == body.avatar_id,
+            Avatar.publisher_id == publisher.id,
+        ).first()
+        if not av:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Avatar not found or not owned by you.")
+
+    updated = sae_service.link_avatar_to_assessment(
+        db=db,
+        assessment=assessment,
+        avatar_id=body.avatar_id,
+    )
+    return updated
+
+
+@router.get("/assessments", response_model=list[SAEAssessmentRow])
+def list_assessments(
+    publisher: User = Depends(require_publisher),
+    db: Session = Depends(get_db),
+):
+    """Return all assessments for this publisher, newest first."""
+    return sae_service.get_publisher_assessments(db=db, publisher_id=publisher.id)
+
+
+@router.patch("/assessments/{assessment_id}/prompt", response_model=SAEAssessmentRow)
+def update_assessment_prompt(
+    assessment_id: str,
+    body: SAEAssessmentUpdatePromptRequest,
+    publisher: User = Depends(require_publisher),
+    db: Session = Depends(get_db),
+):
+    """
+    Set or replace the grading prompt for an assessment.
+
+    The submitted text is frozen as grading_prompt_snapshot and used verbatim
+    for every subsequent grading run on this assessment.
+
+    Pass grading_prompt=null to restore the system default (the hardcoded Math
+    prompt from data/grading_prompt.txt).  The reset is immediate and affects
+    all future submissions; past submissions are not re-graded.
+    """
+    assessment = _require_own_assessment(assessment_id, publisher, db)
+    return sae_service.update_assessment_prompt(
+        db=db,
+        assessment=assessment,
+        grading_prompt=body.grading_prompt,
+    )
+
+
+@router.get("/default-grading-prompt")
+def get_default_grading_prompt(
+    publisher: User = Depends(require_publisher),
+):
+    """
+    Return the system default grading prompt text.
+
+    The frontend uses this to pre-populate the prompt editor for assessments
+    that have a null snapshot (created before this feature was deployed) and
+    to implement the 'Reset to default' button without a round-trip through
+    the PATCH endpoint.
+    """
+    if not autograder_cache.loaded:
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Autograder not ready. Check server startup logs.",
+        )
+    return {"body": autograder_cache.grading_prompt}
+
 
 @router.post("/students/batch", response_model=SAEBatchCreateResponse)
 def create_student_batch(
@@ -118,13 +294,16 @@ def create_student_batch(
     db: Session = Depends(get_db),
 ):
     """
-    Pre-generate `count` student slots and their one-time invitation links.
-    Calling this again adds MORE students to the existing pool (does not replace).
+    Pre-generate `count` student slots under a specific assessment.
+    The assessment must belong to the calling publisher.
+    Calling this again adds MORE students to the assessment (does not replace).
     No emails are sent — the returned invitation_url list is the only delivery channel.
     """
+    _require_own_assessment(str(body.assessment_id), publisher, db)
     students = sae_service.create_student_batch(
         db=db,
         publisher_id=publisher.id,
+        assessment_id=body.assessment_id,
         count=body.count,
         expires_days=body.expires_days,
     )
@@ -134,17 +313,29 @@ def create_student_batch(
 
 @router.get("/students", response_model=list[SAEStudentRow])
 def list_students(
+    assessment_id: Optional[str] = Query(None, description="Filter to a single assessment"),
     search: Optional[str] = Query(None, description="Filter by code or name"),
     publisher: User = Depends(require_publisher),
     db: Session = Depends(get_db),
 ):
     """
-    Return all students belonging to this publisher, ordered by student_number.
+    Return students belonging to this publisher.
+    Pass assessment_id to scope to one cohort; omit to see all students across all assessments.
     Optionally filter by student_code or display_name (case-insensitive).
     """
+    parsed_assessment_id = None
+    if assessment_id is not None:
+        _require_own_assessment(assessment_id, publisher, db)
+        try:
+            parsed_assessment_id = uuid.UUID(assessment_id)
+        except ValueError:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                detail="Invalid assessment_id format.")
+
     students = sae_service.get_publisher_students(
         db=db,
         publisher_id=publisher.id,
+        assessment_id=parsed_assessment_id,
         search=search,
     )
     return [_student_to_row(s, db) for s in students]
@@ -166,13 +357,16 @@ async def submit_on_behalf(
     student_id: str,
     student_answer: UploadFile = File(..., description="Handwritten exam PDF"),
     webassign_pdf: UploadFile = File(..., description="WebAssign questions PDF"),
+    request_id: Optional[str] = Form(None, description="Client-generated UUID for SSE correlation"),
     publisher: User = Depends(require_publisher),
     db: Session = Depends(get_db),
 ):
     """
-    Submit on behalf of a student who has not yet submitted.
-    Blocked if the student has already submitted (409 Conflict).
+    Submit on behalf of a student.
+    Returns 409 if the student has reached the 5-submission limit.
     Runs the same LLM grading pipeline as the Math autograder.
+    Pass request_id (UUID) to stream live grading events via
+    GET /api/autograder/grade/events/{request_id}.
     """
     if not autograder_cache.loaded:
         raise HTTPException(
@@ -181,12 +375,6 @@ async def submit_on_behalf(
         )
 
     student = _require_own_student(student_id, publisher, db)
-
-    if student.has_submitted:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            detail="This student has already submitted. Publisher cannot override an existing submission.",
-        )
 
     handwritten_bytes = await student_answer.read()
     webassign_bytes = await webassign_pdf.read()
@@ -200,6 +388,7 @@ async def submit_on_behalf(
         webassign_filename=webassign_pdf.filename or "webassign.pdf",
         submitted_by_publisher=True,
         publisher_user_id=publisher.id,
+        request_id=request_id,
     )
     return _sub_to_result_publisher(submission)
 
@@ -244,6 +433,63 @@ def edit_submission(
     return _sub_to_result_publisher(updated)
 
 
+@router.post("/students/{student_id}/regenerate", response_model=SAERegenerateResponse)
+def regenerate_access(
+    student_id: str,
+    publisher: User = Depends(require_publisher),
+    db: Session = Depends(get_db),
+):
+    """
+    Reset a student's login credentials and issue a fresh invitation link.
+
+    The existing User row and any submission data are fully preserved — only the
+    username, email, and password on the User row are mangled so the student
+    cannot log in until they complete setup again via the new link.
+
+    Allowed for activated students regardless of submission status.
+    Blocked if the student has not yet activated (nothing to reset).
+    """
+    student = _require_own_student(student_id, publisher, db)
+
+    if not student.is_activated:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail="This student has not activated their account yet. Share the original invitation link.",
+        )
+
+    try:
+        invitation_url, invitation_token = sae_service.regenerate_student_access(
+            db=db,
+            student=student,
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc))
+
+    return SAERegenerateResponse(
+        invitation_url=invitation_url,
+        invitation_token=invitation_token,
+    )
+
+
+@router.delete("/students/{student_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_student(
+    student_id: str,
+    publisher: User = Depends(require_publisher),
+    db: Session = Depends(get_db),
+):
+    """
+    Permanently delete a student slot that has never been activated and has no submissions.
+    Use this to remove excess slots created by mistake.
+    Returns 409 if the student has activated their account or has any submissions.
+    """
+    student = _require_own_student(student_id, publisher, db)
+    try:
+        sae_service.delete_student(db=db, student=student)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=str(exc))
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get("/students/{student_id}/files/{file_type}")
 def get_student_file(
     student_id: str,
@@ -271,7 +517,13 @@ def get_student_file(
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File path not recorded for this submission.")
 
     if r2.enabled and not os.path.isabs(file_path):
-        data = r2.download(file_path)
+        try:
+            data = r2.download(file_path)
+        except RuntimeError as exc:
+            raise HTTPException(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to retrieve file from storage: {exc}",
+            )
         return Response(
             content=data,
             media_type="application/pdf",
@@ -282,8 +534,15 @@ def get_student_file(
     if not disk_path.exists():
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="File not found on server.")
 
-    return FileResponse(
-        path=str(disk_path),
+    try:
+        data = disk_path.read_bytes()
+    except OSError as exc:
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to read file: {exc}",
+        )
+    return Response(
+        content=data,
         media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )

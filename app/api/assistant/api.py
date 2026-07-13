@@ -4,6 +4,7 @@ from openai import OpenAI
 from pydantic import BaseModel, Field
 
 from app.config import settings
+from app.services.gemini_file_cache import autograder_cache
 
 import logging
 from uuid import UUID
@@ -49,10 +50,18 @@ class ChatHistoryItem(BaseModel):
     text: str
 
 
+_ASSISTANT_PROMPT_FALLBACK = (
+    "You are MyOS, an AI assistant embedded in the ProfSidekick platform. "
+    "Help users navigate the AI Autograder and find their submissions and results. "
+    "Keep responses short and direct."
+)
+
+
 class AssistantChatRequest(BaseModel):
     message: str = Field(..., min_length=1)
     systemPrompt: Optional[str] = None
     history: List[ChatHistoryItem] = Field(default_factory=list)
+    currentPage: Optional[str] = None
 
 
 class AssistantChatResponse(BaseModel):
@@ -69,11 +78,14 @@ async def assistant_chat(body: AssistantChatRequest) -> AssistantChatResponse:
             detail="OPENAI_API_KEY is not configured on the server",
         )
 
+    system_content = autograder_cache.assistant_prompt or _ASSISTANT_PROMPT_FALLBACK
+    if body.currentPage:
+        system_content += f"\n\n[Current Context]\nThe user is currently on: {body.currentPage}"
+
     messages: list[dict[str, str]] = [
         {
             "role": "system",
-            "content": (body.systemPrompt or "").strip()
-            or "You are a helpful AI training assistant for ProfSidekick subscribers.",
+            "content": system_content,
         },
     ]
     for item in body.history[-8:]:

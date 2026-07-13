@@ -24,6 +24,7 @@ _EXPIRY_BUFFER = timedelta(hours=1)
 class AutograderCache:
     def __init__(self):
         self.grading_prompt: str = ""
+        self.assistant_prompt: str = ""
 
         # Per-tier Gemini Files API URIs.
         # Structure: {"pro": {"rubric": "uri", "solution": "uri", "webassign_solution": "uri"}, ...}
@@ -246,6 +247,10 @@ def load_autograder_cache() -> None:
     )
     if not autograder_cache.grading_prompt.strip():
         raise RuntimeError("FATAL: grading_prompt.txt is empty.")
+
+    _assistant_file = DATA_DIR / "assistant_system_prompt.txt"
+    if _assistant_file.exists():
+        autograder_cache.assistant_prompt = _assistant_file.read_text(encoding="utf-8")
 
     # Always pre-encode static PDFs to base64 (Vertex AI inline path + OpenAI).
     for key, filename in _STATIC_FILES.items():
