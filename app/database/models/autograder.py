@@ -93,7 +93,7 @@ class AutograderSubmission(Base):
     file_path       = Column(String(500), nullable=True)
 
     score              = Column(Integer, nullable=True)
-    overall_confidence = Column(String(50), nullable=True)
+    # overall_confidence = Column(String(50), nullable=True)
     review_required    = Column(Boolean, default=False)
     result_json        = Column(JSONB, nullable=False)
     is_active          = Column(Boolean, nullable=False, default=True, server_default="true")

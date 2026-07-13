@@ -1,11 +1,10 @@
 from dataclasses import dataclass, field
 
-
 @dataclass
 class StudentFiles:
-    """Student PDFs encoded as base64 strings — always sent inline, never cached."""
     webassign_b64: str
-    handwritten_b64: str
+    handwritten_b64: str = ""
+    handwritten_transcript: str | None = None
 
 
 @dataclass

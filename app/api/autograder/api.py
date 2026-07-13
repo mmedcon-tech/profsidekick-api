@@ -35,31 +35,45 @@ def require_autograder_role(current_user: User, allowed_roles: list[str]) -> Use
 TRANSCRIPTION_MODEL = "gemini-2.5-pro"
 
 TRANSCRIPTION_PROMPT = r"""
-You are transcribing a student's mathematics exam submission using LaTeX.
+    You are transcribing a student's mathematics exam submission for grading review.
+    Return a clean Markdown transcript with LaTeX math.
 
-Transcribe the academic content needed for grading precisely:
-- question numbers and subparts
-- the student's written mathematical work with answers
-- relevant graph/diagram descriptions
+    Transcribe:
+    - question numbers and subparts
+    - the student's written mathematical work and final answers
+    - relevant graph or diagram descriptions
 
-Ignore non-answer content:
-- scanner watermarks or app names such as CamScanner
-- page borders, stamps, timestamps, file labels, crop marks
-- circled page/order markers that are not question numbers
-- random annotations unrelated to the solution
-- crossed-out or scribbled-out work
+    Ignore:
+    - scanner watermarks or app names such as CamScanner
+    - page borders, stamps, timestamps, or file labels
+    - crossed-out or scribbled-out work
 
-Rules:
-- Do not solve, correct, simplify, complete, or grade the work.
-- Preserve the student's mistakes, spelling, and document structure.
-- Output LaTeX body content only.
-- Do not include \documentclass, \begin{document}, or \end{document}.
-- Do not use Unicode characters.
-- Use standard LaTeX math notation for all mathematical expressions.
-- If handwriting is unreadable or ambiguous, write [unreadable].
-- If a graph, plot, table, geometric figure, or diagram is part of a student answer, describe it clearly in text, including labels, axes, coordinates, curves, shading, and annotations relevant to grading.
-- Return only the transcription, with no explanations, introductions, comments, or code fences.
-"""
+    Formatting rules:
+    - Return a readable transcript using two layers:
+    1. Markdown for document structure and ordinary text.
+    2. LaTeX only for mathematical notation.
+
+    Markdown rules:
+    - Use Markdown headings for questions and subparts.
+    - Use normal Markdown paragraphs for written explanations.
+    - Use Markdown tables for tabular work.
+    - Use bullet points or numbered lists when they match the student's layout.
+    - Describe graphs, plots, tables, geometric figures, and diagrams in plain Markdown text.
+
+    LaTeX math rules:
+    - Use `$...$` only for inline mathematical expressions.
+    - Use `$$...$$` only for displayed mathematical expressions.
+    - Use standard LaTeX math notation inside math delimiters.
+    - Do not use raw LaTeX document commands such as `\documentclass`, `\begin{document}`, or `\end{document}`.
+    - Do not use raw LaTeX environments such as `tabular`, `array`, `align`, `enumerate`, or `itemize`.
+    - For multi-step or aligned work, use Markdown steps with separate display equations instead of LaTeX alignment environments.
+
+    Transcription rules:
+    - Do not solve, correct, simplify, complete, or grade the work.
+    - Preserve the student's mistakes, spelling, and document structure.
+    - If handwriting is unreadable or ambiguous, write `[unreadable]`.
+    - Return only the transcript, with no explanation, introduction, comments, or code fences.
+    """
 
 
 async def transcribe_pdf(pdf_bytes: bytes) -> dict:
