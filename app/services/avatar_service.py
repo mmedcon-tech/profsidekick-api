@@ -274,6 +274,7 @@ class AvatarService:
             language=data.language,
             difficulty_level=data.difficulty_level,
             additional_settings=data.additional_settings,
+            tts_provider=data.tts_provider,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
         )
@@ -322,6 +323,8 @@ class AvatarService:
             config.difficulty_level = data.difficulty_level
         if data.additional_settings is not None:
             config.additional_settings = data.additional_settings
+        if data.tts_provider is not None:
+            config.tts_provider = data.tts_provider
 
         config.updated_at = datetime.utcnow()
         db.commit()

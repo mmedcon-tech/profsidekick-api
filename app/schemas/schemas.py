@@ -682,6 +682,9 @@ class ReferenceSolutionResponse(BaseModel):
         from_attributes = True
 
 # ── Avatar Configuration ─────────────────────────────────────────
+# NOTE: this block is shadowed by an identically-named redefinition further
+# down this file; Python keeps only the later binding, so THAT one is what's
+# actually in effect. Edit fields there, not here.
 
 class AvatarConfigurationCreate(BaseModel):
     voice: Optional[str] = Field(None, max_length=100)
@@ -1307,12 +1310,14 @@ class AvatarConfigurationCreate(BaseModel):
     language: Optional[str] = Field(None, max_length=50)
     difficulty_level: Optional[str] = Field(None, max_length=50)
     additional_settings: Optional[dict] = None
+    tts_provider: Optional[str] = Field(None, pattern="^(openai|elevenlabs)$")
 
 class AvatarConfigurationUpdate(BaseModel):
     voice: Optional[str] = Field(None, max_length=100)
     language: Optional[str] = Field(None, max_length=50)
     difficulty_level: Optional[str] = Field(None, max_length=50)
     additional_settings: Optional[dict] = None
+    tts_provider: Optional[str] = Field(None, pattern="^(openai|elevenlabs)$")
 
 class AvatarConfigurationResponse(BaseModel):
     id: UUID
@@ -1321,6 +1326,7 @@ class AvatarConfigurationResponse(BaseModel):
     language: Optional[str] = None
     difficulty_level: Optional[str] = None
     additional_settings: Optional[dict] = None
+    tts_provider: Optional[str] = None
     rubrics: List[RubricResponse] = []
     knowledge_documents: List[KnowledgeDocumentResponse] = []
     reference_solutions: List[ReferenceSolutionResponse] = []
