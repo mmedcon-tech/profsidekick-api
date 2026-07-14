@@ -19,10 +19,6 @@ from app.database.models.enums import (  # noqa: F401
 # Core entities
 from app.database.models.users import User, UserAgreement  # noqa: F401
 
-# Dual voice pipeline — subscriber override; depends only on User
-from app.database.models.voice_preferences import (
-    SubscriberVoicePreference,
-)  # noqa: F401
 from app.database.models.courses import (  # noqa: F401
     Course,
     CourseMaterial,
@@ -167,8 +163,6 @@ __all__ = [
     # users
     "User",
     "UserAgreement",
-    # voice preferences (dual voice pipeline)
-    "SubscriberVoicePreference",
     # courses
     "Course",
     "CourseMaterial",

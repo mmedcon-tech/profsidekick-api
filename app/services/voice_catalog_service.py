@@ -1,14 +1,9 @@
-"""Voice catalog for the dual voice pipeline.
-
-Provides the two supported TTS providers' voice lists and server-side
-reachability checks, used by:
+"""Voice catalog — the two supported TTS providers' voice lists, used by:
   - avatar_service.publish_avatar (provider inference for legacy configs)
-  - voice_resolution_service (stale subscriber-preference detection)
-  - app/api/voice/api.py (catalog + preference validation endpoints)
+  - app/api/voice/api.py (catalog + availability endpoints)
 
 Backend has no other ElevenLabs integration — synthesis itself stays on the
-frontend BFF (`/api/tts/elevenlabs`) with its own API key. This module makes
-one narrow, read-only server-side call to ElevenLabs to validate voice ids.
+frontend BFF (`/api/tts/elevenlabs`) with its own API key.
 """
 
 import logging
@@ -85,32 +80,6 @@ async def list_elevenlabs_voices() -> List[Dict[str, Any]]:
         return []
 
 
-async def check_voice_reachable(provider: str, voice_id: Optional[str]) -> bool:
-    """Lightweight reachability check used at session-start validation and to
-    detect stale subscriber preferences. OpenAI has no per-voice endpoint, so
-    membership in the static allowlist stands in for "reachable"."""
-    if not voice_id:
-        return False
-    if provider == "openai":
-        return voice_id in _OPENAI_VOICE_IDS
-    if provider == "elevenlabs":
-        if not settings.elevenlabs_api_key:
-            # Can't verify without a key — assume reachable rather than
-            # blocking every session on a missing backend credential.
-            return True
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(
-                    f"{ELEVENLABS_VOICES_URL}/{voice_id}",
-                    headers={"xi-api-key": settings.elevenlabs_api_key},
-                )
-            return response.status_code == 200
-        except httpx.HTTPError as exc:
-            logger.warning("ElevenLabs voice reachability check error: %s", exc)
-            return True
-    return False
-
-
 async def check_provider_availability(provider: str) -> Tuple[bool, Optional[str]]:
     """Provider-level (not voice-specific) availability check, used by the
     pre-session voice panel to disable a provider entirely before the
@@ -160,10 +129,6 @@ async def check_provider_availability(provider: str) -> Tuple[bool, Optional[str
     except httpx.HTTPError as exc:
         logger.warning("ElevenLabs availability check error: %s", exc)
         return False, UNAVAILABLE_UNREACHABLE
-
-
-def is_known_openai_voice(voice_id: Optional[str]) -> bool:
-    return bool(voice_id) and voice_id.strip().lower() in _OPENAI_VOICE_IDS
 
 
 def infer_provider_from_voice(voice: Optional[str]) -> str:

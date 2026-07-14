@@ -1,50 +1,31 @@
-"""Dual voice pipeline — subscriber voice preferences, provider catalog, and
-TTS usage billing.
+"""Voice catalog and TTS usage billing — publisher-only voice selection.
 
 Routes:
   GET    /api/voice-catalog       — list voices for a provider
   GET    /api/voice-availability  — per-provider availability (pre-session panel)
-  GET    /api/voice-preferences   — saved override + resolved effective voice
-  PUT    /api/voice-preferences   — save/replace the override
-  DELETE /api/voice-preferences   — clear override (fall back to publisher default)
   POST   /api/sessions/{session_id}/runs/{session_run_id}/voice-usage
          — meter a synthesized utterance
 """
 
+
 import logging
-import uuid
-from datetime import datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
-from app.database.models import (
-    PricingConfig,
-    Session as SessionModel,
-    SessionRun,
-    SubscriberVoicePreference,
-    User,
-)
+from app.database.models import PricingConfig, SessionRun, User
 from app.dependencies.auth import require_subscriber
 from app.schemas.schemas import (
     ProviderAvailability,
-    ResolvedVoiceResponse,
     VoiceAvailabilityResponse,
     VoiceCatalogEntry,
     VoiceCatalogResponse,
-    VoicePreferenceResponse,
-    VoicePreferenceUpdate,
-    VoicePreferenceWithResolutionResponse,
     VoiceUsageRequest,
     VoiceUsageResponse,
 )
-from app.services import (
-    billing_service,
-    voice_catalog_service,
-    voice_resolution_service,
-)
+from app.services import billing_service, voice_catalog_service
 
 logger = logging.getLogger(__name__)
 
@@ -102,133 +83,6 @@ async def get_voice_availability(
             available=elevenlabs_available, reason=elevenlabs_reason
         ),
     )
-
-
-def _get_or_404_avatar_for_user(db: Session, user: User):
-    """Voice preferences aren't tied to a specific avatar — resolution needs
-    *an* avatar only when previewing the effective voice. We resolve against
-    the user's most recently started session's avatar, if any; with none,
-    only the saved override (no publisher fallback) is returned."""
-    last_run = (
-        db.query(SessionRun)
-        .filter(SessionRun.user_id == user.id)
-        .order_by(SessionRun.start_time.desc())
-        .first()
-    )
-    if not last_run:
-        return None
-    session = (
-        db.query(SessionModel).filter(SessionModel.id == last_run.session_id).first()
-    )
-    if not session or not session.avatar_id:
-        return None
-    from app.database.models import Avatar
-
-    return db.query(Avatar).filter(Avatar.id == session.avatar_id).first()
-
-
-@router.get("/voice-preferences", response_model=VoicePreferenceWithResolutionResponse)
-async def get_voice_preference(
-    current_user: User = Depends(require_subscriber),
-    db: Session = Depends(get_db),
-):
-    preference = (
-        db.query(SubscriberVoicePreference)
-        .filter(SubscriberVoicePreference.user_id == current_user.id)
-        .first()
-    )
-
-    avatar = _get_or_404_avatar_for_user(db, current_user)
-    resolved = None
-    if avatar:
-        resolution = await voice_resolution_service.resolve_session_voice(
-            db, avatar, current_user
-        )
-        resolved = ResolvedVoiceResponse(
-            provider=resolution.provider,
-            voice_id=resolution.voice_id,
-            dialect=resolution.dialect,
-            source=resolution.source,
-        )
-    elif preference and preference.is_valid and preference.voice_id:
-        resolved = ResolvedVoiceResponse(
-            provider=preference.provider,
-            voice_id=preference.voice_id,
-            dialect=preference.dialect,
-            source="subscriber",
-        )
-    else:
-        resolved = ResolvedVoiceResponse(
-            provider="elevenlabs", voice_id="", dialect=None, source="publisher"
-        )
-
-    return VoicePreferenceWithResolutionResponse(
-        preference=(
-            VoicePreferenceResponse.model_validate(preference) if preference else None
-        ),
-        resolved=resolved,
-    )
-
-
-@router.put("/voice-preferences", response_model=VoicePreferenceResponse)
-async def set_voice_preference(
-    data: VoicePreferenceUpdate,
-    current_user: User = Depends(require_subscriber),
-    db: Session = Depends(get_db),
-):
-    if data.provider == "openai" and not voice_catalog_service.is_known_openai_voice(
-        data.voice_id
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"'{data.voice_id}' is not a recognized OpenAI TTS voice",
-        )
-
-    reachable = await voice_catalog_service.check_voice_reachable(
-        data.provider, data.voice_id
-    )
-    if not reachable:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"'{data.voice_id}' is not a valid/reachable {data.provider} voice",
-        )
-
-    preference = (
-        db.query(SubscriberVoicePreference)
-        .filter(SubscriberVoicePreference.user_id == current_user.id)
-        .first()
-    )
-    if preference:
-        preference.provider = data.provider
-        preference.voice_id = data.voice_id
-        preference.dialect = data.dialect
-        preference.is_valid = True
-        preference.updated_at = datetime.utcnow()
-    else:
-        preference = SubscriberVoicePreference(
-            id=uuid.uuid4(),
-            user_id=current_user.id,
-            provider=data.provider,
-            voice_id=data.voice_id,
-            dialect=data.dialect,
-            is_valid=True,
-        )
-        db.add(preference)
-
-    db.commit()
-    db.refresh(preference)
-    return VoicePreferenceResponse.model_validate(preference)
-
-
-@router.delete("/voice-preferences", status_code=status.HTTP_204_NO_CONTENT)
-async def clear_voice_preference(
-    current_user: User = Depends(require_subscriber),
-    db: Session = Depends(get_db),
-):
-    db.query(SubscriberVoicePreference).filter(
-        SubscriberVoicePreference.user_id == current_user.id
-    ).delete()
-    db.commit()
 
 
 @router.post(

@@ -2481,41 +2481,10 @@ class AssistantChatResponse(BaseModel):
 
 
 # ═══════════════════════════════════════════════════════════════════
-# Dual Voice Pipeline — subscriber voice override, catalog, usage billing
+# Voice catalog, availability, usage billing — publisher decides the voice
 # ═══════════════════════════════════════════════════════════════════
 
 VALID_VOICE_PROVIDERS = {"openai", "elevenlabs"}
-
-
-class ResolvedVoiceResponse(BaseModel):
-    provider: str
-    voice_id: str
-    dialect: Optional[str] = None
-    source: str  # 'subscriber' | 'publisher'
-
-
-class VoicePreferenceUpdate(BaseModel):
-    provider: str = Field(..., pattern="^(openai|elevenlabs)$")
-    voice_id: str = Field(..., min_length=1, max_length=200)
-    dialect: Optional[str] = Field(None, max_length=50)
-
-
-class VoicePreferenceResponse(BaseModel):
-    id: UUID
-    provider: str
-    voice_id: Optional[str] = None
-    dialect: Optional[str] = None
-    is_valid: bool
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
-class VoicePreferenceWithResolutionResponse(BaseModel):
-    preference: Optional[VoicePreferenceResponse] = None
-    resolved: ResolvedVoiceResponse
 
 
 class VoiceCatalogEntry(BaseModel):

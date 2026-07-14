@@ -399,9 +399,7 @@ async def check_session_eligibility(
             MIN_SESSION_MINUTES = 5
             ESTIMATED_CHARS_PER_MINUTE = 600
             try:
-                resolution = await voice_resolution_service.resolve_session_voice(
-                    db, avatar, current_user
-                )
+                resolution = await voice_resolution_service.resolve_session_voice(avatar)
                 estimated_chars = MIN_SESSION_MINUTES * ESTIMATED_CHARS_PER_MINUTE
                 cost = billing_service.calculate_cost(
                     f"tts_{resolution.provider}", estimated_chars, 0, db
@@ -1497,17 +1495,29 @@ async def get_ephemeral_token(
             else dict(session_run.assistant_parameters or {})
         )
 
-        # Dual voice pipeline — resolve the actual voice to use (subscriber
-        # override > publisher default) instead of the old ad-hoc merge of
-        # AvatarConfiguration.voice, which the frontend then guessed a gender
-        # for from the 3-D avatar's library entry. `voice_resolution` is
-        # surfaced on the response below so the frontend plays the real
-        # resolved provider/voice.
+        # Resolve the publisher-configured voice/provider for this avatar
+        # instead of the old ad-hoc merge of AvatarConfiguration.voice, which
+        # the frontend then guessed a gender for from the 3-D avatar's
+        # library entry. `voice_resolution` is surfaced on the response below
+        # so the frontend plays the real resolved provider/voice.
         voice_resolution: voice_resolution_service.VoiceResolution | None = None
-        if avatar_row is not None and current_user is not None:
+        if avatar_row is not None:
+            _cfg = avatar_row.configuration
+            logger.info(
+                "🔊 Voice resolution input for run %s: avatar_id=%s tts_provider=%r voice=%r language=%r",
+                session_run_id, avatar_row.id,
+                getattr(_cfg, "tts_provider", None),
+                getattr(_cfg, "voice", None),
+                getattr(_cfg, "language", None),
+            )
             try:
                 voice_resolution = await voice_resolution_service.resolve_session_voice(
-                    db, avatar_row, current_user
+                    avatar_row
+                )
+                logger.info(
+                    "🔊 Voice resolution result for run %s: provider=%s voice_id=%s dialect=%s source=%s",
+                    session_run_id, voice_resolution.provider, voice_resolution.voice_id,
+                    voice_resolution.dialect, voice_resolution.source,
                 )
             except HTTPException:
                 # Avatar has no usable voice config — leave voice_resolution
@@ -1518,7 +1528,12 @@ async def get_ephemeral_token(
                     db_session_raw.avatar_id if db_session_raw else None,
                     session_run_id,
                 )
-            if voice_resolution and voice_resolution.provider == "openai":
+        else:
+            logger.info(
+                "🔊 Voice resolution skipped for run %s: avatar_row is None (db_session_raw.avatar_id=%s)",
+                session_run_id, getattr(db_session_raw, "avatar_id", None),
+            )
+        if voice_resolution and voice_resolution.provider == "openai":
                 # OpenAI Realtime's own audio.output.voice must be an OpenAI
                 # voice name; ElevenLabs voice ids don't apply here since the
                 # frontend runs Realtime in text-only mode and synthesises
