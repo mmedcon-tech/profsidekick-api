@@ -24,6 +24,51 @@ class Student(Base):
         order_by="AutograderSubmission.version_number",
     )
 
+    drafts = relationship(
+        "AutograderDraft",
+        back_populates="student",
+        foreign_keys="[AutograderDraft.student_id]",
+        order_by="AutograderDraft.created_at",
+    )
+
+class AutograderDraft(Base):
+    __tablename__ = "autograder_drafts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    student_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("students.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+
+    created_by = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+
+    handwritten_filename = Column(String(255), nullable=True)
+    handwritten_file_path = Column(String(500), nullable=False)
+
+    webassign_filename = Column(String(255), nullable=True)
+    webassign_file_path = Column(String(500), nullable=False)
+
+    transcript_text = Column(JSONB, nullable=True)
+    transcript_model = Column(String(100), nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    student = relationship(
+        "Student",
+        foreign_keys=[student_id],
+        back_populates="drafts",
+    )
+
+    creator = relationship(
+        "User",
+        foreign_keys=[created_by],
+    )
 
 class AutograderSubmission(Base):
     __tablename__ = "autograder_submissions"
@@ -48,7 +93,7 @@ class AutograderSubmission(Base):
     file_path       = Column(String(500), nullable=True)
 
     score              = Column(Integer, nullable=True)
-    overall_confidence = Column(String(50), nullable=True)
+    # overall_confidence = Column(String(50), nullable=True)
     review_required    = Column(Boolean, default=False)
     result_json        = Column(JSONB, nullable=False)
     is_active          = Column(Boolean, nullable=False, default=True, server_default="true")

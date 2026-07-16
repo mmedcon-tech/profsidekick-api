@@ -162,6 +162,18 @@ class VertexAIProvider(LLMProvider):
             *static_parts,
             self._pdf_inline(student_files.webassign_b64),
             self._pdf_inline(student_files.handwritten_b64),
+
+            Part.from_text(
+                f"""
+            Additional OCR transcript of the student's handwritten work:
+
+            {student_files.handwritten_transcript or "[No handwritten transcript provided]"}
+
+            Use this transcript only as a readability aid alongside the original handwritten PDF.
+            If the transcript appears inconsistent with the handwritten PDF in a way that may affect grading, flag human review.
+            """
+            ),
+
             Part.from_text(autograder_cache.grading_prompt),
         ]
 
@@ -171,6 +183,18 @@ class VertexAIProvider(LLMProvider):
             *self._inline_static_parts(),
             self._pdf_inline(student_files.webassign_b64),
             self._pdf_inline(student_files.handwritten_b64),
+
+            Part.from_text(
+                f"""
+            Additional OCR transcript of the student's handwritten work:
+
+            {student_files.handwritten_transcript or "[No handwritten transcript provided]"}
+
+            Use this transcript only as a readability aid alongside the original handwritten PDF.
+            If the transcript appears inconsistent with the handwritten PDF in a way that may affect grading, flag human review.
+            """
+            ),
+
             Part.from_text(autograder_cache.grading_prompt),
         ]
 

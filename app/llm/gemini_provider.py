@@ -141,9 +141,21 @@ class GeminiProvider(LLMProvider):
 
         return [
             *static_parts,
-            # Student files — always inline, never cached or reused.
+
             {"inline_data": {"mime_type": "application/pdf", "data": student_files.webassign_b64}},
             {"inline_data": {"mime_type": "application/pdf", "data": student_files.handwritten_b64}},
+
+            {
+                "text": f"""
+        Additional OCR transcript of the student's handwritten work:
+
+        {student_files.handwritten_transcript or "[No handwritten transcript provided]"}
+
+        Use this transcript only as a readability aid alongside the original handwritten PDF.
+        If the transcript appears inconsistent with the handwritten PDF in a way that may affect grading, flag human review.
+        """
+            },
+
             {"text": autograder_cache.grading_prompt},
         ]
 

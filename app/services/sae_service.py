@@ -233,6 +233,11 @@ def build_submission_dir(student_code: str) -> Path:
     submission_dir.mkdir(parents=True, exist_ok=True)
     return submission_dir
 
+def build_submission_storage_key(
+    student_code: str,
+    filename: str,
+) -> str:
+    return f"sae/{student_code}/{filename}"
 
 # ── Grading + submission creation ──────────────────────────────────────────────
 
@@ -245,6 +250,10 @@ async def grade_and_save_submission(
     webassign_filename: str,
     submitted_by_publisher: bool = False,
     publisher_user_id: Optional[uuid.UUID] = None,
+    handwritten_transcript: str | None = None,
+    handwritten_file_path: str | None = None,
+    webassign_file_path: str | None = None,
+    handwritten_transcript_file_path: str | None = None,
 ) -> SAESubmission:
     """
     Runs the LLM grading pipeline (same fallback chain as the Math autograder)
@@ -260,29 +269,89 @@ async def grade_and_save_submission(
     from fastapi import HTTPException, status
 
     # Persist files — prefer R2, fall back to local disk
+    # Use existing stored files when /transcribe already saved them.
+    # Otherwise, save them here for direct/legacy submission routes.
     from app.services.r2_service import r2
 
-    hw_key = f"autograder/sae/{student.student_code}/handwritten.pdf"
-    wa_key = f"autograder/sae/{student.student_code}/webassign.pdf"
+    provided_paths = [
+        handwritten_file_path,
+        webassign_file_path,
+        handwritten_transcript_file_path,
+    ]
 
-    if r2.enabled:
-        r2.upload(hw_key, handwritten_bytes)
-        r2.upload(wa_key, webassign_bytes)
-        hw_stored = hw_key
-        wa_stored = wa_key
+    if any(provided_paths) and not all(provided_paths):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Incomplete stored file paths were provided for grading.",
+        )
+
+    files_already_stored = all(provided_paths)
+
+    if files_already_stored:
+        # Student /transcribe already stored all three files.
+        # Reuse those paths without uploading anything again.
+        hw_stored = handwritten_file_path
+        wa_stored = webassign_file_path
+        transcript_stored = handwritten_transcript_file_path
+
     else:
-        submission_dir = build_submission_dir(student.student_code)
-        hw_path = submission_dir / "handwritten.pdf"
-        wa_path = submission_dir / "webassign.pdf"
-        hw_path.write_bytes(handwritten_bytes)
-        wa_path.write_bytes(webassign_bytes)
-        hw_stored = str(hw_path)
-        wa_stored = str(wa_path)
+        # Direct or legacy submission path. Save the files here once.
+        storage_prefix = f"sae/{student.student_code}"
+
+        hw_key = f"{storage_prefix}/handwritten.pdf"
+        wa_key = f"{storage_prefix}/webassign.pdf"
+        transcript_key = f"{storage_prefix}/handwritten_transcript.md"
+
+        transcript_stored: Optional[str] = None
+
+        if r2.enabled:
+            r2.upload(
+                hw_key,
+                handwritten_bytes,
+                content_type="application/pdf",
+            )
+            r2.upload(
+                wa_key,
+                webassign_bytes,
+                content_type="application/pdf",
+            )
+
+            if handwritten_transcript:
+                r2.upload(
+                    transcript_key,
+                    handwritten_transcript.encode("utf-8"),
+                    content_type="text/markdown; charset=utf-8",
+                )
+                transcript_stored = transcript_key
+
+            hw_stored = hw_key
+            wa_stored = wa_key
+
+        else:
+            submission_dir = build_submission_dir(student.student_code)
+
+            hw_path = submission_dir / "handwritten.pdf"
+            wa_path = submission_dir / "webassign.pdf"
+            transcript_path = submission_dir / "handwritten_transcript.md"
+
+            hw_path.write_bytes(handwritten_bytes)
+            wa_path.write_bytes(webassign_bytes)
+
+            if handwritten_transcript:
+                transcript_path.write_text(
+                    handwritten_transcript,
+                    encoding="utf-8",
+                )
+                transcript_stored = str(transcript_path)
+
+            hw_stored = str(hw_path)
+            wa_stored = str(wa_path)
 
     # Encode for LLM provider
     student_files = StudentFiles(
         webassign_b64=base64.b64encode(webassign_bytes).decode("utf-8"),
         handwritten_b64=base64.b64encode(handwritten_bytes).decode("utf-8"),
+        handwritten_transcript=handwritten_transcript,
     )
 
     fp = get_fallback_provider()
@@ -308,6 +377,7 @@ async def grade_and_save_submission(
             "model": result.model_used,
             "source": result.source,
             "webassign_filename": webassign_filename,
+            "transcript_available": bool(handwritten_transcript),
         },
     }
 
@@ -319,8 +389,8 @@ async def grade_and_save_submission(
         handwritten_file_path=hw_stored,
         webassign_filename=webassign_filename,
         webassign_file_path=wa_stored,
+        handwritten_transcript_file_path=transcript_stored,
         score=result.score,
-        overall_confidence=result_data.get("overall_confidence"),
         review_required=result_data["submission_review_required"],
         result_json=result_data,
     )

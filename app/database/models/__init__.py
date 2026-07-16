@@ -132,11 +132,13 @@ from app.database.models.sae import (  # noqa: F401
     SAEStudent,
     SAEInvitationToken,
     SAESubmission,
+    SAEQuestionComment,
 )
 
 # Autograder (Math Placement Exam) — depends on User only
 from app.database.models.autograder import (  # noqa: F401
     Student,
+    AutograderDraft,
     AutograderSubmission,
 )
 # Third-party integration tokens — depends on User only
@@ -148,6 +150,7 @@ from app.database.models.legacy import ProfessorPersona  # noqa: F401
 # Autograder
 from app.database.models.autograder import (  # noqa: F401
     Student,
+    AutograderDraft,
     AutograderSubmission,
 )
 
@@ -156,6 +159,7 @@ from app.database.models.sae import (  # noqa: F401
     SAEStudent,
     SAEInvitationToken,
     SAESubmission,
+    SAEQuestionComment,
 )
 
 __all__ = [
@@ -235,8 +239,10 @@ __all__ = [
     "SAEStudent",
     "SAEInvitationToken",
     "SAESubmission",
+    "SAEQuestionComment",
     # autograder
     "Student",
+    "AutograderDraft",
     "AutograderSubmission",
     # integrations
     "BrightspaceToken",
@@ -244,9 +250,11 @@ __all__ = [
     "ProfessorPersona",
     # autograder
     "Student",
+    "AutograderDraft",
     "AutograderSubmission",
     # sae
     "SAEStudent",
     "SAEInvitationToken",
     "SAESubmission",
+    "SAEQuestionComment",
 ]
