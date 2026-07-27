@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -136,14 +137,32 @@ def charge_usage(
     output_tokens: int,
     db: Session,
     session_run_id: Optional[UUID] = None,
+    idempotency_key: Optional[str] = None,
 ) -> UsageRecord:
     """
     Atomically deducts credits from the user's active balance and writes a
     UsageRecord.  Balance deduction and record insert share the same
     transaction so that a failed insert rolls back the deduction.
 
+    If `idempotency_key` is supplied and a UsageRecord already exists for
+    this user with that key, the existing record is returned unchanged and
+    no further deduction happens — guards against a retried/duplicated
+    caller (e.g. a client firing the same TTS-usage POST twice).
+
     Raises HTTP 402 if no balance remains across all sources.
     """
+    if idempotency_key:
+        existing = (
+            db.query(UsageRecord)
+            .filter(
+                UsageRecord.user_id == user_id,
+                UsageRecord.idempotency_key == idempotency_key,
+            )
+            .first()
+        )
+        if existing:
+            return existing
+
     balance_info = get_active_balance(user_id, db)
 
     if balance_info["source"] == "none":
@@ -204,10 +223,30 @@ def charge_usage(
         credits_charged=credits_needed,
         funded_by=funded_by,
         access_code_id=access_code_id,
+        idempotency_key=idempotency_key,
         created_at=datetime.utcnow(),
     )
     db.add(record)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Concurrent duplicate request raced past the upfront idempotency
+        # check and both tried to insert the same idempotency_key — the
+        # unique constraint caught it. Roll back this insert/deduction and
+        # return the record the other request already committed.
+        db.rollback()
+        if idempotency_key:
+            existing = (
+                db.query(UsageRecord)
+                .filter(
+                    UsageRecord.user_id == user_id,
+                    UsageRecord.idempotency_key == idempotency_key,
+                )
+                .first()
+            )
+            if existing:
+                return existing
+        raise
     db.refresh(record)
     logger.info(
         "Charged %s credits (%s) to user %s for %s",
@@ -414,3 +453,83 @@ def get_usage_history(
     total = query.count()
     records = query.offset((page - 1) * limit).limit(limit).all()
     return {"records": records, "total": total, "page": page, "limit": limit}
+
+
+def get_all_usage(
+    db: Session,
+    page: int = 1,
+    limit: int = 20,
+    user_id: Optional[UUID] = None,
+    operation_type: Optional[str] = None,
+) -> Dict[str, Any]:
+    query = db.query(UsageRecord).order_by(UsageRecord.created_at.desc())
+    if user_id:
+        query = query.filter(UsageRecord.user_id == user_id)
+    if operation_type:
+        query = query.filter(UsageRecord.operation_type == operation_type)
+    total = query.count()
+    records = query.offset((page - 1) * limit).limit(limit).all()
+    return {"records": records, "total": total, "page": page, "limit": limit}
+
+
+def adjust_user_balance(
+    user_id: UUID,
+    delta_credits: Decimal,
+    reason: str,
+    admin_id: UUID,
+    db: Session,
+) -> Dict[str, Any]:
+    """Admin: grant (positive delta) or deduct (negative delta) credits for any user."""
+    credit_balance = (
+        db.query(CreditBalance)
+        .filter(CreditBalance.user_id == user_id)
+        .with_for_update()
+        .first()
+    )
+
+    previous_balance = Decimal("0")
+    if credit_balance:
+        previous_balance = Decimal(str(credit_balance.balance_credits))
+        new_balance = max(previous_balance + delta_credits, Decimal("0"))
+        credit_balance.balance_credits = new_balance
+        credit_balance.updated_at = datetime.utcnow()
+    else:
+        new_balance = max(delta_credits, Decimal("0"))
+        credit_balance = CreditBalance(
+            id=uuid.uuid4(),
+            user_id=user_id,
+            balance_credits=new_balance,
+            updated_at=datetime.utcnow(),
+        )
+        db.add(credit_balance)
+
+    operation_type = "admin_grant" if delta_credits >= 0 else "admin_deduct"
+    record = UsageRecord(
+        id=uuid.uuid4(),
+        user_id=user_id,
+        session_run_id=None,
+        operation_type=operation_type,
+        input_tokens=0,
+        output_tokens=0,
+        raw_cost_usd=Decimal("0"),
+        platform_fee_usd=Decimal("0"),
+        total_cost_usd=Decimal("0"),
+        credits_charged=abs(delta_credits),
+        funded_by="admin",
+        access_code_id=None,
+        created_at=datetime.utcnow(),
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(credit_balance)
+
+    logger.info(
+        "Admin %s adjusted balance for user %s: delta=%s reason=%s",
+        admin_id, user_id, delta_credits, reason,
+    )
+    return {
+        "previous_balance": previous_balance,
+        "new_balance": Decimal(str(credit_balance.balance_credits)),
+        "delta_credits": delta_credits,
+        "reason": reason,
+    }

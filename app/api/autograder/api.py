@@ -1,0 +1,931 @@
+import base64
+import time
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+import os
+from google import genai
+from google.genai import types
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi.responses import FileResponse
+from sqlalchemy import and_, func
+from sqlalchemy.orm import Session
+
+from app.database.connection import get_db
+from app.database.models import AutograderDraft, AutograderSubmission, Student, User
+from app.dependencies.auth import get_current_user
+from app.llm.event_bus import event_bus
+from app.llm.fallback_provider import get_fallback_provider
+from app.llm.provider import StudentFiles
+from app.services.gemini_file_cache import autograder_cache
+
+router = APIRouter(prefix="/api/autograder", tags=["autograder"])
+
+
+def require_autograder_role(current_user: User, allowed_roles: list[str]) -> User:
+    if current_user.role not in allowed_roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access this autograder resource.",
+        )
+    return current_user
+
+TRANSCRIPTION_MODEL = "gemini-2.5-pro"
+
+TRANSCRIPTION_PROMPT = r"""
+    You are transcribing a student's mathematics exam submission for grading review.
+    Return a clean Markdown transcript with LaTeX math.
+
+    Transcribe:
+    - question numbers and subparts
+    - the student's written mathematical work and final answers
+    - relevant graph or diagram descriptions
+
+    Ignore:
+    - scanner watermarks or app names such as CamScanner
+    - page borders, stamps, timestamps, or file labels
+    - crossed-out or scribbled-out work
+
+    Formatting rules:
+    - Return a readable transcript using two layers:
+    1. Markdown for document structure and ordinary text.
+    2. LaTeX only for mathematical notation.
+
+    Markdown rules:
+    - Use Markdown headings for questions and subparts.
+    - Use normal Markdown paragraphs for written explanations.
+    - Use Markdown tables for tabular work.
+    - Use bullet points or numbered lists when they match the student's layout.
+    - Describe graphs, plots, tables, geometric figures, and diagrams in plain Markdown text.
+
+    LaTeX math rules:
+    - Use `$...$` only for inline mathematical expressions.
+    - Use `$$...$$` only for displayed mathematical expressions.
+    - Use standard LaTeX math notation inside math delimiters.
+    - Do not use raw LaTeX document commands such as `\documentclass`, `\begin{document}`, or `\end{document}`.
+    - Do not use raw LaTeX environments such as `tabular`, `array`, `align`, `enumerate`, or `itemize`.
+    - For multi-step or aligned work, use Markdown steps with separate display equations instead of LaTeX alignment environments.
+
+    Transcription rules:
+    - Do not solve, correct, simplify, complete, or grade the work.
+    - Preserve the student's mistakes, spelling, and document structure.
+    - If handwriting is unreadable or ambiguous, write `[unreadable]`.
+    - Return only the transcript, with no explanation, introduction, comments, or code fences.
+    """
+
+
+async def transcribe_pdf(pdf_bytes: bytes) -> dict:
+    api_key = os.getenv("GEMINI_API_KEY")
+
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY not configured.")
+
+    client = genai.Client(api_key=api_key)
+
+    response = client.models.generate_content(
+        model=TRANSCRIPTION_MODEL,
+        contents=[
+            types.Part.from_bytes(
+                data=pdf_bytes,
+                mime_type="application/pdf",
+            ),
+            TRANSCRIPTION_PROMPT,
+        ],
+    )
+
+    return {
+        "model": TRANSCRIPTION_MODEL,
+        "latex": (response.text or "").strip(),
+    }
+
+@router.post("/transcribe")
+async def transcribe_autograder_draft(
+    student_answer: UploadFile = File(...),
+    webassign_pdf: UploadFile = File(...),
+    student_id: str = Form(...),
+    request_id: Optional[str] = Form(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_autograder_role(current_user, ["subscriber"])
+    _rid = request_id or None
+
+    try:
+        student_uuid = uuid.UUID(student_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid student_id format: {student_id}",
+        )
+
+    student = (
+        db.query(Student)
+        .filter(Student.id == student_uuid)
+        .one_or_none()
+    )
+
+    if not student:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Student not found: {student_id}",
+        )
+
+    try:
+        student_content = await student_answer.read()
+        webassign_content = await webassign_pdf.read()
+
+        draft_id = uuid.uuid4()
+        draft_dir = Path("uploads") / "autograder" / "drafts" / str(draft_id)
+        draft_dir.mkdir(parents=True, exist_ok=True)
+
+        handwritten_orig_filename = student_answer.filename or "handwritten.pdf"
+        webassign_orig_filename = webassign_pdf.filename or "webassign.pdf"
+
+        handwritten_path = draft_dir / "handwritten.pdf"
+        webassign_path = draft_dir / "webassign.pdf"
+
+        handwritten_path.write_bytes(student_content)
+        webassign_path.write_bytes(webassign_content)
+
+        if _rid:
+            await event_bus.publish(
+                _rid,
+                {
+                    "event": "files_ready",
+                    "request_id": _rid,
+                    "draft_id": str(draft_id),
+                    "files": {
+                        "handwritten": {
+                            "filename": handwritten_orig_filename,
+                            "size_bytes": len(student_content),
+                        },
+                        "webassign": {
+                            "filename": webassign_orig_filename,
+                            "size_bytes": len(webassign_content),
+                        },
+                    },
+                    "timestamp": datetime.now(timezone.utc)
+                    .isoformat(timespec="seconds")
+                    .replace("+00:00", "Z"),
+                },
+            )
+
+        try:
+            handwritten_transcript = await transcribe_pdf(student_content)
+        except Exception as exc:
+            handwritten_transcript = {
+                "model": TRANSCRIPTION_MODEL,
+                "latex": "",
+                "error": str(exc),
+            }
+
+        try:
+            webassign_transcript = await transcribe_pdf(webassign_content)
+        except Exception as exc:
+            webassign_transcript = {
+                "model": TRANSCRIPTION_MODEL,
+                "latex": "",
+                "error": str(exc),
+            }
+
+        transcript_text = {
+            "handwritten": handwritten_transcript,
+            "webassign": webassign_transcript,
+        }
+
+        draft = AutograderDraft(
+            id=draft_id,
+            student_id=student.id,
+            created_by=current_user.id,
+            handwritten_filename=handwritten_orig_filename,
+            handwritten_file_path=str(handwritten_path),
+            webassign_filename=webassign_orig_filename,
+            webassign_file_path=str(webassign_path),
+            transcript_text=transcript_text,
+            transcript_model=TRANSCRIPTION_MODEL,
+            created_at=datetime.now(timezone.utc),
+        )
+
+        db.add(draft)
+        db.commit()
+        db.refresh(draft)
+
+        return {
+            "draft_id": str(draft.id),
+            "student_id": str(student.id),
+            "student_code": student.student_code,
+            "display_name": student.display_name,
+            "files": {
+                "handwritten": {
+                    "filename": handwritten_orig_filename,
+                    "size_bytes": len(student_content),
+                },
+                "webassign": {
+                    "filename": webassign_orig_filename,
+                    "size_bytes": len(webassign_content),
+                },
+            },
+            "transcript": transcript_text,
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Transcription failed: {str(exc)}",
+        )
+
+# ---------------------------------------------------------------------------
+# Grading endpoint
+# ---------------------------------------------------------------------------
+@router.post("/grade")
+async def grade_submission(
+    student_answer: Optional[UploadFile] = File(default=None),
+    webassign_pdf: Optional[UploadFile] = File(default=None),
+    student_id: Optional[str] = Form(default=None),
+    draft_id: Optional[str] = Form(default=None),
+    request_id: Optional[str] = Form(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+
+    require_autograder_role(current_user, ["subscriber"])
+    t_request_start = time.monotonic()
+    _rid = request_id or None
+
+    print(
+        f"[TRACE] grade_request_received "
+        f"request_id={_rid or 'no-sse'} "
+        f"student_id={student_id} "
+        f"user_id={current_user.id} "
+        f"sse_enabled={bool(_rid)}"
+    )
+
+    if not autograder_cache.loaded:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Autograder not ready. Check server startup logs.",
+        )
+
+    try:
+        if draft_id:
+            try:
+                draft_uuid = uuid.UUID(draft_id)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Invalid draft_id format: {draft_id}",
+                )
+
+            draft = (
+                db.query(AutograderDraft)
+                .filter(AutograderDraft.id == draft_uuid)
+                .one_or_none()
+            )
+
+            if not draft:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Draft not found: {draft_id}",
+                )
+
+            if current_user.role == "subscriber" and draft.created_by != current_user.id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You can only grade your own draft.",
+                )
+
+            student = (
+                db.query(Student)
+                .filter(Student.id == draft.student_id)
+                .with_for_update()
+                .one_or_none()
+            )
+
+            if not student:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Student not found for draft: {draft_id}",
+                )
+
+            handwritten_draft_path = Path(draft.handwritten_file_path)
+            webassign_draft_path = Path(draft.webassign_file_path)
+
+            if not handwritten_draft_path.exists() or not webassign_draft_path.exists():
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Draft files not found on disk.",
+                )
+
+            student_content = handwritten_draft_path.read_bytes()
+            webassign_content = webassign_draft_path.read_bytes()
+
+            handwritten_orig_filename = draft.handwritten_filename or "handwritten.pdf"
+            webassign_orig_filename = draft.webassign_filename or "webassign.pdf"
+
+        else:
+            if not student_id:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="student_id is required when draft_id is not provided.",
+                )
+
+            if not student_answer or not webassign_pdf:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="student_answer and webassign_pdf are required when draft_id is not provided.",
+                )
+
+            try:
+                student_uuid = uuid.UUID(student_id)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Invalid student_id format: {student_id}",
+                )
+
+            student = (
+                db.query(Student)
+                .filter(Student.id == student_uuid)
+                .with_for_update()
+                .one_or_none()
+            )
+
+            if not student:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Student not found: {student_id}",
+                )
+
+            webassign_content = await webassign_pdf.read()
+            student_content = await student_answer.read()
+
+            handwritten_orig_filename = student_answer.filename or "handwritten.pdf"
+            webassign_orig_filename = webassign_pdf.filename or "webassign.pdf"
+
+        submission_id = uuid.uuid4()
+        submission_dir = Path("uploads") / "autograder" / str(submission_id)
+        submission_dir.mkdir(parents=True, exist_ok=True)
+
+        handwritten_path = submission_dir / "handwritten.pdf"
+        webassign_path = submission_dir / "webassign.pdf"
+
+        handwritten_path.write_bytes(student_content)
+        webassign_path.write_bytes(webassign_content)
+
+        print(
+            f"[TRACE] student_files_received "
+            f"request_id={_rid or 'no-sse'} "
+            f"handwritten_filename={handwritten_orig_filename} "
+            f"handwritten_bytes={len(student_content)} "
+            f"webassign_filename={webassign_orig_filename} "
+            f"webassign_bytes={len(webassign_content)}"
+        )
+
+        if _rid:
+            await event_bus.publish(_rid, {
+                "event": "files_ready",
+                "request_id": _rid,
+                "submission_id": str(submission_id),
+                "files": {
+                    "handwritten": {
+                        "filename": handwritten_orig_filename,
+                        "size_bytes": len(student_content),
+                    },
+                    "webassign": {
+                        "filename": webassign_orig_filename,
+                        "size_bytes": len(webassign_content),
+                    },
+                },
+                "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+            })
+
+        student_files = StudentFiles(
+            webassign_b64=base64.b64encode(webassign_content).decode("utf-8"),
+            handwritten_b64=base64.b64encode(student_content).decode("utf-8"),
+        )
+
+        fp = get_fallback_provider()
+        print(
+            f"[TRACE] fallback_provider_selected "
+            f"request_id={_rid or 'no-sse'} "
+            f"provider_chain={fp.provider_names}"
+        )
+
+        try:
+            result = await fp.grade(student_files, request_id=_rid)
+        except RuntimeError as exc:
+            total_ms = int((time.monotonic() - t_request_start) * 1000)
+            print(
+                f"[TRACE] grade_request_failed "
+                f"request_id={_rid or 'no-sse'} "
+                f"total_duration_ms={total_ms} "
+                f"error={str(exc)[:300]}"
+            )
+            if _rid:
+                await event_bus.publish(_rid, {
+                    "event": "grading_failed",
+                    "request_id": _rid,
+                    "provider": None,
+                    "reason": str(exc),
+                    "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+                })
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=str(exc),
+            )
+
+        result_data = {
+            "raw_score": result.raw_score,
+            "raw_max_score": result.raw_max_score,
+            "score": result.score,
+            "submission_review_required": result.submission_review_required,
+            "submission_review_reasons": result.submission_review_reasons,
+            "overall_feedback": result.overall_feedback,
+            "questions": result.questions,
+            "source": result.source,
+            "details": {
+                "filename": handwritten_orig_filename,
+                "file_size": len(student_content),
+                "model": result.model_used,
+                "source": result.source,
+                "system_files": ["rubric.pdf", "webassign_solution.pdf", "solution.pdf"],
+                "webassign_filename": webassign_orig_filename,
+            },
+        }
+
+        version_count = (
+            db.query(func.count(AutograderSubmission.id))
+            .filter(AutograderSubmission.student_id == student.id)
+            .scalar()
+        )
+        version_number = version_count + 1
+
+        existing = (
+            db.query(AutograderSubmission)
+            .filter(
+                AutograderSubmission.student_id == student.id,
+                AutograderSubmission.is_active == True,
+            )
+            .first()
+        )
+        if existing:
+            existing.is_active = False
+
+        submission = AutograderSubmission(
+            id=submission_id,
+            student_id=student.id,
+            version_number=version_number,
+            submitted_by=current_user.id,
+            handwritten_filename=handwritten_orig_filename,
+            handwritten_file_path=str(handwritten_path),
+            webassign_filename=webassign_orig_filename,
+            webassign_file_path=str(webassign_path),
+            # Legacy fields kept until Phase 5
+            student_user_id=current_user.id,
+            student_net_id=student.student_code,
+            student_name=student.display_name,
+            filename=handwritten_orig_filename,
+            file_path=str(handwritten_path),
+            score=result.score,
+            review_required=result_data["submission_review_required"],
+            result_json=result_data,
+            is_active=True,
+            created_at=datetime.now(timezone.utc),
+        )
+
+        db.add(submission)
+        db.commit()
+        db.refresh(submission)
+
+        total_ms = int((time.monotonic() - t_request_start) * 1000)
+        print(
+            f"[TRACE] grade_request_success "
+            f"request_id={_rid or 'no-sse'} "
+            f"submission_id={submission_id} "
+            f"source={result.source} "
+            f"model={result.model_used} "
+            f"score={result.score} "
+            f"total_duration_ms={total_ms}"
+        )
+        print(
+            f"[TRACE] FINAL_SUMMARY "
+            f"request_id={_rid or 'no-sse'} "
+            f"total_duration_ms={total_ms} "
+            f"provider_chain={fp.provider_names} "
+            f"winning_provider={result.source} "
+            f"score={result.score} "
+            f"final_status=success"
+        )
+
+        if _rid:
+            await event_bus.publish(_rid, {
+                "event": "grading_complete",
+                "request_id": _rid,
+                "submission_id": str(submission_id),
+                "provider": result.model_used,
+                "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+            })
+
+        from app.config import settings
+        response: dict = {
+            **result_data,
+            "submission_id": str(submission.id),
+            "message": "Submission graded and saved successfully.",
+        }
+        if settings.debug:
+            response["debug"] = {
+                "sse_enabled": bool(_rid),
+                "request_id": _rid,
+                "provider_chain_traversed": fp.provider_names,
+                "winning_provider": result.source,
+                "total_duration_ms": total_ms,
+            }
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Autograder failed: {str(exc)}",
+        )
+
+@router.get("/drafts/{draft_id}/files/{file_type}")
+async def get_draft_file(
+    draft_id: str,
+    file_type: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_autograder_role(current_user, ["subscriber", "publisher", "admin"])
+
+    if file_type not in ("handwritten", "webassign"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="file_type must be 'handwritten' or 'webassign'",
+        )
+
+    try:
+        draft_uuid = uuid.UUID(draft_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid draft_id: {draft_id}",
+        )
+
+    draft = (
+        db.query(AutograderDraft)
+        .filter(AutograderDraft.id == draft_uuid)
+        .one_or_none()
+    )
+
+    if not draft:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Draft not found",
+        )
+
+    if current_user.role == "subscriber" and draft.created_by != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only access your own draft files.",
+        )
+
+    if file_type == "handwritten":
+        path = Path(draft.handwritten_file_path)
+        display_filename = draft.handwritten_filename or "handwritten.pdf"
+    else:
+        path = Path(draft.webassign_file_path)
+        display_filename = draft.webassign_filename or "webassign.pdf"
+
+    if not path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Draft file not found on disk",
+        )
+
+    return FileResponse(
+        path=str(path),
+        media_type="application/pdf",
+        filename=display_filename,
+    )
+
+# ---------------------------------------------------------------------------
+# Submission read endpoints (unchanged)
+# ---------------------------------------------------------------------------
+
+def _submission_list_row(submission: AutograderSubmission, student: Student) -> dict:
+    return {
+        "id": str(submission.id),
+        "student_id": str(student.id),
+        "student_code": student.student_code,
+        "display_name": student.display_name,
+        "version_number": submission.version_number,
+        # Legacy fields kept until Phase 5
+        "student_net_id": submission.student_net_id,
+        "student_name": submission.student_name,
+        "score": submission.score,
+        "raw_max_score": (
+            submission.result_json.get("raw_max_score")
+            if submission.result_json
+            else None
+        ),
+        "review_required": submission.review_required,
+        "created_at": (
+            submission.created_at.isoformat() if submission.created_at else None
+        ),
+    }
+
+
+@router.get("/submissions")
+async def get_submissions(
+    student_id: Optional[str] = Query(default=None),
+    version: Optional[int] = Query(default=None),
+    review_required: Optional[bool] = Query(default=None),
+    all_versions: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_autograder_role(current_user, ["subscriber", "publisher", "admin"])
+
+    if student_id is not None:
+        try:
+            student_uuid = uuid.UUID(student_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid student_id format: {student_id}",
+            )
+        query = (
+            db.query(AutograderSubmission, Student)
+            .join(Student, AutograderSubmission.student_id == Student.id)
+            .filter(AutograderSubmission.student_id == student_uuid)
+        )
+        if version is not None:
+            query = query.filter(AutograderSubmission.version_number == version)
+        if review_required is not None:
+            query = query.filter(AutograderSubmission.review_required == review_required)
+        results = query.order_by(AutograderSubmission.version_number.desc()).all()
+    elif all_versions:
+        # Return every submission across all students, newest first
+        query = (
+            db.query(AutograderSubmission, Student)
+            .join(Student, AutograderSubmission.student_id == Student.id)
+        )
+        if review_required is not None:
+            query = query.filter(AutograderSubmission.review_required == review_required)
+        results = query.order_by(AutograderSubmission.created_at.desc()).all()
+        print(
+            f"[DEBUG] get_submissions all_versions=True "
+            f"user_id={current_user.id} "
+            f"count={len(results)} "
+            f"ids={[str(s.id) for s, _ in results]}"
+        )
+    else:
+        # Default: one row per student (latest version only)
+        subq = (
+            db.query(
+                AutograderSubmission.student_id,
+                func.max(AutograderSubmission.version_number).label("max_ver"),
+            )
+            .group_by(AutograderSubmission.student_id)
+            .subquery()
+        )
+        query = (
+            db.query(AutograderSubmission, Student)
+            .join(Student, AutograderSubmission.student_id == Student.id)
+            .join(
+                subq,
+                and_(
+                    AutograderSubmission.student_id == subq.c.student_id,
+                    AutograderSubmission.version_number == subq.c.max_ver,
+                ),
+            )
+        )
+        if review_required is not None:
+            query = query.filter(AutograderSubmission.review_required == review_required)
+        results = query.order_by(AutograderSubmission.created_at.desc()).all()
+        print(
+            f"[DEBUG] get_submissions latest_per_student "
+            f"user_id={current_user.id} "
+            f"count={len(results)} "
+            f"ids={[str(s.id) for s, _ in results]}"
+        )
+
+    return [_submission_list_row(sub, stu) for sub, stu in results]
+
+
+@router.get("/submissions/me")
+async def get_my_submissions(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return all submissions made by the currently authenticated subscriber (student)."""
+    require_autograder_role(current_user, ["subscriber"])
+
+    submissions = (
+        db.query(AutograderSubmission)
+        .filter(AutograderSubmission.student_user_id == current_user.id)
+        .order_by(AutograderSubmission.created_at.desc())
+        .all()
+    )
+
+    print(
+        f"[DEBUG] get_my_submissions "
+        f"user_id={current_user.id} "
+        f"count={len(submissions)} "
+        f"ids={[str(s.id) for s in submissions]}"
+    )
+
+    return [
+        {
+            "id": str(s.id),
+            "student_net_id": s.student_net_id,
+            "student_name": s.student_name,
+            "version_number": s.version_number,
+            "score": s.score,
+            "raw_max_score": s.result_json.get("raw_max_score") if s.result_json else None,
+            "review_required": s.review_required,
+            "created_at": s.created_at.isoformat() if s.created_at else None,
+        }
+        for s in submissions
+    ]
+
+
+@router.get("/submissions/me/latest")
+async def get_my_latest_submission(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_autograder_role(current_user, ["subscriber"])
+
+    # Order by version_number DESC so we always get the true latest,
+    # regardless of the is_active flag (which gets toggled on each new submission).
+    submission = (
+        db.query(AutograderSubmission)
+        .filter(AutograderSubmission.student_user_id == current_user.id)
+        .order_by(AutograderSubmission.version_number.desc())
+        .first()
+    )
+
+    print(
+        f"[DEBUG] get_my_latest_submission "
+        f"user_id={current_user.id} "
+        f"found={'yes' if submission else 'no'} "
+        f"submission_id={submission.id if submission else None}"
+    )
+
+    if not submission:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No autograder submission found for this student.",
+        )
+
+    return {
+        "id": str(submission.id),
+        "student_net_id": submission.student_net_id,
+        "student_name": submission.student_name,
+        "score": submission.score,
+        "review_required": submission.review_required,
+        "created_at": (
+            submission.created_at.isoformat() if submission.created_at else None
+        ),
+        "result_json": submission.result_json,
+    }
+
+
+@router.get("/submissions/{submission_id}")
+async def get_submission(
+    submission_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_autograder_role(current_user, ["subscriber", "publisher", "admin"])
+
+    submission = (
+        db.query(AutograderSubmission)
+        .filter(AutograderSubmission.id == submission_id)
+        .first()
+    )
+
+    if not submission:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Submission not found",
+        )
+
+    if (
+        current_user.role == "subscriber"
+        and submission.student_user_id != current_user.id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only view your own submission feedback.",
+        )
+
+    return {
+        "id": str(submission.id),
+        "student_net_id": submission.student_net_id,
+        "student_name": submission.student_name,
+        "score": submission.score,
+        "review_required": submission.review_required,
+        "created_at": (
+            submission.created_at.isoformat() if submission.created_at else None
+        ),
+        "result_json": submission.result_json,
+    }
+
+
+# ---------------------------------------------------------------------------
+# File download endpoint
+# ---------------------------------------------------------------------------
+
+@router.get("/submissions/{submission_id}/files/{file_type}")
+async def get_submission_file(
+    submission_id: str,
+    file_type: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Stream the handwritten or webassign PDF for a submission.
+
+    Two-phase path resolution:
+    - If the DB row exists (grading finished): use the stored path and enforce
+      subscriber ownership.
+    - If the DB row doesn't exist yet (grading in progress, files_ready was
+      emitted before db.commit()): derive the path from the submission_id
+      directly. The UUID is non-guessable and was only sent to the operator
+      who opened the SSE connection, so this is safe.
+    """
+    require_autograder_role(current_user, ["subscriber", "publisher", "admin"])
+
+    if file_type not in ("handwritten", "webassign"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="file_type must be 'handwritten' or 'webassign'",
+        )
+
+    # Validate submission_id is a well-formed UUID before any path construction.
+    try:
+        uuid.UUID(submission_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid submission_id: {submission_id}",
+        )
+
+    submission = (
+        db.query(AutograderSubmission)
+        .filter(AutograderSubmission.id == submission_id)
+        .first()
+    )
+
+    if submission:
+        # Grading finished — enforce subscriber ownership via DB record.
+        if (
+            current_user.role == "subscriber"
+            and submission.student_user_id != current_user.id
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only access your own submission files.",
+            )
+        file_path_str = (
+            submission.handwritten_file_path
+            if file_type == "handwritten"
+            else submission.webassign_file_path
+        )
+        display_filename = (
+            submission.handwritten_filename
+            if file_type == "handwritten"
+            else submission.webassign_filename
+        )
+        if not file_path_str:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="File not found for this submission",
+            )
+        path = Path(file_path_str)
+    else:
+        # Grading still in progress — DB row not committed yet.
+        # Path is deterministic from submission_id (set before fp.grade() is called).
+        path = Path("uploads") / "autograder" / submission_id / f"{file_type}.pdf"
+        display_filename = path.name
+
+    if not path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="File not found on disk",
+        )
+
+    return FileResponse(
+        path=str(path),
+        media_type="application/pdf",
+        filename=display_filename or path.name,
+    )

@@ -1,21 +1,18 @@
 """
 Integration tests for billing API routes.
 
-Uses an in-memory SQLite database (no migration needed) and overrides FastAPI
+Uses PostgreSQL database from environment (DATABASE_URL) and overrides FastAPI
 dependencies so no real OpenAI calls are made.
-
-Only billing-relevant tables are created; JSONB tables (courses, sessions, etc.)
-are omitted. SQLite skips FK enforcement by default so nullable FKs are fine.
 """
 
 import uuid
 from decimal import Decimal
+import os
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
 from app.database.connection import Base, get_db
 from app.database.models import (
@@ -28,14 +25,15 @@ from app.dependencies.auth import get_current_user
 from app.main import app
 
 # ---------------------------------------------------------------------------
-# SQLite in-memory test DB
+# PostgreSQL test DB (uses DATABASE_URL from environment or fallback)
 # ---------------------------------------------------------------------------
 
-engine = create_engine(
-    "sqlite://",
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
+TEST_DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql://postgres:1234@localhost:5432/postgres",
 )
+
+engine = create_engine(TEST_DATABASE_URL)
 TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
@@ -51,7 +49,6 @@ def override_get_db():
 # Fixtures
 # ---------------------------------------------------------------------------
 
-
 _BILLING_TABLES = [
     "users",
     "credit_balances",
@@ -64,7 +61,7 @@ _BILLING_TABLES = [
 
 @pytest.fixture(autouse=True)
 def setup_tables():
-    tables = [Base.metadata.tables[t] for t in _BILLING_TABLES]
+    tables = [Base.metadata.tables[t] for t in _BILLING_TABLES if t in Base.metadata.tables]
     Base.metadata.create_all(bind=engine, tables=tables)
     yield
     Base.metadata.drop_all(bind=engine, tables=tables)

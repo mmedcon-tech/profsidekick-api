@@ -22,6 +22,7 @@ from app.services.rag_service import (  # noqa: E402  (import after path setup)
     _CHARS_PER_CHUNK,
     _chunk_text,
     build_grounded_prompt,
+    ingest_course_material,
     ingest_session_document,
     retrieve_context,
 )
@@ -183,6 +184,81 @@ class TestIngestSessionDocument:
             )
             # All embeddings should be None (failed gracefully).
             assert all(r.embedding is None for r in rows)
+
+
+@pytest.mark.usefixtures("create_tables")
+class TestIngestCourseMaterial:
+    def test_stores_knowledge_chunks_for_uploaded_material(
+        self, db_session, test_session
+    ):
+        from app.database.models import KnowledgeChunk
+
+        material_id = uuid.uuid4()
+        file_content = (
+            b"Course material about vector databases, RAG ingestion, "
+            b"and semantic retrieval. "
+            * 80
+        )
+
+        def fake_embed(texts):
+            return [[0.2] * 1536 for _ in texts]
+
+        with patch("app.services.rag_service._embed", side_effect=fake_embed):
+            count = ingest_course_material(
+                test_session.course_id,
+                material_id,
+                file_content,
+                "rag-notes.txt",
+                db_session,
+            )
+
+        assert count > 0
+        stored = (
+            db_session.query(KnowledgeChunk)
+            .filter(
+                KnowledgeChunk.course_id == test_session.course_id,
+                KnowledgeChunk.source == f"course_material:{material_id}",
+            )
+            .all()
+        )
+        assert len(stored) == count
+        assert "RAG ingestion" in stored[0].content
+
+    def test_reingest_replaces_stale_material_chunks(self, db_session, test_session):
+        from app.database.models import KnowledgeChunk
+
+        material_id = uuid.uuid4()
+
+        def fake_embed(texts):
+            return [[0.2] * 1536 for _ in texts]
+
+        with patch("app.services.rag_service._embed", side_effect=fake_embed):
+            ingest_course_material(
+                test_session.course_id,
+                material_id,
+                b"First upload content. " * 90,
+                "notes.txt",
+                db_session,
+            )
+            replacement_count = ingest_course_material(
+                test_session.course_id,
+                material_id,
+                b"Replacement upload content. " * 90,
+                "notes.txt",
+                db_session,
+            )
+
+        stored = (
+            db_session.query(KnowledgeChunk)
+            .filter(
+                KnowledgeChunk.course_id == test_session.course_id,
+                KnowledgeChunk.source == f"course_material:{material_id}",
+            )
+            .all()
+        )
+        assert len(stored) == replacement_count
+        assert all("First upload content" not in row.content for row in stored)
+        assert any("Replacement upload content" in row.content for row in stored)
 
 
 # ---------------------------------------------------------------------------

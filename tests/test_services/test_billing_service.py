@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy.exc import IntegrityError
 
 from app.services.billing_service import (
     CREDITS_PER_USD,
@@ -208,3 +209,115 @@ def test_charge_usage_raises_402_on_insufficient_credits():
         with pytest.raises(HTTPException) as exc_info:
             charge_usage(uuid.uuid4(), "vision", 100, 100, db)
     assert exc_info.value.status_code == 402
+
+
+# ---------------------------------------------------------------------------
+# charge_usage idempotency (dual voice pipeline billing)
+# ---------------------------------------------------------------------------
+
+
+def test_charge_usage_returns_existing_record_for_known_idempotency_key():
+    """If a UsageRecord with this (user_id, idempotency_key) already exists,
+    charge_usage must short-circuit before touching the balance at all."""
+    db = _make_db()
+    existing_record = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = existing_record
+
+    with patch("app.services.billing_service.get_active_balance") as mock_bal:
+        result = charge_usage(
+            uuid.uuid4(), "tts_elevenlabs", 500, 0, db, idempotency_key="key-123"
+        )
+
+    assert result is existing_record
+    mock_bal.assert_not_called()  # never re-evaluated balance/cost for a duplicate
+
+
+def test_charge_usage_charges_once_for_new_idempotency_key():
+    db = _make_db()
+    # Idempotency lookup (db.query(UsageRecord).filter(...).first(), no
+    # with_for_update()) finds nothing — a fresh charge.
+    db.query.return_value.filter.return_value.first.return_value = None
+    # get_active_balance is mocked below, but charge_usage's own balance
+    # deduction still does a real db.query(CreditBalance)...with_for_update()
+    # .first() call — give it a real Decimal to subtract from.
+    credit_balance = MagicMock()
+    credit_balance.balance_credits = Decimal("100")
+    db.query.return_value.filter.return_value.with_for_update.return_value.first.return_value = (
+        credit_balance
+    )
+
+    with patch("app.services.billing_service.get_active_balance") as mock_bal, patch(
+        "app.services.billing_service.calculate_cost"
+    ) as mock_cost:
+        mock_bal.return_value = {
+            "source": "purchased",
+            "balance": Decimal("100"),
+            "access_code_id": None,
+            "access_code": None,
+            "issued_by": None,
+        }
+        mock_cost.return_value = {
+            "raw_cost_usd": Decimal("0.09"),
+            "platform_fee_usd": Decimal("0.018"),
+            "total_cost_usd": Decimal("0.108"),
+            "credits_charged": Decimal("10.8"),
+        }
+        record = charge_usage(
+            uuid.uuid4(),
+            "tts_elevenlabs",
+            500,
+            0,
+            db,
+            idempotency_key="key-456",
+        )
+
+    assert record.idempotency_key == "key-456"
+    assert record.credits_charged == Decimal("10.8")
+    db.commit.assert_called_once()
+
+
+def test_charge_usage_handles_concurrent_duplicate_via_integrity_error():
+    """Simulates two requests racing past the upfront idempotency check —
+    the DB unique constraint on idempotency_key catches the second insert,
+    which must roll back and return the record the first request committed."""
+    db = _make_db()
+    winner_record = MagicMock()
+
+    call_count = {"n": 0}
+
+    def _first_side_effect(*args, **kwargs):
+        call_count["n"] += 1
+        # 1st call: idempotency-key lookup before insert -> None (not yet raced)
+        # 2nd call: idempotency-key lookup after IntegrityError -> winner record
+        return None if call_count["n"] == 1 else winner_record
+
+    db.query.return_value.filter.return_value.first.side_effect = _first_side_effect
+    credit_balance = MagicMock()
+    credit_balance.balance_credits = Decimal("100")
+    db.query.return_value.filter.return_value.with_for_update.return_value.first.return_value = (
+        credit_balance
+    )
+    db.commit.side_effect = IntegrityError("stmt", "params", "orig")
+
+    with patch("app.services.billing_service.get_active_balance") as mock_bal, patch(
+        "app.services.billing_service.calculate_cost"
+    ) as mock_cost:
+        mock_bal.return_value = {
+            "source": "purchased",
+            "balance": Decimal("100"),
+            "access_code_id": None,
+            "access_code": None,
+            "issued_by": None,
+        }
+        mock_cost.return_value = {
+            "raw_cost_usd": Decimal("0.09"),
+            "platform_fee_usd": Decimal("0.018"),
+            "total_cost_usd": Decimal("0.108"),
+            "credits_charged": Decimal("10.8"),
+        }
+        result = charge_usage(
+            uuid.uuid4(), "tts_elevenlabs", 500, 0, db, idempotency_key="key-race"
+        )
+
+    assert result is winner_record
+    db.rollback.assert_called_once()

@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  # FastAPI Backend - Autograder Branch
+  backend-autograder:
+    build: .
+    image: profsidekick-api:autograder
+    container_name: profsidekick-backend-autograder
+    ports:
+      - "8001:8000"  # Map host 8001 to container 8000
+    env_file:
+      - .env
+    environment:
+      # These override .env values — DATABASE_URL and REDIS_URL must use Docker service names
+      - DATABASE_URL=postgresql://profsidekick:password123@postgres-autograder:5432/profsidekick_autograder
+      - REDIS_URL=redis://redis-autograder:6379/0
+      - BACKEND_INSTANCE=autograder
+    volumes:
+      - ./uploads:/app/uploads
+      - ./static:/app/static
+    depends_on:
+      postgres-autograder:
+        condition: service_healthy
+      redis-autograder:
+        condition: service_healthy
+    networks:
+      - profsidekick-autograder-network
+    restart: unless-stopped
+
+  # PostgreSQL Database (pgvector/pgvector:pg16 — includes the vector extension for RAG)
+  postgres-autograder:
+    image: pgvector/pgvector:pg16
+    container_name: profsidekick-postgres-autograder
+    environment:
+      - POSTGRES_DB=profsidekick_autograder
+      - POSTGRES_USER=profsidekick
+      - POSTGRES_PASSWORD=password123
+    volumes:
+      - postgres_autograder_data:/var/lib/postgresql/data
+      - ./docker/init-pgvector.sql:/docker-entrypoint-initdb.d/init-pgvector.sql
+    ports:
+      - "5434:5432"  # Different host port to avoid conflict
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U profsidekick -d profsidekick_autograder"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - profsidekick-autograder-network
+    restart: unless-stopped
+
+  # Redis Cache
+  redis-autograder:
+    image: redis:7-alpine
+    container_name: profsidekick-redis-autograder
+    ports:
+      - "6380:6379"  # Different host port to avoid conflict
+    volumes:
+      - redis_autograder_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - profsidekick-autograder-network
+    restart: unless-stopped
+
+networks:
+  profsidekick-autograder-network:
+    driver: bridge
+
+volumes:
+  postgres_autograder_data:
+  redis_autograder_data:

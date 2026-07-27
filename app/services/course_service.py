@@ -1,7 +1,8 @@
 from typing import List, Optional
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from datetime import datetime
-from app.database.models import Course, User, CourseStudent, Session as SessionModel
+from app.database.models import Course, User, CourseStudent, Session as SessionModel, ProgramCourse
 from fastapi import HTTPException, status
 from uuid import UUID
 from app.schemas.schemas import CourseDetails, CourseCreate, CourseUpdate, CourseStudent as CourseStudentSchema, CourseSessionSummary
@@ -26,8 +27,8 @@ class CourseService:
             user = db.query(User).filter(User.id == course_data.user_id).first()
             if user is None:
                 raise HTTPException(status_code=404, detail="User not found")
-            if user.role != "publisher":
-                raise HTTPException(status_code=403, detail="User is not a publisher")
+            if user.role not in ("publisher", "subscriber", "admin"):
+                raise HTTPException(status_code=403, detail="User is not permitted to create courses")
         else:
             raise HTTPException(status_code=400, detail="User ID is required")
 
@@ -53,6 +54,19 @@ class CourseService:
         db.add(course)
         db.commit()
         db.refresh(course)
+
+        # Link to program if program_id was supplied
+        if course_data.program_id:
+            db.add(
+                ProgramCourse(
+                    id=uuid.uuid4(),
+                    program_id=course_data.program_id,
+                    course_id=course.id,
+                    added_at=datetime.utcnow(),
+                )
+            )
+            db.commit()
+
         return CourseDetails(**course.__dict__)
 
     async def get_courses(
@@ -60,6 +74,7 @@ class CourseService:
         db: Session,
         user_id: UUID,
         avatar_id: Optional[str] = None,
+        program_id: Optional[UUID] = None,
     ) -> List[CourseDetails]:
         if user_id is None:
             return []
@@ -68,7 +83,12 @@ class CourseService:
             raise HTTPException(status_code=404, detail="User not found")
 
         if user.role == "publisher":
-            courses = db.query(Course).filter(Course.user_id == user.id).all()
+            query = db.query(Course).filter(Course.user_id == user.id)
+            if program_id:
+                query = query.join(ProgramCourse, ProgramCourse.course_id == Course.id).filter(
+                    ProgramCourse.program_id == program_id
+                )
+            courses = query.all()
             for course in courses:
                 course.owner_name = f"{user.first_name} {user.last_name}"
                 course.enrollment_count = len(course.students)
@@ -106,8 +126,8 @@ class CourseService:
             elif user.role == "admin":
                 courses = db.query(Course).all()
             else:
-                # Subscriber with no avatar filter: return only enrolled courses.
-                # Private courses are inaccessible without enrollment.
+                # Subscriber with no avatar filter: return enrolled courses plus
+                # any public course (public courses are accessible to all subscribers).
                 enrolled_course_ids = [
                     row[0]
                     for row in db.query(CourseStudent.course_id)
@@ -116,9 +136,14 @@ class CourseService:
                 ]
                 courses = (
                     db.query(Course)
-                    .filter(Course.id.in_(enrolled_course_ids))
+                    .filter(
+                        or_(
+                            Course.id.in_(enrolled_course_ids),
+                            Course.is_public == True,  # noqa: E712
+                        )
+                    )
                     .all()
-                ) if enrolled_course_ids else []
+                )
 
             result = []
             for course in courses:
@@ -357,6 +382,11 @@ class CourseService:
         
         session_summaries = []
         for session in sessions:
+            student_slides = [
+                s for s in (session.slides_details or [])
+                if not s.get("solution_slide")
+            ]
+            run_count = len(session.session_runs) if session.session_runs else 0
             session_summaries.append(CourseSessionSummary(
                 sessionId=session.session_id,
                 session_number=session.session_number,
@@ -364,8 +394,11 @@ class CourseService:
                 class_name=session.class_name,
                 description=session.description,
                 duration=session.duration,
+                total_slides=len(student_slides),
+                run_count=run_count,
+                is_published=getattr(session, 'is_published', False) or False,
                 created_at=session.created_at,
                 updated_at=session.updated_at
             ))
-        
+
         return session_summaries
