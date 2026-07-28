@@ -1702,8 +1702,8 @@ async def get_ephemeral_token(
 async def get_sessions(
     page: int = Query(1, ge=1, description="Page number for pagination"),
     limit: int = Query(20, ge=1, le=100, description="Number of sessions per page"),
-    session_status: Optional[str] = Query(None, regex="^(active|completed|draft)$", description="Filter by session status", alias="status"),
-    sort: str = Query("created_desc", regex="^(created_desc|created_asc|updated_desc|updated_asc)$", description="Sort order"),
+    session_status: Optional[str] = Query(None, pattern="^(active|completed|draft)$", description="Filter by session status", alias="status"),
+	sort: str = Query("created_desc", pattern="^(created_desc|created_asc|updated_desc|updated_asc)$", description="Sort order"),
     avatar_id: Optional[str] = Query(None, description="Filter sessions by avatar_id"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
