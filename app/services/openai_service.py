@@ -15,8 +15,10 @@ class OpenAIService:
     """Service for OpenAI API integration"""
 
     def __init__(self):
-        self.client = OpenAI(api_key=settings.openai_api_key)
-        self.async_client = AsyncOpenAI(api_key=settings.openai_api_key)
+        # Bound timeouts so a single hung Vision call cannot stall the whole API.
+        self.client = OpenAI(api_key=settings.openai_api_key, timeout=60.0, max_retries=1)
+        self.async_client = AsyncOpenAI(api_key=settings.openai_api_key, timeout=60.0, max_retries=1)
+        self._vision_concurrency = 4
         
     # Valid OpenAI Realtime API model identifiers for realtime sessions.
     _VALID_REALTIME_MODELS = {
@@ -237,29 +239,46 @@ class OpenAIService:
         template_document_analysis_prompt: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         try:
-            # Prepare slides for Vision API
-            slides_details = []
             # Priority: explicit vision_instructions from session > template prompt > hardcoded default
             if not vision_instructions:
                 vision_instructions = resolve_vision_prompt(template_document_analysis_prompt)
             if not vision_model:
-                vision_model = "gpt-4.1"
+                # Faster default for multi-slide decks; still vision-capable.
+                vision_model = "gpt-4o-mini"
 
-            for slide_image, image_path in zip(slide_images, images_paths):
-                slide_details = await self._process_slide_with_vision(slide_image, vision_instructions, vision_model)
-                slides_details.append({
-                    "id": image_path.get('slideNumber'),
-                    "slideNumber": image_path.get('slideNumber'),
-                    "title": slide_details.get('title'),
-                    "content": slide_details.get('content'),
-                    "imagePath": image_path.get('imagePath'),
-                    "thumbnailPath": image_path.get('thumbnailPath'),
-                    "visionInstructions": vision_instructions,
-                    "visionModel": vision_model
-                })
-            
-            return slides_details
-        
+            total = len(slide_images)
+            print(f"Vision API: processing {total} slide(s) for {session_id} with model={vision_model}")
+
+            sem = asyncio.Semaphore(self._vision_concurrency)
+            results: List[Optional[Dict[str, Any]]] = [None] * total
+
+            async def _one(index: int, slide_image, image_path: Dict[str, Any]) -> None:
+                async with sem:
+                    print(f"Vision API: slide {index + 1}/{total} (#{image_path.get('slideNumber')})")
+                    slide_details = await self._process_slide_with_vision(
+                        slide_image, vision_instructions, vision_model
+                    )
+                    results[index] = {
+                        "id": image_path.get("slideNumber"),
+                        "slideNumber": image_path.get("slideNumber"),
+                        "title": slide_details.get("title"),
+                        "content": slide_details.get("content"),
+                        "imagePath": image_path.get("imagePath"),
+                        "thumbnailPath": image_path.get("thumbnailPath"),
+                        "visionInstructions": vision_instructions,
+                        "visionModel": vision_model,
+                    }
+
+            await asyncio.gather(
+                *[
+                    _one(i, slide_image, image_path)
+                    for i, (slide_image, image_path) in enumerate(zip(slide_images, images_paths))
+                ]
+            )
+
+            print(f"Vision API: finished {total} slide(s) for {session_id}")
+            return [r for r in results if r is not None]
+
         except Exception as e:
             raise Exception(f"Failed to process slides with Vision API: {str(e)}")
     
@@ -273,63 +292,69 @@ class OpenAIService:
     
     async def _process_slide_with_vision(self, slide_image: Image, vision_instructions: str, vision_model: str) -> Dict[str, Any]:
         try:
-            # Convert image to base64 PNG format
+            # Downscale large slides before upload — cuts latency dramatically vs raw PDF renders.
+            max_edge = 1280
+            img = slide_image
+            if max(img.size) > max_edge:
+                img = img.copy()
+                img.thumbnail((max_edge, max_edge), Image.Resampling.LANCZOS)
+
             buffer = io.BytesIO()
-            slide_image.save(buffer, format='PNG')
+            img.save(buffer, format="PNG", optimize=True)
             buffer.seek(0)
             image_base64 = base64.b64encode(buffer.getvalue()).decode()
 
-            # Call OpenAI API
-            response_content = self.client.chat.completions.create(
+            # One Vision call returns title + content (was previously two sequential calls).
+            response = await self.async_client.chat.completions.create(
                 model=vision_model,
                 messages=[
                     {
                         "role": "system",
-                        "content": vision_instructions
+                        "content": (
+                            f"{vision_instructions}\n\n"
+                            "Respond in exactly this format:\n"
+                            "TITLE: <concise academic title, max 10 words>\n"
+                            "CONTENT:\n<full slide analysis>"
+                        ),
                     },
                     {
                         "role": "user",
                         "content": [
                             {
                                 "type": "text",
-                                "text": "Analyze this slide and extract all content as instructed."
+                                "text": "Analyze this slide and extract all content as instructed.",
                             },
                             {
                                 "type": "image_url",
                                 "image_url": {
                                     "url": f"data:image/png;base64,{image_base64}",
-                                    "detail": "high"
-                                }
-                            }
-                        ]
-                    }
-                ],
-                temperature=0.4
-            )
-
-            response_title = self.client.chat.completions.create(
-                model="gpt-4.1-mini",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "Generate a concise academic title for this examination slide (maximum 10 words). Write only the title, no additional text."
+                                    "detail": "low",
+                                },
+                            },
+                        ],
                     },
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": response_content.choices[0].message.content
-                            }
-                        ]
-                    }
-                ]
+                ],
+                temperature=0.4,
             )
 
-            return {
-                "title": response_title.choices[0].message.content,
-                "content": response_content.choices[0].message.content
-            }
-        
+            raw = (response.choices[0].message.content or "").strip()
+            title = "Untitled slide"
+            content = raw
+            if raw.upper().startswith("TITLE:"):
+                lines = raw.splitlines()
+                title = lines[0][6:].strip() or title
+                if len(lines) > 1:
+                    rest = "\n".join(lines[1:]).lstrip()
+                    if rest.upper().startswith("CONTENT:"):
+                        rest = rest[8:].lstrip()
+                    content = rest or raw
+            else:
+                # Fallback: first line / first ~10 words as title
+                first = raw.splitlines()[0].strip() if raw else ""
+                words = first.split()
+                title = " ".join(words[:10]) if words else title
+
+            return {"title": title, "content": content}
+
         except Exception as e:
             raise Exception(f"Failed to process slide with Vision API: {str(e)}")
