@@ -216,7 +216,7 @@ class EmailService:
             f"{settings.frontend_url}/verify-email?token={verification_token}"
         )
 
-        subject = "Verify Your Email - ProfSidekick"
+        subject = "Verify Your Email - MyOS"
 
         html_content = f"""
         <!DOCTYPE html>
@@ -232,7 +232,7 @@ class EmailService:
                     padding: 20px;
                 }}
                 .header {{
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    background: #0f2744;
                     color: white;
                     padding: 30px;
                     text-align: center;
@@ -246,7 +246,7 @@ class EmailService:
                 .button {{
                     display: inline-block;
                     padding: 15px 30px;
-                    background: #667eea;
+                    background: #1e4db8;
                     color: white !important;
                     text-decoration: none;
                     border-radius: 5px;
@@ -265,29 +265,25 @@ class EmailService:
         </head>
         <body>
             <div class="header">
-                <h1>Welcome to ProfSidekick! 🎓</h1>
+                <h1>Welcome to MyOS</h1>
             </div>
             <div class="content">
                 <p>Hi {user_name},</p>
                 
-                <p>Thank you for registering with ProfSidekick! We're excited to have you on board.</p>
-                
-                <p>To complete your registration, please verify your email address by clicking the button below:</p>
+                <p>Thank you for registering with MyOS. To complete your registration, please verify your email address:</p>
                 
                 <center>
                     <a href="{verification_url}" class="button">Verify Email Address</a>
                 </center>
                 
                 <p>Or copy and paste this link into your browser:</p>
-                <p style="word-break: break-all; color: #667eea;">{verification_url}</p>
-                
-                <p><strong>Important:</strong> After verifying your email, your account will be sent for approval. You'll receive another email once your account is approved and ready to use.</p>
+                <p style="word-break: break-all; color: #1e4db8;">{verification_url}</p>
                 
                 <p>This link will expire in 24 hours for security reasons.</p>
                 
                 <div class="footer">
-                    <p>If you didn't create an account with ProfSidekick, please ignore this email.</p>
-                    <p>&copy; 2025 ProfSidekick. All rights reserved.</p>
+                    <p>If you didn't create an account with MyOS, please ignore this email.</p>
+                    <p>&copy; 2026 MyOS. All rights reserved.</p>
                 </div>
             </div>
         </body>
@@ -295,20 +291,18 @@ class EmailService:
         """
 
         text_content = f"""
-        Welcome to ProfSidekick!
+        Welcome to MyOS!
         
         Hi {user_name},
         
-        Thank you for registering with ProfSidekick! We're excited to have you on board.
+        Thank you for registering with MyOS.
         
         To complete your registration, please verify your email address by visiting:
         {verification_url}
         
-        Important: After verifying your email, your account will be sent for approval. You'll receive another email once your account is approved and ready to use.
-        
         This link will expire in 24 hours for security reasons.
         
-        If you didn't create an account with ProfSidekick, please ignore this email.
+        If you didn't create an account with MyOS, please ignore this email.
         """
 
         return await self.send_email(to_email, subject, html_content, text_content)
@@ -551,6 +545,54 @@ class EmailService:
         If you have any questions or need assistance, feel free to reach out to us.
         
         Welcome aboard!
+        """
+
+        return await self.send_email(to_email, subject, html_content, text_content)
+
+    async def send_password_reset_email(
+        self, to_email: str, user_name: str, reset_token: str
+    ) -> bool:
+        """Send password reset link to the user."""
+        reset_url = f"{settings.frontend_url}/reset-password?token={reset_token}"
+        subject = "Reset Your Password - MyOS"
+
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }}
+                .header {{ background: #0f2744; color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+                .content {{ background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }}
+                .button {{ display: inline-block; padding: 15px 30px; background: #1e4db8; color: white !important; text-decoration: none; border-radius: 5px; margin: 20px 0; font-weight: bold; }}
+                .footer {{ text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 12px; color: #666; }}
+            </style>
+        </head>
+        <body>
+            <div class="header"><h1>Password Reset</h1></div>
+            <div class="content">
+                <p>Hi {user_name},</p>
+                <p>We received a request to reset your MyOS password. Click the button below to choose a new password:</p>
+                <center><a href="{reset_url}" class="button">Reset Password</a></center>
+                <p>Or copy and paste this link into your browser:</p>
+                <p style="word-break: break-all; color: #1e4db8;">{reset_url}</p>
+                <p><strong>This link expires in 1 hour.</strong> If you did not request a password reset, you can ignore this email.</p>
+                <div class="footer"><p>&copy; 2026 MyOS. All rights reserved.</p></div>
+            </div>
+        </body>
+        </html>
+        """
+
+        text_content = f"""
+        Password Reset - MyOS
+
+        Hi {user_name},
+
+        We received a request to reset your MyOS password.
+        Visit this link to choose a new password (expires in 1 hour):
+        {reset_url}
+
+        If you did not request a password reset, you can ignore this email.
         """
 
         return await self.send_email(to_email, subject, html_content, text_content)

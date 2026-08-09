@@ -63,7 +63,7 @@ class Settings(BaseSettings):
     smtp_username: str = Field("", env="SMTP_USERNAME")
     smtp_password: str = Field("", env="SMTP_PASSWORD")
     smtp_from_email: str = Field("", env="SMTP_FROM_EMAIL")
-    smtp_from_name: str = Field("ProfSidekick", env="SMTP_FROM_NAME")
+    smtp_from_name: str = Field("MyOS", env="SMTP_FROM_NAME")
     
     # SendGrid Configuration (recommended for production)
     sendgrid_api_key: str = Field("", env="SENDGRID_API_KEY")

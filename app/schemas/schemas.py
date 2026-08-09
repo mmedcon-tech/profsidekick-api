@@ -148,6 +148,13 @@ class UserLogin(BaseModel):
     username: str
     password: str
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(..., min_length=1)
+    password: str = Field(..., min_length=6)
+
 class UserResponse(BaseModel):
     id: str
     username: str

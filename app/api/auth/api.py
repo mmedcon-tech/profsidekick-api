@@ -15,6 +15,8 @@ from app.schemas.schemas import (
     UserProfileUpdate,
     UserSessionsResponse,
     UserSessionSummary,
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
 )
 
 # Set up logger
@@ -165,4 +167,37 @@ async def approve_user(token: str, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error during user approval",
+        )
+
+
+@router.post("/forgot-password")
+async def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    """Send a password reset email if the account exists."""
+    try:
+        return await auth_service.request_password_reset(db, body.email)
+    except Exception as e:
+        logger.error(f"❌ Error requesting password reset: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error during password reset request",
+        )
+
+
+@router.post("/reset-password")
+async def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
+    """Reset password using a one-time token from email."""
+    try:
+        result = await auth_service.reset_password(db, body.token, body.password)
+        if not result["success"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=result["message"]
+            )
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error resetting password: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error during password reset",
         )

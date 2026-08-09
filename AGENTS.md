@@ -29,7 +29,7 @@ backend-main/
 │   ├── config.py                      # Pydantic Settings — every env var is declared here; no os.getenv() elsewhere
 │   ├── api/                           # Route handlers — thin layer: validate → service call → return schema
 │   │   ├── auth/
-│   │   │   └── api.py                 # /api/auth/* (register, login, verify-token, refresh, logout)
+│   │   │   └── api.py                 # /api/auth/* (register, login, verify-email, forgot/reset-password, verify-token, refresh, logout)
 │   │   ├── users/
 │   │   │   └── api.py                 # /api/users/* (profile, sessions)
 │   │   ├── sessions/

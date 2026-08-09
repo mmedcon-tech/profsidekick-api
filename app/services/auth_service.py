@@ -131,19 +131,23 @@ class AuthService:
                 message="Username or email already registered"
             )
 
-        # Send verification email
-        # user_name = f"{new_user.first_name} {new_user.last_name}"
-        # email_sent = await email_service.send_verification_email(
-        #     new_user.email,
-        #     user_name,
-        #     verification_token
-        # )
-        email_sent = True  # Mock email sending for development
-        
+        # Send verification email via configured SMTP / provider
+        user_name = f"{new_user.first_name} {new_user.last_name}"
+        email_sent = await email_service.send_verification_email(
+            new_user.email,
+            user_name,
+            verification_token
+        )
+
         if not email_sent:
+            # Keep the account; user can request support / re-register after SMTP is fixed
             return AuthResponse(
-                success=False,
-                message="Failed to send verification email. Please try again later."
+                success=True,
+                message=(
+                    "Registration successful, but we could not send the verification email. "
+                    "Please contact support or try again later."
+                ),
+                user=self.user_to_response(new_user),
             )
         
         return AuthResponse(
@@ -225,7 +229,21 @@ class AuthService:
         user.email_verified = True
         user.email_verification_token = None  # Clear the token
         user.updated_at = datetime.utcnow()
-        
+
+        professor_emails = settings.professor_approval_emails or []
+        if not professor_emails:
+            # No approvers configured — auto-approve so SMTP verification alone unlocks login
+            user.is_approved = True
+            user.approval_token = None
+            user.approved_at = datetime.utcnow()
+            user.approved_by = "auto"
+            db.commit()
+            db.refresh(user)
+            return {
+                "success": True,
+                "message": "Email verified successfully! You can now sign in.",
+            }
+
         # Generate approval token and send to professor
         approval_token = self.generate_token()
         user.approval_token = approval_token
@@ -304,3 +322,60 @@ class AuthService:
             "message": "User account approved successfully! The user has been notified.",
             "user": self.user_to_response(user)
         }
+
+    async def request_password_reset(self, db: Session, email: str) -> Dict[str, Any]:
+        """
+        Create a password-reset token and email it.
+        Always returns a generic success message to avoid email enumeration.
+        """
+        generic = {
+            "success": True,
+            "message": "If an account exists for that email, a password reset link has been sent.",
+        }
+        user = db.query(User).filter(User.email == email.strip().lower()).first()
+        if not user:
+            # Case-insensitive fallback (emails may have been stored with original casing)
+            user = db.query(User).filter(User.email.ilike(email.strip())).first()
+        if not user:
+            return generic
+
+        reset_token = self.generate_token()
+        user.password_reset_token = reset_token
+        user.password_reset_sent_at = datetime.utcnow()
+        user.updated_at = datetime.utcnow()
+        db.commit()
+
+        user_name = f"{user.first_name} {user.last_name}".strip() or user.username
+        await email_service.send_password_reset_email(user.email, user_name, reset_token)
+        return generic
+
+    async def reset_password(self, db: Session, token: str, new_password: str) -> Dict[str, Any]:
+        """Reset password using a one-time token (valid for 1 hour)."""
+        user = db.query(User).filter(User.password_reset_token == token).first()
+        if not user or not user.password_reset_sent_at:
+            return {
+                "success": False,
+                "message": "Invalid or expired reset token",
+            }
+
+        age = datetime.utcnow() - user.password_reset_sent_at
+        if age > timedelta(hours=1):
+            user.password_reset_token = None
+            user.password_reset_sent_at = None
+            db.commit()
+            return {
+                "success": False,
+                "message": "Invalid or expired reset token",
+            }
+
+        user.password_hash = self.hash_password(new_password)
+        user.password_reset_token = None
+        user.password_reset_sent_at = None
+        user.updated_at = datetime.utcnow()
+        db.commit()
+
+        return {
+            "success": True,
+            "message": "Password updated successfully. You can now sign in.",
+        }
+

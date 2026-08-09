@@ -42,6 +42,10 @@ class User(Base):
     email_verified = Column(Boolean, nullable=True, default=False)
     email_verification_token = Column(String(255), nullable=True)
     email_verification_sent_at = Column(DateTime, nullable=True)
+
+    # Password reset fields
+    password_reset_token = Column(String(255), nullable=True)
+    password_reset_sent_at = Column(DateTime, nullable=True)
     
     # Professor approval fields
     is_approved = Column(Boolean, nullable=True, default=False)
