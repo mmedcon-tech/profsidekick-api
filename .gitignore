@@ -13,6 +13,9 @@ static"venv/"
 venv/
 static/
 
+.gitnexus
+.claude
+
 # c829271c20c4_compatibility_bridge.py
 
 # Local OCR test assets
