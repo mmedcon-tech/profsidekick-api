@@ -231,8 +231,14 @@ class AuthService:
         user.updated_at = datetime.utcnow()
 
         professor_emails = settings.professor_approval_emails or []
-        if not professor_emails:
-            # No approvers configured — auto-approve so SMTP verification alone unlocks login
+        # Only publishers need manual approval when approvers are configured.
+        # Subscribers and admins unlock immediately after email verification.
+        needs_publisher_approval = (
+            bool(professor_emails) and user.role in ("publisher", "professor", "teacher")
+        )
+
+        if not needs_publisher_approval:
+            # No approvers configured, or non-publisher role — auto-approve
             user.is_approved = True
             user.approval_token = None
             user.approved_at = datetime.utcnow()
