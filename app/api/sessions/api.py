@@ -19,11 +19,12 @@ from app.database.models import (
 from app.services.summarization_service import (
     generate_run_summary, get_recent_session_summary, get_user_memories,
 )
-from app.schemas.schemas import SessionDetails, SlideData, PresentationData, AssistantParameters, SessionRunDetails, EphemeralTokenResponse, SessionUpdateDetails, SessionsListResponse, SessionRunsListResponse, SessionCreateRequest
+from app.schemas.schemas import SessionDetails, SlideData, PresentationData, AssistantParameters, SessionRunDetails, EphemeralTokenResponse, SessionUpdateDetails, SessionsListResponse, SessionRunsListResponse, SessionCreateRequest, TranscriptTurnRequest, TranscriptTurnResponse, TranscriptListResponse
 from app.services.file_processor import FileProcessor
 from app.services.openai_service import OpenAIService
 from app.services.session_service import SessionService
 from app.services.rag_service import ingest_session_document_background, retrieve_context
+from app.services.transcript_service import append_transcript_turn, get_transcript_turns
 from pydantic import BaseModel
 class SearchRequest(BaseModel):
     query: str
@@ -886,6 +887,7 @@ async def get_session_run(
             sessionRunMetadata=session_run.session_run_metadata,
             assistantParameters=AssistantParameters(**session_run.assistant_parameters),
             status=session_run.status,
+            courseId=str(session.courseId) if session.courseId else None,
             courseName=session.courseName,
             className=session.className,
             courseCode=session.courseCode,
@@ -896,6 +898,7 @@ async def get_session_run(
             startTime=session_run.start_time,
             endTime=session_run.end_time,
             runtimeModeUsed=getattr(session_run, "runtime_mode_used", None),
+            sessionMode=getattr(session, "sessionMode", None) or "teaching",
         )
     except Exception as e:
         logger.error(f"❌ Error getting session run: {e}")
@@ -1670,11 +1673,71 @@ async def search_session_knowledge(
     Search session slides and optionally course materials for relevant chunks.
     """
     try:
-        chunks = retrieve_context(session_id, request.query, top_k=5, db=db, course_id=request.course_id)
+        import uuid as uuid_lib
+
+        db_session = db.query(Session).filter(Session.session_id == session_id).first()
+        if not db_session:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+        course_uuid = None
+        raw_course_id = request.course_id or str(db_session.course_id)
+        if raw_course_id:
+            try:
+                course_uuid = uuid_lib.UUID(str(raw_course_id))
+            except ValueError:
+                course_uuid = db_session.course_id
+
+        chunks = retrieve_context(
+            db_session.id,
+            request.query,
+            top_k=8,
+            db=db,
+            course_id=course_uuid,
+        )
         return {"results": chunks}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error searching knowledge: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error searching knowledge: {e}"
         )
+
+
+@router.get("/sessions/{session_id}/run/{session_run_id}/transcript", response_model=TranscriptListResponse)
+async def get_session_run_transcript(
+    session_id: str,
+    session_run_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return persisted transcript turns for a session run."""
+    _ = session_id  # validated by run lookup
+    turns = get_transcript_turns(db, session_run_id, current_user.id)
+    return TranscriptListResponse(
+        session_run_id=session_run_id,
+        turns=[TranscriptTurnResponse(**t) for t in turns],
+        total=len(turns),
+    )
+
+
+@router.post("/sessions/{session_id}/run/{session_run_id}/transcript", response_model=TranscriptTurnResponse)
+async def append_session_run_transcript(
+    session_id: str,
+    session_run_id: str,
+    body: TranscriptTurnRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Append one transcript turn to a session run."""
+    _ = session_id
+    turn = append_transcript_turn(
+        db,
+        session_run_id,
+        current_user.id,
+        body.role,
+        body.text,
+        body.captured_at,
+    )
+    return TranscriptTurnResponse(**turn)

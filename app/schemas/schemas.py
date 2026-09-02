@@ -134,6 +134,7 @@ class SessionRunDetails(BaseModel):
     startTime: datetime
     endTime: Optional[datetime] = None
     runtimeModeUsed: Optional[str] = None  # 'avatar' | 'chat'
+    sessionMode: Optional[str] = "teaching"
 
 # Authentication Schemas
 class UserRegistration(BaseModel):
@@ -1242,4 +1243,23 @@ class SubscriberChatMessage(BaseModel):
 class SubscriberChatHistoryResponse(BaseModel):
     session_run_id: str
     messages: List[SubscriberChatMessage]
+    total: int
+
+
+class TranscriptTurnRequest(BaseModel):
+    role: str = Field(..., description="user | assistant")
+    text: str = Field(..., min_length=1, max_length=16000)
+    captured_at: Optional[str] = None
+
+
+class TranscriptTurnResponse(BaseModel):
+    id: str
+    role: str
+    text: str
+    captured_at: str
+
+
+class TranscriptListResponse(BaseModel):
+    session_run_id: str
+    turns: List[TranscriptTurnResponse]
     total: int
