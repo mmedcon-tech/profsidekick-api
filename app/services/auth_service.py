@@ -77,7 +77,7 @@ class AuthService:
         return secrets.token_urlsafe(32)
     
     async def register_user(self, db: Session, registration_data: UserRegistration) -> AuthResponse:
-        """Register a new user with email verification"""
+        """Register a new user. Accounts can sign in immediately; verification email is not required."""
         # Check if username already exists
         existing_user = db.query(User).filter(User.username == registration_data.username).first()
         if existing_user:
@@ -101,10 +101,6 @@ class AuthService:
                 message="Invalid role. Must be publisher, subscriber, or admin."
             )
         
-        # Generate email verification token
-        verification_token = self.generate_token()
-        
-        # Create new user with email_verified=False and is_approved=False
         hashed_password = self.hash_password(registration_data.password)
         new_user = User(
             id=uuid.uuid4(),
@@ -114,10 +110,12 @@ class AuthService:
             first_name=registration_data.firstName,
             last_name=registration_data.lastName,
             role=registration_data.role,
-            email_verified=settings.bypass_email_verification,
-            email_verification_token=verification_token,
-            email_verification_sent_at=datetime.utcnow(),
-            is_approved=settings.bypass_email_verification
+            email_verified=True,
+            email_verification_token=None,
+            email_verification_sent_at=None,
+            is_approved=True,
+            approved_at=datetime.utcnow(),
+            approved_by="auto",
         )
         
         try:
@@ -131,28 +129,9 @@ class AuthService:
                 message="Username or email already registered"
             )
 
-        # Send verification email via configured SMTP / provider
-        user_name = f"{new_user.first_name} {new_user.last_name}"
-        email_sent = await email_service.send_verification_email(
-            new_user.email,
-            user_name,
-            verification_token
-        )
-
-        if not email_sent:
-            # Keep the account; user can request support / re-register after SMTP is fixed
-            return AuthResponse(
-                success=True,
-                message=(
-                    "Registration successful, but we could not send the verification email. "
-                    "Please contact support or try again later."
-                ),
-                user=self.user_to_response(new_user),
-            )
-        
         return AuthResponse(
             success=True,
-            message="Registration successful! Please check your email to verify your account.",
+            message="Registration successful. You can sign in now.",
             user=self.user_to_response(new_user)
         )
     
@@ -164,13 +143,6 @@ class AuthService:
             return AuthResponse(
                 success=False,
                 message="Invalid username or password"
-            )
-        
-        # Check if email is verified (skip check if email_verified is None for old accounts)
-        if user.email_verified is False:
-            return AuthResponse(
-                success=False,
-                message="Please verify your email address before logging in. Check your email for the verification link."
             )
         
         # Check if account is approved (skip check if is_approved is None for old accounts)
