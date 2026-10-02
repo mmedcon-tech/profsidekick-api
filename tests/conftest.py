@@ -1,7 +1,8 @@
 """
 Shared pytest fixtures for backend tests.
 
-Requires a real PostgreSQL + pgvector database.  Set DATABASE_URL before running:
+Integration tests require a real PostgreSQL + pgvector *test* database.
+Unit tests in tests/unit do not. Set DATABASE_URL before integration tests:
 
   Local development (docker-compose.test.yml):
     export DATABASE_URL=postgresql://postgres:postgres@localhost:5433/profsidekick_test
@@ -14,6 +15,7 @@ Requires a real PostgreSQL + pgvector database.  Set DATABASE_URL before running
 
 import os
 import uuid
+from urllib.parse import urlparse
 
 import pytest
 from fastapi.testclient import TestClient
@@ -29,24 +31,38 @@ from app.main import app
 # ---------------------------------------------------------------------------
 # Database engine
 # ---------------------------------------------------------------------------
+# Integration fixtures talk to Postgres. They run only when DATABASE_URL names
+# a test database (the name must contain "test"). Unit tests under tests/unit
+# do not use these fixtures and do not need a database.
+# The guard also refuses the dev database so a local pytest run cannot
+# drop tables in profsidekick.
 
 _DATABASE_URL = os.getenv("DATABASE_URL", "")
 
-if not _DATABASE_URL:
-    raise RuntimeError(
-        "DATABASE_URL environment variable is not set.\n"
-        "Start the test database with:\n"
-        "  docker compose -f docker-compose.test.yml up -d\n"
-        "Then export:\n"
-        "  export DATABASE_URL=postgresql://postgres:postgres@localhost:5433/profsidekick_test"
-    )
-
-# Normalise legacy postgres:// scheme used by some hosting providers.
 if _DATABASE_URL.startswith("postgres://"):
     _DATABASE_URL = _DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-engine = create_engine(_DATABASE_URL)
-TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+def _database_name(url: str) -> str:
+    return urlparse(url).path.lstrip("/").split("?")[0]
+
+
+def _missing_test_database_message() -> str:
+    return (
+        "Integration tests need a Postgres URL whose database name contains 'test'.\n"
+        "Start the test database with:\n"
+        "  docker compose -f docker-compose.test.yml up -d\n"
+        "Then export:\n"
+        "  export DATABASE_URL=postgresql://postgres:postgres@localhost:5433/profsidekick_test\n"
+        "Unit tests do not need this:\n"
+        "  pytest tests/unit -q"
+    )
+
+
+engine = None
+TestSessionLocal = None
+if _DATABASE_URL and "test" in _database_name(_DATABASE_URL).lower():
+    engine = create_engine(_DATABASE_URL)
+    TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 # ---------------------------------------------------------------------------
@@ -57,6 +73,9 @@ TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 @pytest.fixture(scope="session", autouse=True)
 def create_tables():
     """Enable pgvector, create all tables once per session, drop on teardown."""
+    if engine is None:
+        yield
+        return
     with engine.connect() as conn:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         conn.commit()
@@ -68,6 +87,8 @@ def create_tables():
 @pytest.fixture
 def db_session(create_tables):
     """Yield a transactional session that rolls back after each test."""
+    if TestSessionLocal is None:
+        pytest.fail(_missing_test_database_message())
     session = TestSessionLocal()
     yield session
     session.rollback()
