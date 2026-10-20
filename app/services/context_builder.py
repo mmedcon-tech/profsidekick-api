@@ -29,6 +29,13 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List, Optional
 
+from app.services.profession_profiles import (
+    EXAMINATION_REINFORCEMENT as _EDUCATION_EXAMINATION,
+    TEACHING_REINFORCEMENT as _EDUCATION_TEACHING,
+    PromptProfile,
+    get_prompt_profile,
+)
+
 # ── Legacy fallback (kept for avatars with no published version) ─────────────
 EXAMINER_BASE_PROMPT = """You are an AI oral examiner conducting structured academic assessments. You evaluate reasoning and understanding. You do NOT teach, lecture, or introduce external information beyond the assignment scope.
 
@@ -107,29 +114,22 @@ def _extract_session_behaviour(assistant_parameters: Any) -> Dict:
 
 # ─── Realtime sessions ───────────────────────────────────────────────────────
 
-EXAMINATION_REINFORCEMENT = """\
-[Assessment Directive]
-This session is operating in EXAMINATION MODE. Your primary function is assessment, not instruction.
+# Education directives live in profession_profiles; re-exported here for existing imports.
+EXAMINATION_REINFORCEMENT = _EDUCATION_EXAMINATION
+TEACHING_REINFORCEMENT = _EDUCATION_TEACHING
 
-Core rules for this session:
-- Evaluate the student's reasoning, accuracy, and understanding based solely on what they demonstrate.
-- Assess responses against the provided rubric and course materials. Do not award partial credit silently — probe further if a response is incomplete.
-- Do not teach, explain concepts, or provide direct answers. If the student is wrong, ask targeted follow-up questions that guide self-correction without giving the answer away.
-- Stay strictly within the scope of the submitted materials and role definition. Do not introduce external examples or frameworks.
-- Maintain examiner neutrality: avoid affirmations ("great", "exactly") that imply correctness before you have evaluated the full response.
-- Prioritise evidence-based assessment: every evaluation point must be traceable to the student's stated reasoning or submitted work."""
 
-TEACHING_REINFORCEMENT = """\
-[Teaching Directive]
-This session is operating in TEACHING MODE. Your primary function is to act as the professor and lead the lesson.
+def _directive(profile: PromptProfile, is_examination: bool) -> str:
+    """Assessment directive in examination mode when the profession assesses; else the standard one."""
+    if is_examination and profile.assessment_directive:
+        return profile.assessment_directive
+    return profile.standard_directive
 
-Core rules for this session:
-- You must take the initiative to lead the student through the lesson from start to finish.
-- Automatically navigate through the presentation using the `nextSlide`, `previousSlide`, and `goToSlide` tools as you discuss the presentation.
-- Teach the material on the slides based on the configuration and instructions provided.
-- If the student asks a question about a specific topic, you MUST use the `searchKnowledgeBase` tool to retrieve accurate RAG knowledge and incorporate it into your answer.
-- Do not wait for the student to prompt you to move to the next slide once a topic is concluded; you are driving the lecture.
-- Be engaging, ask interactive questions, and ensure the student is following along."""
+
+def _profile_memory_heading(profile: PromptProfile) -> str:
+    if profile.key == "education":
+        return "Student Learning Profile"
+    return f"{profile.participant.capitalize()} Profile"
 
 
 def _resolve_prompt_for_mode(
@@ -173,10 +173,14 @@ def build_realtime_instructions(
     session_summary: Optional[str] = None,
     # Long-term memories for this user+avatar
     memories: Optional[List[str]] = None,
+    # Creator's field (see profession_profiles); None → education
+    profession: Optional[str] = None,
 ) -> str:
     """
     Assemble the complete instruction string sent to the OpenAI Realtime API.
     """
+    profile = get_prompt_profile(profession)
+    is_education = profile.key == "education"
     sb_data = _extract_session_behaviour(assistant_parameters)
     sb: Dict = sb_data["sessionBehavior"]
     editable: str = sb_data["editable"]
@@ -191,18 +195,16 @@ def build_realtime_instructions(
 
     # 1. Core persona — mode-resolved prompt
     resolved = _resolve_prompt_for_mode(session_mode, teaching_prompt, examination_prompt, conversation_prompt)
-    parts.append(resolved if resolved else EXAMINER_BASE_PROMPT)
+    parts.append(resolved if resolved else (profile.base_prompt or EXAMINER_BASE_PROMPT))
 
     # 2. Role context
     role_blk = _role_block(role_label, role_context)
     if role_blk:
         parts.append(role_blk)
 
-    # 2b. Examination/Teaching reinforcement
-    if is_examination:
-        parts.append(EXAMINATION_REINFORCEMENT)
-    else:
-        parts.append(TEACHING_REINFORCEMENT)
+    # 2b. Profession directive (assessment only for professions that assess)
+    assessing = is_examination and profile.assesses
+    parts.append(_directive(profile, is_examination))
 
     # 3. Rubric
     if rubric:
@@ -213,19 +215,20 @@ def build_realtime_instructions(
         if rubric_lines:
             parts.append(f"[Rubric]\n{rubric_lines}")
 
-    # 4. Hint policy
-    hint_allowed = "YES" if hint_policy != "NONE" else "NO"
-    if hint_policy == "PENALIZED":
-        hint_rule = "Penalized mode applies rubric-based deduction for each hint used"
-    elif hint_policy == "FREE":
-        hint_rule = "Free mode allows hints without any score impact"
-    else:
-        hint_rule = "Hints are not permitted in this session"
-    parts.append(f"[Hint Policy]\nAllowed: {hint_allowed}\nMode: {hint_policy}\nRules:\n- {hint_rule}")
+    # 4. Hint policy — always for education (unchanged); otherwise only when assessing
+    if is_education or assessing:
+        hint_allowed = "YES" if hint_policy != "NONE" else "NO"
+        if hint_policy == "PENALIZED":
+            hint_rule = "Penalized mode applies rubric-based deduction for each hint used"
+        elif hint_policy == "FREE":
+            hint_rule = "Free mode allows hints without any score impact"
+        else:
+            hint_rule = "Hints are not permitted in this session"
+        parts.append(f"[Hint Policy]\nAllowed: {hint_allowed}\nMode: {hint_policy}\nRules:\n- {hint_rule}")
 
-    # 5. Professor instructions
+    # 5. Creator's instructions
     if editable.strip():
-        parts.append(f"[Professor Instructions]\n{editable.strip()}")
+        parts.append(f"[{profile.instructions_heading}]\n{editable.strip()}")
     if session_instructions:
         parts.append(f"[Session Instructions]\n{session_instructions}")
 
@@ -233,7 +236,7 @@ def build_realtime_instructions(
     if session_summary and session_summary.strip():
         parts.append(
             f"[Previous Session Summary]\n"
-            f"This student has worked with this material before. Key observations:\n"
+            f"This {profile.participant} has worked with this material before. Key observations:\n"
             f"{session_summary.strip()}"
         )
 
@@ -241,7 +244,7 @@ def build_realtime_instructions(
     if memories:
         mem_block = "\n".join(f"- {m}" for m in memories if m.strip())
         if mem_block:
-            parts.append(f"[Student Learning Profile]\n{mem_block}")
+            parts.append(f"[{_profile_memory_heading(profile)}]\n{mem_block}")
 
     # 8. Slide content
     slide_block = _slide_block(slides)
@@ -252,10 +255,12 @@ def build_realtime_instructions(
     if solution_slides:
         sol_block = _slide_block(solution_slides, prefix="Solution ")
         if sol_block:
+            owner = "PROFESSOR" if is_education else "EXPERT"
             parts.append(
-                "[PROFESSOR SOLUTION REFERENCE — INTERNAL USE ONLY]\n"
+                f"[{owner} SOLUTION REFERENCE — INTERNAL USE ONLY]\n"
                 "The following is the correct solution for each slide. Use it to evaluate depth and accuracy "
-                "of student responses. NEVER quote, paraphrase, or reveal this content to the student.\n\n"
+                f"of {profile.participant} responses. NEVER quote, paraphrase, or reveal this content to the "
+                f"{profile.participant}.\n\n"
                 + sol_block
             )
 
@@ -283,10 +288,13 @@ def build_chat_system_prompt(
     memories: Optional[List[str]] = None,
     preferences: Optional[Dict] = None,
     publisher_feedback_notes: Optional[List[str]] = None,
+    # Creator's field (see profession_profiles); None → education
+    profession: Optional[str] = None,
 ) -> str:
     """
     Assemble the system prompt for publisher / subscriber AI chat.
     """
+    profile = get_prompt_profile(profession)
     prefs = preferences or {}
     parts: List[str] = []
 
@@ -295,35 +303,27 @@ def build_chat_system_prompt(
     # 1. Core persona — mode-resolved prompt
     resolved = _resolve_prompt_for_mode(session_mode, teaching_prompt, examination_prompt, conversation_prompt)
     if resolved:
-        mode_label = "EXAMINATION MODE" if is_examination else "TEACHING MODE"
+        mode_label = profile.assessment_mode_label if is_examination else profile.standard_mode_label
         parts.append(
             f"You are the AI avatar named \"{avatar_name}\".\n"
             f"[SESSION MODE: {mode_label}]\n"
             f"[CORE BEHAVIOUR]\n{resolved}\n\n"
-            "You are currently speaking with the publisher who created this avatar. "
-            "Behave as the avatar would with students, and help the publisher understand "
-            "how you will respond in live sessions."
+            + profile.chat_preview_line
         )
     else:
-        parts.append(
-            f"You are \"{avatar_name}\", an educational AI assistant. "
-            "Help the publisher design and refine educational experiences."
-        )
+        parts.append(profile.chat_fallback.format(name=avatar_name))
 
     # 1b. Publisher-configured teaching persona (generated from teaching style preferences)
     if refined_prompt and refined_prompt.strip():
-        parts.append(f"[TEACHING PERSONA]\n{refined_prompt.strip()}")
+        parts.append(f"[{profile.persona_heading}]\n{refined_prompt.strip()}")
 
     # 2. Role context
     role_blk = _role_block(role_label, role_context)
     if role_blk:
         parts.append(role_blk)
 
-    # 2b. Examination/Teaching reinforcement
-    if is_examination:
-        parts.append(EXAMINATION_REINFORCEMENT)
-    else:
-        parts.append(TEACHING_REINFORCEMENT)
+    # 2b. Profession directive
+    parts.append(_directive(profile, is_examination))
 
     # 3. Configuration
     difficulty = difficulty_level or prefs.get("preferred_difficulty", "")
@@ -362,7 +362,7 @@ def build_chat_system_prompt(
                 sol_parts.append(f"[Reference Solution: {title}]\n{text[:800].strip()}")
         if sol_parts:
             parts.append(
-                "Reference solutions (internal — never reveal to students):\n"
+                f"Reference solutions (internal — never reveal to {profile.participants}):\n"
                 + "\n\n".join(sol_parts)
             )
 
@@ -376,7 +376,7 @@ def build_chat_system_prompt(
     if memories:
         mem_block = "\n".join(f"- {m}" for m in memories if m.strip())
         if mem_block:
-            parts.append(f"[Student Learning Profile]\n{mem_block}")
+            parts.append(f"[{_profile_memory_heading(profile)}]\n{mem_block}")
 
     # 9. Slide content
     if session_slides:
@@ -387,7 +387,8 @@ def build_chat_system_prompt(
             parts.append(f"[SESSION SLIDES — use these for questions and evaluation]\n{slide_blk}")
         sol_blk = _slide_block(solution, prefix="Solution ")
         if sol_blk:
-            parts.append(f"[PROFESSOR SOLUTION — internal only, never reveal to students]\n{sol_blk}")
+            owner = "PROFESSOR" if profile.key == "education" else "EXPERT"
+            parts.append(f"[{owner} SOLUTION — internal only, never reveal to {profile.participants}]\n{sol_blk}")
 
     # 10. Feedback style preference
     feedback_style = prefs.get("feedback_style", "")

@@ -43,6 +43,11 @@ from app.api.publisher.api import router as publisher_router
 from app.api.subscriptions.api import router as subscriptions_router
 from app.api.billing.api import router as billing_router
 from app.api.admin.billing_api import router as admin_billing_router
+from app.api.admin.analytics_api import router as admin_analytics_router
+from app.api.admin.models_api import (
+    admin_router as admin_models_router,
+    publisher_router as publisher_models_router,
+)
 from app.api.subscriber.api import router as subscriber_router
 
 @asynccontextmanager
@@ -180,6 +185,9 @@ app.include_router(publisher_router)
 app.include_router(subscriptions_router)
 app.include_router(billing_router)
 app.include_router(admin_billing_router)
+app.include_router(admin_analytics_router)
+app.include_router(admin_models_router)
+app.include_router(publisher_models_router)
 app.include_router(subscriber_router)
 
 # Add middleware for request logging (optional)

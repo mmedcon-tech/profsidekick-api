@@ -22,6 +22,7 @@ from app.services.summarization_service import (
 from app.schemas.schemas import SessionDetails, SlideData, PresentationData, AssistantParameters, SessionRunDetails, EphemeralTokenResponse, SessionUpdateDetails, SessionsListResponse, SessionRunsListResponse, SessionCreateRequest, TranscriptTurnRequest, TranscriptTurnResponse, TranscriptListResponse
 from app.services.file_processor import FileProcessor
 from app.services.openai_service import OpenAIService
+from app.services.profession_profiles import resolve_avatar_profession
 from app.services.session_service import SessionService
 from app.services.rag_service import ingest_session_document_background, retrieve_context
 from app.services.transcript_service import append_transcript_turn, get_transcript_turns
@@ -987,6 +988,7 @@ async def get_ephemeral_token(
         examination_prompt: str | None = None
         role_label: str | None = None
         role_context: str | None = None
+        profession: str | None = None
         if db_session_raw and db_session_raw.avatar_id:
             avatar_row = (
                 db.query(Avatar)
@@ -999,6 +1001,8 @@ async def get_ephemeral_token(
                     detail="The avatar configured for this session no longer exists. "
                            "Contact the session owner to reassign an avatar before starting a run.",
                 )
+
+            profession = resolve_avatar_profession(avatar_row)
 
             # Role from session row (set at session creation)
             role_label = db_session_raw.role_label
@@ -1052,6 +1056,7 @@ async def get_ephemeral_token(
             role_context=role_context,
             session_summary=session_summary,
             memories=memories,
+            profession=profession,
         )
         return EphemeralTokenResponse(client_secret=token_data["client_secret"])
 

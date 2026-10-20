@@ -39,6 +39,7 @@ from app.database.models import (
     Session as SessionModel,
 )
 from app.services.context_builder import build_chat_system_prompt
+from app.services.profession_profiles import resolve_avatar_profession
 from app.services.summarization_service import get_recent_session_summary, get_user_memories
 
 _openai = AsyncOpenAI(api_key=settings.openai_api_key)
@@ -369,6 +370,7 @@ class PublisherChatService:
             memories=memories,
             preferences=preferences,
             publisher_feedback_notes=feedback_notes,
+            profession=resolve_avatar_profession(avatar),
         )
 
         # Build conversation history (rolling window with summarization)
@@ -501,6 +503,7 @@ class PublisherChatService:
             reference_solutions=cfg.reference_solutions if cfg else [],
             session_slides=session_slides,
             publisher_feedback_notes=feedback_notes_opts,
+            profession=resolve_avatar_profession(avatar),
         )
 
         existing = (
@@ -701,6 +704,7 @@ class PublisherChatService:
             memories=memories,
             preferences=preferences,
             publisher_feedback_notes=feedback_notes,
+            profession=resolve_avatar_profession(avatar),
         )
 
         # Prompt the AI to generate an opening, grounded in the examiner persona

@@ -108,6 +108,7 @@ class OpenAIService:
         role_context: Optional[str] = None,
         session_summary: Optional[str] = None,
         memories: Optional[List[str]] = None,
+        profession: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Generate an ephemeral client secret for OpenAI Realtime API sessions.
@@ -132,6 +133,7 @@ class OpenAIService:
                 role_context=role_context,
                 session_summary=session_summary,
                 memories=memories,
+                profession=profession,
             )
 
             transcription = ap.get('input_audio_transcription')

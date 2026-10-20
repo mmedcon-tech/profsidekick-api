@@ -27,6 +27,7 @@ from app.database.models import (
     AvatarTemplateVersion,
 )
 from app.services.context_builder import build_chat_system_prompt
+from app.services.profession_profiles import resolve_avatar_profession
 
 _openai = AsyncOpenAI(api_key=settings.openai_api_key)
 _CHAT_MODEL = "gpt-4.1"
@@ -66,6 +67,7 @@ def _resolve_avatar_context(db: Session, db_session: SessionModel) -> Dict[str, 
         "rubrics": [],
         "knowledge_chunks": [],
         "reference_solutions": [],
+        "profession": None,
     }
     if not db_session.avatar_id:
         return ctx
@@ -75,6 +77,7 @@ def _resolve_avatar_context(db: Session, db_session: SessionModel) -> Dict[str, 
         return ctx
 
     ctx["avatar_name"] = avatar.name
+    ctx["profession"] = resolve_avatar_profession(avatar)
 
     # Resolve profile refined_prompt
     if avatar.profile and avatar.profile.refined_prompt:
@@ -164,6 +167,7 @@ async def send_message(
         reference_solutions=av_ctx["reference_solutions"],
         session_slides=slides,
         preferences={},
+        profession=av_ctx["profession"],
     )
 
     history = _get_history(run)

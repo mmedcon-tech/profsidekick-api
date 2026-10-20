@@ -492,6 +492,23 @@ class AvatarConfiguration(Base):
     reference_solutions = relationship("ReferenceSolution", back_populates="avatar_configuration", cascade="all, delete-orphan")
 
 
+class Avatar3DModel(Base):
+    __tablename__ = "avatar_3d_models"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(200), nullable=False)
+    description = Column(Text, nullable=True)
+    model_type = Column(String(50), nullable=False, default="three_js")
+    model_url = Column(String(500), nullable=False)
+    thumbnail_url = Column(String(500), nullable=True)
+    gender = Column(String(20), nullable=False, default="neutral")
+    supported_languages = Column(JSONB, nullable=False, default=list)
+    sort_order = Column(Integer, nullable=False, default=0)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class Rubric(Base):
     __tablename__ = "rubrics"
 
