@@ -6,7 +6,7 @@ from fastapi import HTTPException, status
 from app.database.models import (
     Avatar, AvatarTemplate, AvatarConfiguration,
     PublisherAvatarProfile,
-    Rubric, KnowledgeDocument, ReferenceSolution,
+    Rubric, KnowledgeDocument, ReferenceSolution, KnowledgeChunk,
 )
 from app.services.prompt_generator import generate_teaching_persona_prompt
 from app.services.private_storage import get_private_storage
@@ -408,6 +408,12 @@ class AvatarService:
             )
 
         stored_file = doc.file_path
+        # Its embedded text goes too, so deleted knowledge can never be retrieved.
+        # Tag format: rag_service.ingest_avatar_knowledge_document.
+        chunk_source = f"avatar_knowledge:{doc.avatar_configuration_id}:{doc.id}"
+        db.query(KnowledgeChunk).filter(KnowledgeChunk.source == chunk_source).delete(
+            synchronize_session=False
+        )
         db.delete(doc)
         db.commit()
         # After the commit, so a failed delete never loses the file.
