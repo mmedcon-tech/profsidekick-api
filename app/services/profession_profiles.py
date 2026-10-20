@@ -52,9 +52,18 @@ CATEGORY_KEYWORDS: Dict[str, List[str]] = {
 }
 
 
+# Whole-category match only (not keywords), so an existing "General Knowledge"
+# template keeps its current profession. Used by the built-in Personal avatar
+# template (app/services/personal_template.py). Mirrors GENERAL_CATEGORIES in
+# the frontend resolver.
+GENERAL_CATEGORIES = ("general", "personal")
+
+
 def profession_from_category(category: Optional[str]) -> Optional[str]:
     if not category:
         return None
+    if category.strip().lower() in GENERAL_CATEGORIES:
+        return "general"
     words = [w for w in re.split(r"[^a-z]+", category.lower()) if w]
     for key, keywords in CATEGORY_KEYWORDS.items():
         if any(kw in words for kw in keywords):

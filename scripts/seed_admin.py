@@ -81,6 +81,10 @@ def seed():
         print(f"  password: {ADMIN_PASSWORD}")
         print()
         print("IMPORTANT: change the password immediately after first login.")
+
+        # A fresh install also needs a template so creators can make avatars.
+        from scripts.seed_personal_template import seed as seed_personal_template
+        seed_personal_template(db)
     finally:
         db.close()
 

@@ -9,6 +9,7 @@ from app.database.models import (
     Rubric, KnowledgeDocument, ReferenceSolution,
 )
 from app.services.prompt_generator import generate_teaching_persona_prompt
+from app.services.private_storage import get_private_storage
 from app.schemas.schemas import (
     AvatarCreate, AvatarUpdate,
     AvatarConfigurationCreate, AvatarConfigurationUpdate,
@@ -406,8 +407,11 @@ class AvatarService:
                 detail="Document does not belong to this avatar",
             )
 
+        stored_file = doc.file_path
         db.delete(doc)
         db.commit()
+        # After the commit, so a failed delete never loses the file.
+        get_private_storage().delete_quietly(stored_file)
 
     # ── Reference Solutions ──────────────────────────────────────────────
 
@@ -467,5 +471,7 @@ class AvatarService:
                 detail="Solution does not belong to this avatar",
             )
 
+        stored_file = solution.file_path
         db.delete(solution)
         db.commit()
+        get_private_storage().delete_quietly(stored_file)

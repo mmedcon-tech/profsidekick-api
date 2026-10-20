@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     s3_bucket_name: str = Field("", env="S3_BUCKET_NAME")
     s3_bucket_region: str = Field("", env="S3_BUCKET_REGION")
     cloudfront_domain: str = Field("", env="CLOUDFRONT_DOMAIN")  # Optional CDN domain
+
+    # Private storage for personal and expert files (ADR 0010). Never mounted or
+    # served statically. Set PRIVATE_S3_BUCKET_NAME to use a private S3 bucket
+    # (same AWS credentials as above); otherwise files go to PRIVATE_STORAGE_DIR.
+    private_storage_dir: str = Field("./private_storage", env="PRIVATE_STORAGE_DIR")
+    private_s3_bucket_name: str = Field("", env="PRIVATE_S3_BUCKET_NAME")
     
     # Poppler path (required on Windows for pdf2image; leave empty on Linux/Docker where poppler-utils is in PATH)
     poppler_path: Optional[str] = Field(None, env="POPPLER_PATH")

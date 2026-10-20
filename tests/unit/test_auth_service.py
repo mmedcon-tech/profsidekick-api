@@ -164,3 +164,39 @@ def test_role_gates_keep_subscribers_out_of_publisher_and_admin_actions():
     assert asyncio.run(require_subscriber(current_user=subscriber)).role == "subscriber"
     assert asyncio.run(require_publisher(current_user=publisher)).role == "publisher"
     assert asyncio.run(require_admin(current_user=admin)).role == "admin"
+
+
+def _registration(role: str) -> UserRegistration:
+    return UserRegistration(
+        username="newuser",
+        email="newuser@example.com",
+        password="correct-password",
+        firstName="New",
+        lastName="User",
+        role=role,
+    )
+
+
+def test_public_registration_cannot_create_an_admin():
+    db = _Db(row=None)
+    result = asyncio.run(auth.register_user(db, _registration("admin")))
+
+    assert result.success is False
+    assert "publisher or subscriber" in result.message
+    assert db.added == []
+    assert db.committed is False
+
+
+def test_registration_records_an_audit_event_without_secrets():
+    from app.database.models import AuditEvent
+
+    db = _Db(row=None)
+    result = asyncio.run(auth.register_user(db, _registration("publisher")))
+
+    assert result.success is True
+    events = [obj for obj in db.added if isinstance(obj, AuditEvent)]
+    assert len(events) == 1
+    event = events[0]
+    assert event.action == "user.registered"
+    assert event.entity_id == str(db.added[0].id)
+    assert event.data == {"role": "publisher"}

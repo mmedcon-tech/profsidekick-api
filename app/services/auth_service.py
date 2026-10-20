@@ -10,7 +10,10 @@ from app.database.models import User
 from app.schemas.schemas import UserRegistration, UserResponse, AuthResponse
 from app.config import settings
 from app.services.email_service import email_service
+from app.services.audit_service import record_audit_event
 import uuid
+
+PUBLIC_REGISTRATION_ROLES = ("publisher", "subscriber")
 
 
 class AuthService:
@@ -94,11 +97,12 @@ class AuthService:
                 message="Email already registered"
             )
         
-        # Check if role is valid
-        if registration_data.role not in ["publisher", "subscriber", "admin"]:
+        # Public sign-up creates creators and members only. Admins are created
+        # by scripts/seed_admin.py or by an existing admin.
+        if registration_data.role not in PUBLIC_REGISTRATION_ROLES:
             return AuthResponse(
                 success=False,
-                message="Invalid role. Must be publisher, subscriber, or admin."
+                message="Invalid role. Must be publisher or subscriber."
             )
         
         hashed_password = self.hash_password(registration_data.password)
@@ -120,6 +124,14 @@ class AuthService:
         
         try:
             db.add(new_user)
+            record_audit_event(
+                db,
+                action="user.registered",
+                entity_type="user",
+                entity_id=new_user.id,
+                actor_user_id=new_user.id,
+                data={"role": new_user.role},
+            )
             db.commit()
             db.refresh(new_user)
         except IntegrityError:

@@ -46,3 +46,6 @@ docs/
 # Test files
 tests/
 test_*
+
+# Private user files (ADR 0010)
+private_storage

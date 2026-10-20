@@ -11,3 +11,6 @@ static"venv/"
 
 venv/
 static/
+
+# Private user files (ADR 0010)
+private_storage/

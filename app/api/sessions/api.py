@@ -29,8 +29,10 @@ from app.services.transcript_service import append_transcript_turn, get_transcri
 from pydantic import BaseModel
 class SearchRequest(BaseModel):
     query: str
+    # Ignored: a session searches only its own course. Kept so existing clients validate.
     course_id: Optional[str] = None
 from app.dependencies.auth import get_current_user, get_optional_user
+from app.services.session_access import can_search_session
 from app.config import settings
 
 # Set up logger
@@ -1671,33 +1673,48 @@ async def ai_answer(request_data: dict):
 async def search_session_knowledge(
     session_id: str,
     request: SearchRequest,
-    current_user: User = Depends(get_optional_user),
+    current_user: Optional[User] = Depends(get_optional_user),
     db: Session = Depends(get_db)
 ):
     """
-    Search session slides and optionally course materials for relevant chunks.
+    Search the session's slides and its own course's materials.
+
+    Access follows can_search_session(): the owner, an admin, an enrolled user,
+    or an anonymous guest when guest links are enabled. request.course_id is
+    ignored; a session can only search its own course.
     """
     try:
-        import uuid as uuid_lib
-
         db_session = db.query(Session).filter(Session.session_id == session_id).first()
         if not db_session:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
 
-        course_uuid = None
-        raw_course_id = request.course_id or str(db_session.course_id)
-        if raw_course_id:
-            try:
-                course_uuid = uuid_lib.UUID(str(raw_course_id))
-            except ValueError:
-                course_uuid = db_session.course_id
+        course = db.query(Course).filter(Course.id == db_session.course_id).first()
+        is_enrolled = False
+        if current_user is not None and course is not None:
+            is_enrolled = db.query(CourseStudent).filter(
+                CourseStudent.course_id == course.id,
+                CourseStudent.user_id == current_user.id,
+            ).first() is not None
+
+        allowed = can_search_session(
+            user=current_user,
+            session_owner_id=db_session.user_id,
+            course_owner_id=course.user_id if course else None,
+            course_allows_subscribers=bool(course and course.allow_subscriber_sessions),
+            is_enrolled=is_enrolled,
+            guest_links_enabled=bool(settings.guest_user_uuid),
+        )
+        if not allowed:
+            if current_user is None:
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sign in to search this session")
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have access to this session")
 
         chunks = retrieve_context(
             db_session.id,
             request.query,
             top_k=8,
             db=db,
-            course_id=course_uuid,
+            course_id=db_session.course_id,
         )
         return {"results": chunks}
     except HTTPException:
@@ -1706,7 +1723,7 @@ async def search_session_knowledge(
         logger.error(f"Error searching knowledge: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error searching knowledge: {e}"
+            detail="Error searching knowledge"
         )
 
 

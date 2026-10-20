@@ -14,6 +14,7 @@ services:
     volumes:
       - ./uploads:/app/uploads
       - ./static:/app/static
+      - ./private_storage:/app/private_storage
     depends_on:
       postgres:
         condition: service_healthy

@@ -38,7 +38,7 @@ from app.schemas.schemas import (
     RubricResponse,
 )
 from app.services.avatar_service import AvatarService
-from app.services.file_processor import FileProcessor
+from app.services.private_storage import get_private_storage
 from app.services.rag_service import ingest_avatar_knowledge_document_background
 
 logger = logging.getLogger(__name__)
@@ -46,7 +46,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["avatars"])
 
 avatar_service = AvatarService()
-file_processor = FileProcessor()
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -360,22 +359,32 @@ async def add_knowledge_document(
 
         if file and file.filename:
             file_content_bytes = await file.read()
-            file_path = await file_processor.save_uploaded_file(
-                file_content_bytes, file.filename, f"avatar_{avatar_id}"
-            )
+            # Private storage, not the public /uploads mount (ADR 0010).
+            file_path = get_private_storage().save(
+                file_content_bytes,
+                kind="knowledge",
+                owner=str(avatar_id),
+                filename=file.filename,
+                content_type=file.content_type,
+            ).uri
             file_name = file.filename
             file_size = len(file_content_bytes)
             file_type = file.content_type
 
-        doc = await avatar_service.add_knowledge_document(
-            db, avatar_id, current_user.id,
-            title=title,
-            content_text=content_text,
-            file_path=file_path,
-            file_name=file_name,
-            file_size=file_size,
-            file_type=file_type,
-        )
+        try:
+            doc = await avatar_service.add_knowledge_document(
+                db, avatar_id, current_user.id,
+                title=title,
+                content_text=content_text,
+                file_path=file_path,
+                file_name=file_name,
+                file_size=file_size,
+                file_type=file_type,
+            )
+        except Exception:
+            # Refused or failed: do not leave an orphaned private file behind.
+            get_private_storage().delete_quietly(file_path)
+            raise
 
         # Trigger background RAG ingestion if a file was uploaded.
         if file_content_bytes and file_name:
@@ -447,22 +456,31 @@ async def add_reference_solution(
 
         if file and file.filename:
             file_content = await file.read()
-            file_path = await file_processor.save_uploaded_file(
-                file_content, file.filename, f"avatar_{avatar_id}"
-            )
+            # Private storage, not the public /uploads mount (ADR 0010).
+            file_path = get_private_storage().save(
+                file_content,
+                kind="reference",
+                owner=str(avatar_id),
+                filename=file.filename,
+                content_type=file.content_type,
+            ).uri
             file_name = file.filename
             file_size = len(file_content)
             file_type = file.content_type
 
-        return await avatar_service.add_reference_solution(
-            db, avatar_id, current_user.id,
-            title=title,
-            content_text=content_text,
-            file_path=file_path,
-            file_name=file_name,
-            file_size=file_size,
-            file_type=file_type,
-        )
+        try:
+            return await avatar_service.add_reference_solution(
+                db, avatar_id, current_user.id,
+                title=title,
+                content_text=content_text,
+                file_path=file_path,
+                file_name=file_name,
+                file_size=file_size,
+                file_type=file_type,
+            )
+        except Exception:
+            get_private_storage().delete_quietly(file_path)
+            raise
     except HTTPException:
         raise
     except Exception as e:

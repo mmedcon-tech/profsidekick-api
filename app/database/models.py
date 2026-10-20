@@ -794,3 +794,24 @@ class PublisherResponseEdit(Base):
     message = relationship("PublisherMessage")
     publisher = relationship("User", foreign_keys=[publisher_id])
     avatar = relationship("Avatar", foreign_keys=[avatar_id])
+
+class AuditEvent(Base):
+    """
+    Append-only record of a state change (ADR 0013).
+    Application code only inserts rows; it never updates or deletes them.
+    `data` must not contain secrets, passwords, tokens or raw file contents.
+    """
+    __tablename__ = "audit_events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # NULL for system jobs; SET NULL keeps the event when a user is deleted.
+    actor_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    action = Column(String(100), nullable=False, index=True)        # dotted verb, e.g. "user.registered"
+    entity_type = Column(String(50), nullable=False)
+    entity_id = Column(String(100), nullable=True)
+    data = Column(JSONB, nullable=False, default=dict)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+
+    __table_args__ = (
+        Index("ix_audit_events_entity", "entity_type", "entity_id"),
+    )
