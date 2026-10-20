@@ -7,6 +7,10 @@ from pydantic import Field, field_validator
 class Settings(BaseSettings):
     # OpenAI Configuration
     openai_api_key: str = Field("", env="OPENAI_API_KEY")
+    # POST /api/ai/answer forwards chat completions with the server's key, so it
+    # only accepts signed-in users, these models and this many output tokens.
+    ai_proxy_models: str = Field("gpt-4.1,gpt-4.1-mini", env="AI_PROXY_MODELS")
+    ai_proxy_max_tokens: int = Field(2000, env="AI_PROXY_MAX_TOKENS")
     
     # Database Configuration
     database_url: str = Field("sqlite:///./profsidekick.db", env="DATABASE_URL")

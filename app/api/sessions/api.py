@@ -33,6 +33,7 @@ class SearchRequest(BaseModel):
     course_id: Optional[str] = None
 from app.dependencies.auth import get_current_user, get_optional_user
 from app.services.session_access import can_search_session
+from app.services.ai_proxy import AiProxyRequestError, build_proxy_payload
 from app.config import settings
 
 # Set up logger
@@ -1646,11 +1647,23 @@ async def reorder_slides(
 
 
 @router.post("/ai/answer")
-async def ai_answer(request_data: dict):
+async def ai_answer(
+    request_data: dict,
+    current_user: User = Depends(get_current_user),
+):
     """
     Proxy endpoint for OpenAI Chat Completions API.
-    Used by the frontend for non-realtime AI calls (slide analysis, etc).
+    Signed-in users only; the model, fields and output size are restricted by
+    build_proxy_payload() (settings.ai_proxy_models, settings.ai_proxy_max_tokens).
     """
+    try:
+        payload = build_proxy_payload(
+            request_data,
+            allowed_models=[m.strip() for m in settings.ai_proxy_models.split(",") if m.strip()],
+            max_tokens_cap=settings.ai_proxy_max_tokens,
+        )
+    except AiProxyRequestError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
@@ -1659,14 +1672,14 @@ async def ai_answer(request_data: dict):
                     "Authorization": f"Bearer {settings.openai_api_key}",
                     "Content-Type": "application/json",
                 },
-                json=request_data,
+                json=payload,
             )
         return response.json()
     except Exception as e:
         logger.error(f"❌ Error proxying AI answer: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"AI answer proxy failed: {str(e)}"
+            detail="AI answer proxy failed"
         )
 
 @router.post("/sessions/{session_id}/search")
