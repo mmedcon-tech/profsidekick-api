@@ -15,22 +15,22 @@ def _run_migrations() -> None:
 
     Running migrations on startup guarantees the deployed database is always in sync
     with the ORM models, eliminating 'column does not exist' or 'table does not exist'
-    errors after new deployments add schema changes.
+    errors after new deployments add schema changes. An empty database is created
+    from the models and stamped (see app/database/migrate.py). Tests switch this off
+    with RUN_MIGRATIONS_ON_STARTUP=false.
     """
+    if not settings.run_migrations_on_startup:
+        print("Startup migrations disabled (RUN_MIGRATIONS_ON_STARTUP=false).")
+        return
     try:
-        from alembic.config import Config
-        from alembic import command
+        from app.database.migrate import migrate
 
-        # Locate alembic.ini relative to this file's package root
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        alembic_cfg = Config(os.path.join(base_dir, "alembic.ini"))
-        alembic_cfg.set_main_option("script_location", os.path.join(base_dir, "alembic"))
-
-        command.upgrade(alembic_cfg, "head")
-        print("DB migrations applied successfully.")
+        print(f"DB migrations applied successfully ({migrate()}).")
     except Exception as exc:
         # Log but do not crash — a partially migrated DB is better than a dead server.
         print(f"Migration startup error (non-fatal): {exc}")
+
+
 from app.api.sessions.api import router as sessions_router
 from app.api.auth.api import router as auth_router
 from app.api.users.api import router as users_router

@@ -27,11 +27,11 @@ def setup_database():
         )
         return True
 
-    print("🔄 Running Alembic migrations...")
+    print("🔄 Running database migrations (app.database.migrate)...")
 
     try:
         result = subprocess.run(
-            ["python", "-m", "alembic", "upgrade", "head"],
+            ["python", "-m", "app.database.migrate"],
             capture_output=True,
             text=True,
             timeout=120,

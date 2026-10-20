@@ -14,6 +14,11 @@ Unit tests in tests/unit do not. Set DATABASE_URL before integration tests:
 """
 
 import os
+
+# Must run before any `app` import: app startup would otherwise apply Alembic
+# migrations to whatever DATABASE_URL names, which is the dev database when it
+# comes from .env. Integration tests build their schema with create_all below.
+os.environ["RUN_MIGRATIONS_ON_STARTUP"] = "false"
 import uuid
 from urllib.parse import urlparse
 

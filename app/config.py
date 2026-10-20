@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     
     # Database Configuration
     database_url: str = Field("sqlite:///./profsidekick.db", env="DATABASE_URL")
+    # Apply pending migrations when the app starts (deploys rely on this). Tests
+    # turn it off in tests/conftest.py so they can never migrate a dev database.
+    run_migrations_on_startup: bool = Field(True, env="RUN_MIGRATIONS_ON_STARTUP")
     
     # Redis Configuration
     redis_url: str = Field("redis://localhost:6379/0", env="REDIS_URL")
