@@ -271,6 +271,16 @@ pytest tests/ -v
 - Session IDs use the `sess_` prefix. Run IDs use the `run_` prefix.
 - The ephemeral token endpoint is `GET /api/session/ephemeral?session_id=&session_run_id=`.
 
+### Personal memory contract (October 2026)
+
+Authenticated `/api/memory` routes expose only the current person's memories and
+controls. Healthcare persistence requires explicit per-twin opt-in for future
+runs. Education expert access additionally requires twin ownership, student
+sharing disclosure acceptance and current enrollment in an active owned course.
+Memory analytics never returns transcript evidence to experts. The frontend
+§5 inventory lists all memory routes. The supervised worker is
+`python -m scripts.memory_worker`; apply the additive memory migration first.
+
 ### Adding a New Endpoint
 
 1. Add the route handler in the appropriate `app/api/<domain>/api.py`.

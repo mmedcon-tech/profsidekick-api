@@ -17,14 +17,14 @@ from app.database.models import (
     Course, CourseStudent,
 )
 from app.services.summarization_service import (
-    generate_run_summary, get_recent_session_summary, get_user_memories,
+    generate_run_summary, get_recent_session_summary, get_user_memories, get_run_context,
 )
 from app.schemas.schemas import SessionDetails, SlideData, PresentationData, AssistantParameters, SessionRunDetails, EphemeralTokenResponse, SessionUpdateDetails, SessionsListResponse, SessionRunsListResponse, SessionCreateRequest, TranscriptTurnRequest, TranscriptTurnResponse, TranscriptListResponse
 from app.services.file_processor import FileProcessor
 from app.services.openai_service import OpenAIService
 from app.services.profession_profiles import resolve_avatar_profession
 from app.services.session_service import SessionService
-from app.services.rag_service import ingest_session_document_background, retrieve_context
+from app.services.rag_service import ingest_session_document_background, retrieve_context, retrieve_for_twin
 from app.services.transcript_service import append_transcript_turn, get_transcript_turns
 from pydantic import BaseModel
 class SearchRequest(BaseModel):
@@ -722,6 +722,9 @@ async def stop_session_run(
         if not session:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
 
+        from app.services.memory_service import assert_run_owner
+        assert_run_owner(db, session_id, session_run_id, current_user.id)
+
         session_run = await session_service.stop_session_run(db, session_id, session_run_id, session_run_metadata)
         if not session_run:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
@@ -751,23 +754,9 @@ async def stop_session_run(
                 )
         # ──────────────────────────────────────────────────────────────────
 
-        # Trigger background summarization (non-blocking — errors are logged, not raised)
-        try:
-            db_session_raw = db.query(Session).filter(Session.session_id == session_id).first()
-            if db_session_raw:
-                import asyncio as _asyncio
-                _asyncio.create_task(
-                    generate_run_summary(
-                        db=db,
-                        session=db_session_raw,
-                        session_run=session_run,
-                        slides_details=db_session_raw.slides_details or [],
-                        user_id=current_user.id,
-                        avatar_id=db_session_raw.avatar_id,
-                    )
-                )
-        except Exception:
-            pass  # Summarization is best-effort
+        # A durable job row survives process restarts. The worker owns its DB session.
+        from app.services.memory_service import enqueue
+        enqueue(db, session_run)
 
         return SessionRunDetails(
             sessionRunId=str(session_run.session_run_id),
@@ -787,6 +776,8 @@ async def stop_session_run(
             startTime=session_run.start_time,
             endTime=session_run.end_time
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"❌ Error stopping session run: {e}")
         raise HTTPException(
@@ -851,7 +842,36 @@ async def stop_session_run(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error stopping session run: {e}"
         )
-    
+
+
+def _session_profession(db, session_id: str) -> Optional[str]:
+    """Profession of the session's avatar, or None when it has no avatar."""
+    row = db.query(Session).filter(Session.session_id == session_id).first()
+    if not row or not row.avatar_id:
+        return None
+    avatar_row = db.query(Avatar).filter(Avatar.id == row.avatar_id).first()
+    return resolve_avatar_profession(avatar_row) if avatar_row else None
+
+
+def _avatar_media(config) -> dict:
+    """LiveAvatar avatar, render type and voice from the avatar's configuration."""
+    if not config:
+        return {}
+    extra = config.additional_settings or {}
+    provider = config.voice_provider
+    voice_id = config.elevenlabs_voice_id if provider == "elevenlabs" else None
+    # An unverified clone cannot speak yet; the session keeps its default voice.
+    unverified = extra.get("voiceCloneRequiresVerification")
+    if provider == "elevenlabs" and (not voice_id or unverified):
+        provider, voice_id = None, None
+    return {
+        "heygen_avatar_id": config.heygen_avatar_id,
+        "avatar_render_type": extra.get("renderType"),
+        "voice_provider": provider,
+        "voice_id": voice_id,
+    }
+
+
 @router.get("/sessions/{session_id}/run/{session_run_id}", response_model=SessionRunDetails)
 async def get_session_run(
     session_id: str,
@@ -903,6 +923,7 @@ async def get_session_run(
             endTime=session_run.end_time,
             runtimeModeUsed=getattr(session_run, "runtime_mode_used", None),
             sessionMode=getattr(session, "sessionMode", None) or "teaching",
+            profession=_session_profession(db, session_id),
         )
     except Exception as e:
         logger.error(f"❌ Error getting session run: {e}")
@@ -992,6 +1013,7 @@ async def get_ephemeral_token(
         role_label: str | None = None
         role_context: str | None = None
         profession: str | None = None
+        avatar_media: dict = {}
         if db_session_raw and db_session_raw.avatar_id:
             avatar_row = (
                 db.query(Avatar)
@@ -1006,6 +1028,7 @@ async def get_ephemeral_token(
                 )
 
             profession = resolve_avatar_profession(avatar_row)
+            avatar_media = _avatar_media(avatar_row.configuration)
 
             # Role from session row (set at session creation)
             role_label = db_session_raw.role_label
@@ -1036,16 +1059,13 @@ async def get_ephemeral_token(
                 examination_prompt = (getattr(version, "examination_prompt", None) or "").strip() or None
 
         # ── Session summary + memories ────────────────────────────────────────
-        session_summary = get_recent_session_summary(
-            db, session_id, exclude_run_id=session_run_id
+        session_summary, memories = get_run_context(
+            db,
+            session_id,
+            session_run,
+            avatar_id=db_session_raw.avatar_id if db_session_raw else None,
+            guest_user_uuid=settings.guest_user_uuid,
         )
-        memories: list = []
-        if db_session_raw:
-            memories = get_user_memories(
-                db,
-                user_id=db_session_raw.user_id,
-                avatar_id=db_session_raw.avatar_id,
-            )
 
         token_data = await openai_service.generate_ephemeral_token(
             session_run.assistant_parameters,
@@ -1061,7 +1081,12 @@ async def get_ephemeral_token(
             memories=memories,
             profession=profession,
         )
-        return EphemeralTokenResponse(client_secret=token_data["client_secret"])
+        return EphemeralTokenResponse(
+            client_secret=token_data["client_secret"],
+            profession=profession,
+            instructions=token_data.get("server_instructions"),
+            **avatar_media,
+        )
 
     except HTTPException:
         raise
@@ -1722,13 +1747,10 @@ async def search_session_knowledge(
                 raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sign in to search this session")
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have access to this session")
 
-        chunks = retrieve_context(
-            db_session.id,
-            request.query,
-            top_k=8,
-            db=db,
-            course_id=db_session.course_id,
-        )
+        # Everything indexed for this session's twin: its slides, its course's
+        # materials and the avatar's uploaded knowledge. Hidden solution slides
+        # are never returned to the learner.
+        chunks = retrieve_for_twin(db, request.query, session=db_session, top_k=8)
         return {"results": chunks}
     except HTTPException:
         raise

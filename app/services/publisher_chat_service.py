@@ -41,6 +41,7 @@ from app.database.models import (
 from app.services.context_builder import build_chat_system_prompt
 from app.services.profession_profiles import resolve_avatar_profession
 from app.services.summarization_service import get_recent_session_summary, get_user_memories
+from app.services.rag_service import knowledge_for_chat
 
 _openai = AsyncOpenAI(api_key=settings.openai_api_key)
 
@@ -230,15 +231,11 @@ class PublisherChatService:
             .first()
         )
 
-    def _get_knowledge_content(self, knowledge_documents: list, max_chars_per_doc: int = 1200) -> List[str]:
-        """
-        Return knowledge content as a list of text strings, truncated per document.
-        """
-        return [
-            doc.content_text[:max_chars_per_doc].strip()
-            for doc in knowledge_documents
-            if doc.content_text and doc.content_text.strip()
-        ]
+    def _get_session_row(self, db: Session, session_id: Optional[str]):
+        """The Session row for a session slug, or None."""
+        if not session_id:
+            return None
+        return db.query(SessionModel).filter(SessionModel.session_id == session_id).first()
 
     def _get_session_slides(self, db: Session, session_id: Optional[str]) -> list[dict]:
         """Load Vision-extracted (or raw) slide content from a session's slides_details JSONB."""
@@ -343,7 +340,10 @@ class PublisherChatService:
 
         # Knowledge content (RAG chunks or truncated)
         cfg = avatar.configuration if avatar else None
-        knowledge_chunks = self._get_knowledge_content(cfg.knowledge_documents) if cfg else []
+        # Passages relevant to this message from everything indexed for the twin
+        knowledge_chunks = knowledge_for_chat(
+            db, request.message, session=self._get_session_row(db, session_id), avatar=avatar
+        )
         reference_solutions = cfg.reference_solutions if cfg else []
         rubrics = cfg.rubrics if cfg else []
         difficulty = cfg.difficulty_level if cfg else None
@@ -485,7 +485,10 @@ class PublisherChatService:
         session_mode_opts = _get_session_mode(db, session_id_opts)
         prompts_opts = _resolve_mode_prompts(avatar)
         cfg = avatar.configuration if avatar else None
-        knowledge_chunks = self._get_knowledge_content(cfg.knowledge_documents) if cfg else []
+        # Passages relevant to this message from everything indexed for the twin
+        knowledge_chunks = knowledge_for_chat(
+            db, request.message, session=self._get_session_row(db, session_id_opts), avatar=avatar
+        )
         feedback_notes_opts = self._get_publisher_feedback_notes(db, publisher_id, avatar_id=avatar_id)
 
         system_prompt = build_chat_system_prompt(
@@ -684,7 +687,10 @@ class PublisherChatService:
         feedback_notes = self._get_publisher_feedback_notes(db, publisher_id, avatar_id=avatar_id)
 
         cfg = avatar.configuration if avatar else None
-        knowledge_chunks = self._get_knowledge_content(cfg.knowledge_documents) if cfg else []
+        # Passages relevant to this message from everything indexed for the twin
+        knowledge_chunks = knowledge_for_chat(
+            db, None, session=self._get_session_row(db, session_id_start), avatar=avatar
+        )
 
         system_prompt = build_chat_system_prompt(
             avatar_name=avatar.name if avatar else "AI Assistant",

@@ -11,6 +11,20 @@ class Settings(BaseSettings):
     # only accepts signed-in users, these models and this many output tokens.
     ai_proxy_models: str = Field("gpt-4.1,gpt-4.1-mini", env="AI_PROXY_MODELS")
     ai_proxy_max_tokens: int = Field(2000, env="AI_PROXY_MAX_TOKENS")
+    # Streaming talking-head renderer (HeyGen). Tokens are minted only by the API,
+    # only for signed-in users, and only when HEYGEN_ENABLED is true.
+    heygen_enabled: bool = Field(False, env="HEYGEN_ENABLED")
+    heygen_api_key: str = Field("", env="HEYGEN_API_KEY")
+    # HeyGen LiveAvatar (replaces the retired HeyGen streaming API). LITE mode:
+    # LiveAvatar renders video only; the app supplies the voice (ElevenLabs).
+    liveavatar_api_key: str = Field("", env="LIVEAVATAR_API_KEY")
+    liveavatar_default_avatar_id: str = Field("", env="LIVEAVATAR_DEFAULT_AVATAR_ID")
+    liveavatar_sandbox: bool = Field(False, env="LIVEAVATAR_SANDBOX")
+    # ElevenLabs voices and instant voice clones (publisher avatar settings).
+    # Server-side only; never sent to the browser.
+    elevenlabs_api_key: str = Field("", env="ELEVENLABS_API_KEY")
+    # Voice clones one user may create per rolling 24 hours.
+    voice_clone_daily_limit: int = Field(5, env="VOICE_CLONE_DAILY_LIMIT")
     
     # Database Configuration
     database_url: str = Field("sqlite:///./profsidekick.db", env="DATABASE_URL")

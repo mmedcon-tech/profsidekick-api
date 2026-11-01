@@ -11,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.api.sessions import api as sessions_api
+from app.services import rag_service
 from app.database.connection import get_db
 from app.database.models import Course, CourseStudent, User
 from app.dependencies.auth import get_optional_user
@@ -21,11 +22,12 @@ from app.main import app
 def captured(monkeypatch):
     calls = []
 
-    def _fake_retrieve(session_uuid, query, top_k, db, course_id=None):
+    def _fake_retrieve(session_uuid, query, top_k, db, course_id=None, **scope):
         calls.append({"session": session_uuid, "course_id": course_id})
         return [{"text": "chunk", "score": 1.0, "source": "slide"}]
 
-    monkeypatch.setattr(sessions_api, "retrieve_context", _fake_retrieve)
+    # The endpoint searches via rag_service.retrieve_for_twin, which calls this.
+    monkeypatch.setattr(rag_service, "retrieve_context", _fake_retrieve)
     return calls
 
 

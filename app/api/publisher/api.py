@@ -22,7 +22,9 @@ from sqlalchemy.orm import Session
 
 from app.database.connection import get_db
 from app.database.models import User
-from app.dependencies.auth import require_subscriber
+from app.config import settings
+from app.dependencies.auth import require_publisher, require_subscriber
+from app.services.publisher_analytics_service import build_publisher_summary
 from app.schemas.schemas import (
     ChatRequest,
     ChatResponse,
@@ -291,3 +293,17 @@ def upsert_preference(
     except Exception as e:
         logger.error(f"❌ upsert_preference error: {e}")
         raise HTTPException(status_code=500, detail=f"Error saving preference: {e}")
+
+
+@router.get("/analytics/summary")
+async def get_publisher_analytics_summary(
+    current_user: User = Depends(require_publisher),
+    db: Session = Depends(get_db),
+):
+    """
+    Dashboard figures for the signed-in publisher's own twins, courses and
+    sessions (v2 §9.2). Untracked figures are null, not zero.
+    """
+    return build_publisher_summary(
+        db, current_user.id, guest_user_uuid=settings.guest_user_uuid
+    )

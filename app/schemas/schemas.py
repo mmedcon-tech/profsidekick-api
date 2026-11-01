@@ -25,6 +25,17 @@ class PresentationData(BaseModel):
 
 class EphemeralTokenResponse(BaseModel):
     client_secret: dict
+    # The avatar's profession, so the client uses matching wording.
+    profession: Optional[str] = None
+    # Instructions the API built (persona, profession safety rules, memories).
+    # The client keeps them when it sends session.update; without them it would
+    # replace them. The browser can already read them from session.created.
+    instructions: Optional[str] = None
+    # From the avatar's configuration: the LiveAvatar avatar and who speaks.
+    heygen_avatar_id: Optional[str] = None
+    avatar_render_type: Optional[str] = None
+    voice_provider: Optional[str] = None
+    voice_id: Optional[str] = None
 
 class InputAudioNoiseReduction(BaseModel):
     type: str
@@ -100,7 +111,9 @@ class SessionCreateRequest(BaseModel):
     selectedRoleId: Optional[UUID] = None
     roleLabel: Optional[str] = None
     # Session mode: determines which template prompt is loaded
-    sessionMode: Optional[str] = Field("teaching", pattern="^(teaching|examination)$")
+    sessionMode: Optional[str] = Field(
+        "teaching", pattern="^(teaching|examination|consultation)$"
+    )
     # Subscriber runtime mode: determines what experience subscribers get
     subscriberRuntimeMode: Optional[str] = Field("avatar", pattern="^(avatar|chat|choice)$")
 
@@ -135,6 +148,7 @@ class SessionRunDetails(BaseModel):
     endTime: Optional[datetime] = None
     runtimeModeUsed: Optional[str] = None  # 'avatar' | 'chat'
     sessionMode: Optional[str] = "teaching"
+    profession: Optional[str] = None
 
 # Authentication Schemas
 class UserRegistration(BaseModel):
@@ -665,19 +679,31 @@ class ReferenceSolutionResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
 # ── Avatar Configuration ─────────────────────────────────────────
+
+VOICE_PROVIDER_PATTERN = r"^(openai|elevenlabs)$"
+
 
 class AvatarConfigurationCreate(BaseModel):
     voice: Optional[str] = Field(None, max_length=100)
     language: Optional[str] = Field(None, max_length=50)
     difficulty_level: Optional[str] = Field(None, max_length=50)
     additional_settings: Optional[dict] = None
+    heygen_avatar_id: Optional[str] = Field(None, max_length=100)
+    voice_provider: Optional[str] = Field(None, pattern=VOICE_PROVIDER_PATTERN)
+    elevenlabs_voice_id: Optional[str] = Field(None, max_length=100)
 
 class AvatarConfigurationUpdate(BaseModel):
     voice: Optional[str] = Field(None, max_length=100)
     language: Optional[str] = Field(None, max_length=50)
     difficulty_level: Optional[str] = Field(None, max_length=50)
     additional_settings: Optional[dict] = None
+    # These three may be sent as null to clear them. Clone fields are set only
+    # by the voice-clone endpoints, which record consent.
+    heygen_avatar_id: Optional[str] = Field(None, max_length=100)
+    voice_provider: Optional[str] = Field(None, pattern=VOICE_PROVIDER_PATTERN)
+    elevenlabs_voice_id: Optional[str] = Field(None, max_length=100)
 
 class AvatarConfigurationResponse(BaseModel):
     id: UUID
@@ -686,6 +712,11 @@ class AvatarConfigurationResponse(BaseModel):
     language: Optional[str] = None
     difficulty_level: Optional[str] = None
     additional_settings: Optional[dict] = None
+    heygen_avatar_id: Optional[str] = None
+    voice_provider: Optional[str] = None
+    elevenlabs_voice_id: Optional[str] = None
+    voice_clone_consent_at: Optional[datetime] = None
+    voice_clone_name: Optional[str] = None
     rubrics: List[RubricResponse] = []
     knowledge_documents: List[KnowledgeDocumentResponse] = []
     reference_solutions: List[ReferenceSolutionResponse] = []
@@ -754,6 +785,7 @@ class AvatarSummary(BaseModel):
     subscription_cost: Optional[Decimal] = None
     template_image_url: Optional[str] = None   # inherited from AvatarTemplate.avatar_image_path
     template_name: Optional[str] = None        # inherited from AvatarTemplate.name
+    profession: Optional[str] = None           # resolved: avatar → template category
     profile: Optional[PublisherAvatarProfileResponse] = None
     created_at: datetime
     updated_at: datetime
@@ -775,6 +807,7 @@ class AvatarResponse(BaseModel):
     subscription_cost: Optional[Decimal] = None
     template_image_url: Optional[str] = None   # inherited from AvatarTemplate.avatar_image_path
     template_name: Optional[str] = None        # inherited from AvatarTemplate.name
+    profession: Optional[str] = None           # resolved: avatar → template category
     configuration: Optional[AvatarConfigurationResponse] = None
     profile: Optional[PublisherAvatarProfileResponse] = None
     created_at: datetime

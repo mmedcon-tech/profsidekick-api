@@ -219,6 +219,7 @@ class OpenAIService:
                 ) from exc
 
             token_data = resp.json()
+            token_data["server_instructions"] = instructions
             if "client_secret" not in token_data and "value" in token_data:
                 token_data["client_secret"] = {
                     "value": token_data["value"],

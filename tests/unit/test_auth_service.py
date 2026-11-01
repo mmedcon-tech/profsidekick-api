@@ -50,6 +50,9 @@ class _Db:
     def add(self, obj):
         self.added.append(obj)
 
+    def flush(self):
+        pass
+
     def commit(self):
         self.committed = True
 

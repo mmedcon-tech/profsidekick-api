@@ -9,6 +9,11 @@ from app.database.connection import get_redis
 from app.database.models import Session as SessionModel, SessionRun, SessionRunStatus, User, Course, CourseMaterial, SessionMaterial, Avatar, AvatarTemplateRole
 from app.schemas.schemas import AssistantParameters, SessionDetails, SessionRunDetails, SessionUpdateDetails, SessionSummary, ClassDetails, PaginationInfo, SessionRunSummary, SessionRunFeedback, SlideData
 
+# The style a session starts in. Learners and patients can switch mid-session.
+# 'consultation' used to be coerced to 'teaching' here, so consultations ran
+# with the teaching prompt.
+SESSION_MODES = ("teaching", "examination", "consultation")
+
 
 class SessionService:
     """Service for managing sessions and caching"""
@@ -59,7 +64,7 @@ class SessionService:
         
         # Validate and normalise session_mode
         raw_mode = session_details.get('sessionMode') or 'teaching'
-        session_mode = raw_mode if raw_mode in ('teaching', 'examination') else 'teaching'
+        session_mode = raw_mode if raw_mode in SESSION_MODES else 'teaching'
 
         # Resolve optional avatar + role
         avatar_id = None
@@ -323,9 +328,16 @@ class SessionService:
         if not session_run:
             return None
             
+        if session_run.status == SessionRunStatus.COMPLETED:
+            return session_run
         session_run.status = SessionRunStatus.COMPLETED
         session_run.end_time = datetime.now()
-        session_run.session_run_metadata = session_run_metadata
+        # Preserve server-stored conversation evidence when the client sends
+        # final duration/feedback metadata (or sends no metadata).
+        merged = dict(session_run.session_run_metadata or {})
+        merged.update({k: v for k, v in (session_run_metadata or {}).items()
+                       if k not in ("transcript_turns", "chat_messages")})
+        session_run.session_run_metadata = merged
         db.commit()
         return session_run
     

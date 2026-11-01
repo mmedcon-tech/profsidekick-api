@@ -483,6 +483,15 @@ class AvatarConfiguration(Base):
     language = Column(String(50), nullable=True)
     difficulty_level = Column(String(50), nullable=True)
     additional_settings = Column(JSONB, nullable=True)
+    # HeyGen LiveAvatar avatar UUID shown in live sessions (LITE mode).
+    heygen_avatar_id = Column(String(100), nullable=True)
+    # Who speaks the avatar's replies: 'openai' (Realtime voice in `voice`) or
+    # 'elevenlabs' (`elevenlabs_voice_id`, a stock voice or an instant clone).
+    voice_provider = Column(String(20), nullable=True)
+    elevenlabs_voice_id = Column(String(100), nullable=True)
+    # Set only for a clone made on this platform: the publisher's consent time.
+    voice_clone_consent_at = Column(DateTime, nullable=True)
+    voice_clone_name = Column(String(200), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
 
@@ -711,6 +720,21 @@ class UserMemory(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
 
+    # Legacy notes remain inspectable, but are never injected without evidence.
+    kind = Column(String(30), nullable=False, default="note", server_default="note")
+    topic = Column(String(200), nullable=True)
+    evidence_quote = Column(Text, nullable=True)
+    confidence = Column(Float, nullable=True)
+    status = Column(String(20), nullable=False, default="active", server_default="active")
+    visibility = Column(JSONB, nullable=False, default=lambda: ["learner"], server_default='["learner"]')
+    consent_basis = Column(String(40), nullable=True)
+    source_run_id = Column(UUID(as_uuid=True), ForeignKey("session_runs.id", ondelete="SET NULL"), nullable=True)
+    times_seen = Column(Integer, nullable=False, default=1, server_default="1")
+    last_confirmed_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=True, index=True)
+    # Stable hash of kind + topic, used for merging and content-free suppression.
+    memory_key = Column(String(64), nullable=True)
+
     user = relationship("User", foreign_keys=[user_id])
     avatar = relationship("Avatar", foreign_keys=[avatar_id])
 
@@ -815,3 +839,452 @@ class AuditEvent(Base):
     __table_args__ = (
         Index("ix_audit_events_entity", "entity_type", "entity_id"),
     )
+
+
+class MemoryControl(Base):
+    __tablename__ = "memory_controls"
+
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    enabled = Column(Boolean, nullable=False, default=True, server_default="true")
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class TwinMemoryConsent(Base):
+    __tablename__ = "twin_memory_consents"
+
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    avatar_id = Column(UUID(as_uuid=True), ForeignKey("avatars.id", ondelete="CASCADE"), primary_key=True)
+    enabled = Column(Boolean, nullable=False, default=False, server_default="false")
+    consented_at = Column(DateTime, nullable=True)
+    education_shared = Column(Boolean, nullable=False, default=False, server_default="false")
+    # Runs starting before this point cannot recreate erased/corrected memories.
+    reset_at = Column(DateTime, nullable=True)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class MemorySuppression(Base):
+    __tablename__ = "memory_suppressions"
+
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    avatar_id = Column(UUID(as_uuid=True), ForeignKey("avatars.id", ondelete="CASCADE"), primary_key=True)
+    memory_key = Column(String(64), primary_key=True)
+
+
+class MemoryJob(Base):
+    __tablename__ = "memory_jobs"
+
+    run_id = Column(UUID(as_uuid=True), ForeignKey("session_runs.id", ondelete="CASCADE"), primary_key=True)
+    status = Column(String(20), nullable=False, default="pending", server_default="pending")
+    attempts = Column(Integer, nullable=False, default=0, server_default="0")
+    available_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# MYO'S Fertility — IVF Care program, one persistent consultation per
+# user, fertility knowledge with retrieval metadata, instructional
+# videos, patient context with provenance, simulated escalations.
+# The knowledge / safety / patient-context layer is independent of the
+# avatar renderer, so a clinic's own doctor twin can replace the demo
+# persona without touching these tables.
+# ═══════════════════════════════════════════════════════════════════
+
+
+class CareProgram(Base):
+    __tablename__ = "care_programs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    slug = Column(String(100), nullable=False, unique=True, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    is_public = Column(Boolean, nullable=False, default=True, server_default="true")
+    doctor_config = Column(JSONB, nullable=True)  # persona, avatar ids, voice
+    clinic_id = Column(String(100), nullable=True)  # legacy free-text clinic key
+    # ── Multi-program platform (care platform). A CareProgram is a clinic's
+    # instance of a global ProgramTemplate. Legacy ivf-care keeps working.
+    clinic_ref_id = Column(UUID(as_uuid=True), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=True, index=True)
+    template_id = Column(UUID(as_uuid=True), ForeignKey("program_templates.id", ondelete="SET NULL"), nullable=True)
+    persona_id = Column(UUID(as_uuid=True), ForeignKey("doctor_personas.id", ondelete="SET NULL"), nullable=True)
+    status = Column(String(20), nullable=False, default="published", server_default="published")  # draft|published|unpublished
+    enrollment_policy = Column(String(20), nullable=False, default="staff", server_default="staff")  # open|staff
+    branding = Column(JSONB, nullable=True)
+    position = Column(Integer, nullable=False, default=0, server_default="0")
+    is_demo = Column(Boolean, nullable=False, default=False, server_default="false")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class CareProgramMembership(Base):
+    """A user's place in a care program. role: patient | partner."""
+
+    __tablename__ = "care_program_memberships"
+    __table_args__ = (UniqueConstraint("program_id", "user_id", name="uq_care_membership"),)
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    program_id = Column(UUID(as_uuid=True), ForeignKey("care_programs.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    care_role = Column(String(20), nullable=False, default="patient")
+    treatment_stage = Column(String(50), nullable=True)
+    # Partner access to a patient's records is opt-in by the patient and
+    # scoped (e.g. ["appointments", "injection_reminders"]). Empty = none.
+    linked_patient_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    authorized_scopes = Column(JSONB, nullable=False, default=list, server_default="[]")
+    joined_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Consultation(Base):
+    """The single, persistent consultation thread for a user in a program."""
+
+    __tablename__ = "consultations"
+    __table_args__ = (UniqueConstraint("program_id", "user_id", name="uq_consultation_user_program"),)
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    program_id = Column(UUID(as_uuid=True), ForeignKey("care_programs.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    care_role = Column(String(20), nullable=False, default="patient")
+    status = Column(String(20), nullable=False, default="active")
+    last_mode = Column(String(10), nullable=True)  # text | voice | avatar
+    # Rolling AI-generated summary of older turns (never treated as verified).
+    summary = Column(Text, nullable=True)
+    summarized_until = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_activity_at = Column(DateTime, default=datetime.utcnow)
+
+    messages = relationship(
+        "ConsultationMessage",
+        back_populates="consultation",
+        cascade="all, delete-orphan",
+        order_by="ConsultationMessage.created_at",
+    )
+
+
+class ConsultationMessage(Base):
+    __tablename__ = "consultation_messages"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    consultation_id = Column(UUID(as_uuid=True), ForeignKey("consultations.id", ondelete="CASCADE"), nullable=False, index=True)
+    sender = Column(String(20), nullable=False)  # user | assistant
+    content = Column(Text, nullable=False)
+    mode = Column(String(10), nullable=False, default="text")
+    care_role = Column(String(20), nullable=True)
+    # user messages: patient_reported; assistant: ai_generated
+    provenance = Column(String(30), nullable=False, default="patient_reported")
+    safety = Column(JSONB, nullable=True)
+    sources = Column(JSONB, nullable=True)
+    videos = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    consultation = relationship("Consultation", back_populates="messages")
+
+
+class FertilityKnowledgeDocument(Base):
+    __tablename__ = "fertility_knowledge_documents"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    document_key = Column(String(120), nullable=False, unique=True)
+    title = Column(String(255), nullable=False)
+    # general_education | clinic_protocol | patient_order | product_label | synthetic_demo | video_transcript
+    source_type = Column(String(40), nullable=False, default="general_education")
+    approval_status = Column(String(30), nullable=False, default="demo_unreviewed")
+    clinic_id = Column(String(100), nullable=True)
+    jurisdiction = Column(String(50), nullable=True)
+    clinician_approver = Column(String(255), nullable=True)
+    version = Column(String(30), nullable=True)
+    reviewed_at = Column(DateTime, nullable=True)
+    effective_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    original_reference = Column(String(500), nullable=True)
+    content_sha256 = Column(String(64), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class FertilityKnowledgeChunk(Base):
+    __tablename__ = "fertility_knowledge_chunks"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    document_id = Column(UUID(as_uuid=True), ForeignKey("fertility_knowledge_documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    video_id = Column(UUID(as_uuid=True), ForeignKey("instructional_videos.id", ondelete="CASCADE"), nullable=True, index=True)
+    start_seconds = Column(Integer, nullable=True)
+    end_seconds = Column(Integer, nullable=True)
+    content = Column(Text, nullable=False)
+    meta = Column(JSONB, nullable=False, default=dict)  # section 11 schema
+    embedding = Column(Vector(1536), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class InstructionalVideo(Base):
+    __tablename__ = "instructional_videos"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    topic = Column(String(100), nullable=True)
+    treatment_stage = Column(String(50), nullable=True)
+    audience = Column(String(20), nullable=False, default="both")
+    medication_name = Column(String(120), nullable=True)
+    device_name = Column(String(120), nullable=True)
+    language = Column(String(10), nullable=False, default="en")
+    clinic_id = Column(String(100), nullable=True)
+    approval_status = Column(String(30), nullable=False, default="demo_unreviewed")
+    version = Column(String(30), nullable=True)
+    storage_uri = Column(String(500), nullable=True)  # private://…
+    external_url = Column(String(1000), nullable=True)
+    content_type = Column(String(100), nullable=True)
+    thumbnail_uri = Column(String(500), nullable=True)
+    transcript = Column(Text, nullable=True)
+    captions_vtt = Column(Text, nullable=True)
+    duration_seconds = Column(Integer, nullable=True)
+    uploaded_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    # care platform placement + publication workflow (draft|in_review|approved|retired)
+    program_id = Column(UUID(as_uuid=True), ForeignKey("care_programs.id", ondelete="CASCADE"), nullable=True, index=True)
+    course_id = Column(UUID(as_uuid=True), ForeignKey("care_courses.id", ondelete="SET NULL"), nullable=True)
+    lesson_id = Column(UUID(as_uuid=True), ForeignKey("care_lessons.id", ondelete="SET NULL"), nullable=True)
+    status = Column(String(20), nullable=True)
+    position = Column(Integer, nullable=False, default=0, server_default="0")
+    reviewer = Column(String(255), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class PatientContextEntry(Base):
+    """
+    Patient context with explicit provenance. verified_clinical rows come
+    from (or are confirmed by) the clinic; patient_reported rows are what a
+    patient/partner typed; ai_generated rows are model summaries. Nothing
+    is ever promoted between provenances automatically.
+    """
+
+    __tablename__ = "patient_context_entries"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    patient_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    program_id = Column(UUID(as_uuid=True), ForeignKey("care_programs.id", ondelete="CASCADE"), nullable=True)
+    # treatment_stage | treatment_plan | medication_schedule | confirmed_dose |
+    # appointment | procedure | history | clinic_instruction | consultation_summary | note
+    kind = Column(String(40), nullable=False)
+    content = Column(Text, nullable=False)
+    provenance = Column(String(30), nullable=False)  # verified_clinical | patient_reported | ai_generated
+    is_synthetic = Column(Boolean, nullable=False, default=False, server_default="false")
+    source = Column(String(255), nullable=True)
+    verified_by = Column(String(255), nullable=True)
+    effective_at = Column(DateTime, nullable=True)
+    consent_scope = Column(String(50), nullable=False, default="patient_only")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ClinicProtocol(Base):
+    """Versioned clinic-approved protocol (Phase 2). Indexed into fertility knowledge when approved."""
+
+    __tablename__ = "clinic_protocols"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    clinic_id = Column(String(100), nullable=False, index=True)
+    title = Column(String(255), nullable=False)
+    topic = Column(String(100), nullable=True)
+    content = Column(Text, nullable=False)
+    version = Column(String(30), nullable=False, default="1")
+    approval_status = Column(String(30), nullable=False, default="draft")
+    clinician_approver = Column(String(255), nullable=True)
+    effective_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    knowledge_document_id = Column(UUID(as_uuid=True), ForeignKey("fertility_knowledge_documents.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SimulatedEscalation(Base):
+    """Demo-only record of a handoff the patient asked for. Nothing is sent."""
+
+    __tablename__ = "simulated_escalations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    consultation_id = Column(UUID(as_uuid=True), ForeignKey("consultations.id", ondelete="CASCADE"), nullable=False, index=True)
+    category = Column(String(40), nullable=False)
+    summary = Column(Text, nullable=False)
+    simulated = Column(Boolean, nullable=False, default=True, server_default="true")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+
+# ═══════════════════════════ Care platform (multi-program) ═══════════════════════════
+# Platform → Clinic (publisher org) → Program (instance of a ProgramTemplate)
+# → Course → Lesson. Personas (doctor twins) are reusable per clinic.
+# Access is explicit CareEntitlement rows, separate from credits/billing.
+
+class Clinic(Base):
+    __tablename__ = "clinics"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    slug = Column(String(100), nullable=False, unique=True, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    branding = Column(JSONB, nullable=True)  # {primary_color, logo_url, accent}
+    contact_routes = Column(JSONB, nullable=False, default=list, server_default="[]")  # [{key,label,detail,hours}]
+    response_expectation = Column(Text, nullable=True)  # e.g. "Messages are read on weekdays 9-17"
+    status = Column(String(20), nullable=False, default="active", server_default="active")
+    is_demo = Column(Boolean, nullable=False, default=False, server_default="false")
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ClinicStaff(Base):
+    __tablename__ = "clinic_staff"
+    __table_args__ = (UniqueConstraint("clinic_id", "user_id", name="uq_clinic_staff"),)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    clinic_id = Column(UUID(as_uuid=True), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    can_manage = Column(Boolean, nullable=False, default=False, server_default="false")   # clinic settings, staff
+    can_publish = Column(Boolean, nullable=False, default=False, server_default="false")  # programs, drafts, publish
+    can_approve = Column(Boolean, nullable=False, default=False, server_default="false")  # clinical approval
+    can_view_clinical = Column(Boolean, nullable=False, default=False, server_default="false")  # handoffs
+    display_name = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ProgramTemplate(Base):
+    __tablename__ = "program_templates"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    slug = Column(String(100), nullable=False, unique=True, index=True)
+    name = Column(String(255), nullable=False)
+    care_area = Column(String(120), nullable=True)
+    description = Column(Text, nullable=True)
+    default_config = Column(JSONB, nullable=True)  # {suggested_courses:[...], icon, color}
+    status = Column(String(20), nullable=False, default="active", server_default="active")
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class DoctorPersona(Base):
+    __tablename__ = "doctor_personas"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    clinic_id = Column(UUID(as_uuid=True), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    title = Column(String(255), nullable=True)
+    specialty = Column(String(255), nullable=True)
+    prompt = Column(Text, nullable=True)  # tone/style only; safety rules are platform-enforced
+    avatar_id = Column(UUID(as_uuid=True), ForeignKey("avatars.id", ondelete="SET NULL"), nullable=True)
+    liveavatar_avatar_id = Column(String(100), nullable=True)
+    variant = Column(String(100), nullable=True)
+    voice_id = Column(String(100), nullable=True)
+    gender = Column(String(10), nullable=True)
+    is_demo = Column(Boolean, nullable=False, default=False, server_default="false")
+    status = Column(String(20), nullable=False, default="active", server_default="active")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class CareCourse(Base):
+    __tablename__ = "care_courses"
+    __table_args__ = (UniqueConstraint("program_id", "slug", name="uq_care_course_slug"),)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    program_id = Column(UUID(as_uuid=True), ForeignKey("care_programs.id", ondelete="CASCADE"), nullable=False, index=True)
+    slug = Column(String(100), nullable=False)
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    position = Column(Integer, nullable=False, default=0, server_default="0")
+    status = Column(String(20), nullable=False, default="draft", server_default="draft")  # draft|published|unpublished
+    requires_entitlement = Column(Boolean, nullable=False, default=False, server_default="false")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class CareLesson(Base):
+    __tablename__ = "care_lessons"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    course_id = Column(UUID(as_uuid=True), ForeignKey("care_courses.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(255), nullable=False)
+    body = Column(Text, nullable=True)
+    position = Column(Integer, nullable=False, default=0, server_default="0")
+    status = Column(String(20), nullable=False, default="draft", server_default="draft")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class CareEntitlement(Base):
+    """Explicit access grant: a user in a clinic program (optionally one course)."""
+    __tablename__ = "care_entitlements"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    clinic_id = Column(UUID(as_uuid=True), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False, index=True)
+    program_id = Column(UUID(as_uuid=True), ForeignKey("care_programs.id", ondelete="CASCADE"), nullable=False, index=True)
+    course_id = Column(UUID(as_uuid=True), ForeignKey("care_courses.id", ondelete="CASCADE"), nullable=True)
+    care_role = Column(String(20), nullable=False, default="patient", server_default="patient")
+    source = Column(String(30), nullable=False)  # legacy_membership | open_enrollment | staff_grant
+    granted_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    terms_version = Column(String(30), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    revoked_at = Column(DateTime, nullable=True)
+
+
+class CareContentItem(Base):
+    """Versioned clinical content. Only status=approved, unexpired, latest in its
+    lineage is retrievable. Patient-specific plans never live here."""
+    __tablename__ = "care_content_items"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lineage_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    version = Column(Integer, nullable=False, default=1)
+    clinic_id = Column(UUID(as_uuid=True), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False, index=True)
+    program_id = Column(UUID(as_uuid=True), ForeignKey("care_programs.id", ondelete="CASCADE"), nullable=False, index=True)
+    course_id = Column(UUID(as_uuid=True), ForeignKey("care_courses.id", ondelete="SET NULL"), nullable=True)
+    kind = Column(String(30), nullable=False)  # protocol|patient_instruction|faq|document|deidentified_case
+    title = Column(String(255), nullable=False)
+    body = Column(Text, nullable=False)
+    language = Column(String(10), nullable=False, default="en", server_default="en")
+    audience = Column(String(20), nullable=False, default="patient", server_default="patient")  # patient|caregiver|both|staff
+    applicability = Column(Text, nullable=True)
+    source = Column(String(500), nullable=True)
+    status = Column(String(20), nullable=False, default="draft", server_default="draft")  # draft|in_review|approved|retired
+    reviewer = Column(String(255), nullable=True)
+    approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    is_demo = Column(Boolean, nullable=False, default=False, server_default="false")
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class CareContentChunk(Base):
+    __tablename__ = "care_content_chunks"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    item_id = Column(UUID(as_uuid=True), ForeignKey("care_content_items.id", ondelete="CASCADE"), nullable=False, index=True)
+    position = Column(Integer, nullable=False, default=0)
+    content = Column(Text, nullable=False)
+    embedding = Column(Vector(1536), nullable=True)
+
+
+class RedFlagRule(Base):
+    """Clinic-configured warning sign. No thresholds are invented by the platform."""
+    __tablename__ = "red_flag_rules"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    clinic_id = Column(UUID(as_uuid=True), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False, index=True)
+    program_id = Column(UUID(as_uuid=True), ForeignKey("care_programs.id", ondelete="CASCADE"), nullable=False, index=True)
+    course_id = Column(UUID(as_uuid=True), ForeignKey("care_courses.id", ondelete="SET NULL"), nullable=True)
+    symptom = Column(String(255), nullable=False)
+    match_terms = Column(JSONB, nullable=False, default=list, server_default="[]")
+    clinic_action = Column(Text, nullable=False)
+    urgency = Column(String(20), nullable=False)  # emergency|urgent|same_day|routine
+    contact_route = Column(String(100), nullable=True)  # key into clinic.contact_routes
+    applicability = Column(Text, nullable=True)
+    reviewer = Column(String(255), nullable=True)
+    review_date = Column(DateTime, nullable=True)
+    status = Column(String(20), nullable=False, default="draft", server_default="draft")
+    is_demo = Column(Boolean, nullable=False, default=False, server_default="false")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class CareHandoff(Base):
+    """Request for human review. Simulated in demo clinics (nothing is sent)."""
+    __tablename__ = "care_handoffs"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    clinic_id = Column(UUID(as_uuid=True), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False, index=True)
+    program_id = Column(UUID(as_uuid=True), ForeignKey("care_programs.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    consultation_id = Column(UUID(as_uuid=True), ForeignKey("consultations.id", ondelete="SET NULL"), nullable=True)
+    reason = Column(String(40), nullable=False)  # red_flag|personal_judgment|patient_request
+    summary = Column(Text, nullable=False)
+    contact_route = Column(String(100), nullable=True)
+    status = Column(String(20), nullable=False, default="open", server_default="open")
+    simulated = Column(Boolean, nullable=False, default=True, server_default="true")
+    created_at = Column(DateTime, default=datetime.utcnow)

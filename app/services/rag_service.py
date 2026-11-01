@@ -21,11 +21,12 @@ approximation: 1 token ≈ 4 characters → ~1 600 chars per chunk, 200-char ove
 from __future__ import annotations
 
 import io
+import re
 import logging
 import uuid
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import text
+from sqlalchemy import or_, text
 from sqlalchemy.orm import Session as DBSession
 
 from app.config import settings
@@ -292,6 +293,10 @@ def ingest_session_document(
     all_chunks: List[Dict[str, Any]] = []
 
     for slide in slides:
+        # Solution slides are internal grading references (context_builder
+        # marks them "never reveal"); they must not be retrievable by learners.
+        if slide.get("source") == "solution":
+            continue
         slide_number = slide.get("slideNumber") or slide.get("slide_number", 0)
         content = slide.get("content", "")
         if not content or not content.strip():
@@ -422,6 +427,35 @@ def ingest_avatar_knowledge_document(
         db.commit()
         return 0
 
+    return _store_avatar_knowledge_chunks(document_id, avatar_configuration_id, raw_text, db)
+
+
+def ingest_avatar_knowledge_text(
+    document_id: uuid.UUID,
+    avatar_configuration_id: uuid.UUID,
+    raw_text: str,
+    db: DBSession,
+) -> int:
+    """
+    Chunk and embed knowledge that was typed in rather than uploaded as a file
+    (KnowledgeDocument.content_text), so voice sessions can retrieve it too.
+    Re-running replaces the document's previous chunks.
+    """
+    source_tag = f"avatar_knowledge:{avatar_configuration_id}:{document_id}"
+    db.query(KnowledgeChunk).filter(KnowledgeChunk.source == source_tag).delete()
+    if not raw_text or not raw_text.strip():
+        db.commit()
+        return 0
+    return _store_avatar_knowledge_chunks(document_id, avatar_configuration_id, raw_text, db)
+
+
+def _store_avatar_knowledge_chunks(
+    document_id: uuid.UUID,
+    avatar_configuration_id: uuid.UUID,
+    raw_text: str,
+    db: DBSession,
+) -> int:
+    source_tag = f"avatar_knowledge:{avatar_configuration_id}:{document_id}"
     raw_chunks = _chunk_text(raw_text)
     if not raw_chunks:
         db.commit()
@@ -461,6 +495,22 @@ def ingest_avatar_knowledge_document(
     return len(rows)
 
 
+def ingest_avatar_knowledge_text_background(
+    document_id: uuid.UUID,
+    avatar_configuration_id: uuid.UUID,
+    raw_text: str,
+) -> None:
+    """Background-task wrapper for typed-in avatar knowledge."""
+    db = SessionLocal()
+    try:
+        ingest_avatar_knowledge_text(document_id, avatar_configuration_id, raw_text, db)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Background ingestion failed for typed knowledge %s: %s", document_id, exc)
+        db.rollback()
+    finally:
+        db.close()
+
+
 def ingest_avatar_knowledge_document_background(
     document_id: uuid.UUID,
     avatar_configuration_id: uuid.UUID,
@@ -495,25 +545,93 @@ def retrieve_context(
     top_k: int = 5,
     db: DBSession = None,  # type: ignore[assignment]
     course_id: Optional[uuid.UUID] = None,
+    avatar_configuration_id: Optional[uuid.UUID] = None,
+    solution_texts: Optional[List[str]] = None,
+    student_texts: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Embed ``query`` and return the ``top_k`` most relevant chunks for the
     given session, ordered by cosine similarity.
 
-    Two sources are searched:
+    Three sources are searched:
     1. ``SlideChunk`` rows for ``session_id`` — the session's slide content.
     2. ``KnowledgeChunk`` rows for ``course_id`` — uploaded course materials
        (textbooks, articles, etc.).  Only searched when ``course_id`` is provided.
+    3. ``KnowledgeChunk`` rows uploaded to the avatar (tag
+       ``avatar_knowledge:{avatar_configuration_id}:{document_id}``). Only
+       searched when ``avatar_configuration_id`` is provided. Every document
+       still on the avatar counts as approved by its owner (ADR 0008); deleted
+       documents have no chunks left.
+
+    ``solution_texts`` / ``student_texts``: sessions created before solution
+    slides were excluded from indexing still have them as slide chunks. A slide
+    chunk found only in a solution slide is dropped, so answers never reach a
+    learner.
 
     Returns a list of dicts::
 
         [{"slide_number": int|None, "chunk_index": int, "content": str,
-          "score": float, "source": "slide"|"course_material"}]
+          "score": float, "source": "slide"|"course_material"|"avatar_knowledge",
+          "document_title": str (avatar_knowledge only)}]
 
     Falls back to a plain text search (ILIKE) when pgvector is unavailable.
     """
     if not query or not query.strip():
         return []
+    results = _retrieve(session_id, query, top_k * 2, db, course_id, avatar_configuration_id)
+    if solution_texts:
+        results = [
+            r for r in results
+            if not _is_solution_only(r, solution_texts, student_texts or [])
+        ]
+    _attach_document_titles(results, db)
+    return results[:top_k]
+
+
+def _avatar_source_prefix(avatar_configuration_id: uuid.UUID) -> str:
+    return f"avatar_knowledge:{avatar_configuration_id}:"
+
+
+def _is_solution_only(chunk: Dict[str, Any], solution_texts: List[str], student_texts: List[str]) -> bool:
+    if chunk.get("source") != "slide":
+        return False
+    content = (chunk.get("content") or "").strip()
+    if not content:
+        return False
+    in_solution = any(content in t for t in solution_texts)
+    in_student = any(content in t for t in student_texts)
+    return in_solution and not in_student
+
+
+def _attach_document_titles(results: List[Dict[str, Any]], db: DBSession) -> None:
+    """Label avatar-knowledge chunks with their document title for citations."""
+    doc_ids = {}
+    for r in results:
+        tag = r.pop("_tag", None)
+        if r.get("source") == "avatar_knowledge" and tag:
+            try:
+                doc_ids[id(r)] = uuid.UUID(tag.rsplit(":", 1)[1])
+            except (ValueError, IndexError):
+                continue
+    if not doc_ids:
+        return
+    titles = {
+        d.id: d.title
+        for d in db.query(KnowledgeDocument).filter(KnowledgeDocument.id.in_(set(doc_ids.values()))).all()
+    }
+    for r in results:
+        if id(r) in doc_ids:
+            r["document_title"] = titles.get(doc_ids[id(r)])
+
+
+def _retrieve(
+    session_id: uuid.UUID,
+    query: str,
+    top_k: int,
+    db: DBSession,
+    course_id: Optional[uuid.UUID],
+    avatar_configuration_id: Optional[uuid.UUID],
+) -> List[Dict[str, Any]]:
 
     # ── Determine whether any embeddings exist to decide vector vs keyword ──
     slide_sample = (
@@ -536,10 +654,26 @@ def retrieve_context(
             .first()
         )
 
-    use_vector = slide_sample is not None or knowledge_sample is not None
+    avatar_sample = None
+    if avatar_configuration_id is not None:
+        avatar_sample = (
+            db.query(KnowledgeChunk)
+            .filter(
+                KnowledgeChunk.source.like(_avatar_source_prefix(avatar_configuration_id) + "%"),
+                KnowledgeChunk.embedding.isnot(None),
+            )
+            .first()
+        )
+
+    use_vector = (
+        slide_sample is not None or knowledge_sample is not None or avatar_sample is not None
+    )
 
     if not use_vector:
-        return _keyword_fallback(session_id, query, top_k, db, course_id=course_id)
+        return _keyword_fallback(
+            session_id, query, top_k, db, course_id=course_id,
+            avatar_configuration_id=avatar_configuration_id,
+        )
 
     try:
         query_vector = _embed([query])[0]
@@ -547,7 +681,10 @@ def retrieve_context(
         logger.warning(
             "retrieve_context: embedding failed — %s; using keyword fallback", exc
         )
-        return _keyword_fallback(session_id, query, top_k, db, course_id=course_id)
+        return _keyword_fallback(
+            session_id, query, top_k, db, course_id=course_id,
+            avatar_configuration_id=avatar_configuration_id,
+        )
 
     results: List[Dict[str, Any]] = []
 
@@ -558,7 +695,7 @@ def retrieve_context(
                 "SELECT slide_number, chunk_index, content, "
                 "1 - (embedding <=> CAST(:vec AS vector)) AS score "
                 "FROM slide_chunks "
-                "WHERE session_id = :sid "
+                "WHERE session_id = :sid AND embedding IS NOT NULL "
                 "ORDER BY score DESC "
                 "LIMIT :k"
             ),
@@ -583,7 +720,7 @@ def retrieve_context(
                 "SELECT content, source, "
                 "1 - (embedding <=> CAST(:vec AS vector)) AS score "
                 "FROM knowledge_chunks "
-                "WHERE course_id = :cid "
+                "WHERE course_id = :cid AND embedding IS NOT NULL "
                 "ORDER BY score DESC "
                 "LIMIT :k"
             ),
@@ -601,9 +738,74 @@ def retrieve_context(
             for row in knowledge_rows
         )
 
+    # ── 3. Avatar knowledge (twin-scoped) ───────────────────────────────────
+    if avatar_sample is not None:
+        avatar_rows = db.execute(
+            text(
+                "SELECT content, source, "
+                "1 - (embedding <=> CAST(:vec AS vector)) AS score "
+                "FROM knowledge_chunks "
+                "WHERE source LIKE :prefix AND embedding IS NOT NULL "
+                "ORDER BY score DESC "
+                "LIMIT :k"
+            ),
+            {
+                "vec": str(query_vector),
+                "prefix": _avatar_source_prefix(avatar_configuration_id) + "%",
+                "k": top_k,
+            },
+        ).fetchall()
+
+        results.extend(
+            {
+                "slide_number": None,
+                "chunk_index": 0,
+                "content": row.content,
+                "score": float(row.score),
+                "source": "avatar_knowledge",
+                "_tag": row.source,
+            }
+            for row in avatar_rows
+        )
+
+    # ── 4. Chunks that never got an embedding (a failed embedding call) ────
+    # Found by keyword so a partly embedded document is never invisible. Their
+    # score is capped at 0.5 so strong vector matches still rank first.
+    results.extend(
+        _keyword_fallback(
+            session_id, query, top_k, db, course_id=course_id,
+            avatar_configuration_id=avatar_configuration_id,
+            unembedded_only=True, score_scale=0.5,
+        )
+    )
+
     # ── Merge, sort by score, return top-k ──────────────────────────────────
     results.sort(key=lambda c: c["score"], reverse=True)
     return results[:top_k]
+
+
+_STOPWORDS = {
+    "the", "and", "for", "are", "but", "not", "you", "your", "with", "this", "that",
+    "what", "when", "where", "which", "who", "why", "how", "can", "could", "should",
+    "would", "will", "does", "did", "was", "were", "have", "has", "had", "from",
+    "about", "into", "they", "them", "there", "then", "than", "some", "any", "all",
+    "its", "our", "out", "too", "very", "just", "also", "please", "tell", "explain",
+}
+
+
+def _query_terms(query: str) -> List[str]:
+    """Significant words of the question (Latin or Arabic letters, digits)."""
+    words = re.findall(r"[0-9a-z\u0600-\u06ff]{3,}", query.lower())
+    terms: List[str] = []
+    for w in words:
+        if w not in _STOPWORDS and w not in terms:
+            terms.append(w)
+    return terms[:8] or [query.strip().lower()[:100]]
+
+
+def _match_fraction(content: str, terms: List[str]) -> float:
+    text_lower = (content or "").lower()
+    return sum(1 for t in terms if t in text_lower) / len(terms)
 
 
 def _keyword_fallback(
@@ -612,53 +814,70 @@ def _keyword_fallback(
     top_k: int,
     db: DBSession,
     course_id: Optional[uuid.UUID] = None,
+    avatar_configuration_id: Optional[uuid.UUID] = None,
+    unembedded_only: bool = False,
+    score_scale: Optional[float] = None,
 ) -> List[Dict[str, Any]]:
-    """Return chunks whose content contains any word from ``query`` (ILIKE)."""
-    keyword = f"%{query.strip()[:100]}%"
-    results: List[Dict[str, Any]] = []
+    """
+    Return chunks containing any significant word of ``query`` (ILIKE), the
+    chunks matching most words first.
 
-    slide_rows = (
-        db.query(SlideChunk)
-        .filter(
-            SlideChunk.session_id == session_id,
-            SlideChunk.content.ilike(keyword),
-        )
-        .limit(top_k)
-        .all()
-    )
-    results.extend(
-        {
+    ``unembedded_only`` restricts the search to chunks that have no embedding,
+    so the vector search can include them (one failed embedding call must not
+    hide a whole document). ``score_scale`` turns the match fraction into a
+    score for merging with vector results; without it the score stays None.
+    """
+    terms = _query_terms(query)
+    pool = max(top_k * 4, 20)
+    candidates: List[tuple] = []
+
+    def collect(model, scope_filter, to_result):
+        filters = [scope_filter, or_(*[model.content.ilike(f"%{t}%") for t in terms])]
+        if unembedded_only:
+            filters.append(model.embedding.is_(None))
+        for row in db.query(model).filter(*filters).limit(pool).all():
+            candidates.append((_match_fraction(row.content, terms), to_result(row)))
+
+    collect(
+        SlideChunk,
+        SlideChunk.session_id == session_id,
+        lambda row: {
             "slide_number": row.slide_number,
             "chunk_index": row.chunk_index,
             "content": row.content,
-            "score": None,
             "source": "slide",
-        }
-        for row in slide_rows
+        },
     )
-
     if course_id is not None:
-        knowledge_rows = (
-            db.query(KnowledgeChunk)
-            .filter(
-                KnowledgeChunk.course_id == course_id,
-                KnowledgeChunk.content.ilike(keyword),
-            )
-            .limit(top_k)
-            .all()
-        )
-        results.extend(
-            {
+        collect(
+            KnowledgeChunk,
+            KnowledgeChunk.course_id == course_id,
+            lambda row: {
                 "slide_number": None,
                 "chunk_index": 0,
                 "content": row.content,
-                "score": None,
                 "source": "course_material",
-            }
-            for row in knowledge_rows
+            },
+        )
+    if avatar_configuration_id is not None:
+        collect(
+            KnowledgeChunk,
+            KnowledgeChunk.source.like(_avatar_source_prefix(avatar_configuration_id) + "%"),
+            lambda row: {
+                "slide_number": None,
+                "chunk_index": 0,
+                "content": row.content,
+                "source": "avatar_knowledge",
+                "_tag": row.source,
+            },
         )
 
-    return results[:top_k]
+    candidates.sort(key=lambda c: c[0], reverse=True)
+    results = []
+    for fraction, item in candidates[:top_k]:
+        item["score"] = round(fraction * score_scale, 4) if score_scale is not None else None
+        results.append(item)
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -711,3 +930,107 @@ def build_grounded_prompt(
         )
 
     return "\n\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Session- and twin-scoped retrieval (voice search and both chats)
+# ---------------------------------------------------------------------------
+
+
+def retrieve_for_twin(
+    db: DBSession,
+    query: str,
+    *,
+    session: Any = None,
+    avatar_id: Optional[uuid.UUID] = None,
+    top_k: int = 8,
+) -> List[Dict[str, Any]]:
+    """
+    Everything indexed for a twin's conversation: the session's slides, its
+    course's materials and the avatar's uploaded knowledge. Hidden solution
+    slides are never returned. ``session`` is a Session row (or None for a
+    conversation outside a session); ``avatar_id`` defaults to the session's.
+    """
+    from app.database.models import AvatarConfiguration
+
+    avatar_id = avatar_id or (getattr(session, "avatar_id", None) if session else None)
+    avatar_config_id = None
+    if avatar_id:
+        avatar_config_id = (
+            db.query(AvatarConfiguration.id)
+            .filter(AvatarConfiguration.avatar_id == avatar_id)
+            .scalar()
+        )
+
+    slides = (getattr(session, "slides_details", None) or []) if session else []
+    solution_texts = [
+        s.get("content") or "" for s in slides
+        if isinstance(s, dict) and s.get("source") == "solution"
+    ]
+    student_texts = [
+        s.get("content") or "" for s in slides
+        if isinstance(s, dict) and s.get("source") != "solution"
+    ]
+
+    return retrieve_context(
+        session.id if session else None,
+        query,
+        top_k=top_k,
+        db=db,
+        course_id=getattr(session, "course_id", None) if session else None,
+        avatar_configuration_id=avatar_config_id,
+        solution_texts=solution_texts,
+        student_texts=student_texts,
+    )
+
+
+def _chunk_label(chunk: Dict[str, Any]) -> str:
+    if chunk.get("source") == "avatar_knowledge":
+        return f"document: {chunk.get('document_title') or 'uploaded document'}"
+    if chunk.get("source") == "course_material":
+        return "course material"
+    if chunk.get("slide_number") is not None:
+        return f"slide {chunk['slide_number']}"
+    return "session content"
+
+
+def knowledge_for_chat(
+    db: DBSession,
+    query: Optional[str],
+    *,
+    session: Any = None,
+    avatar: Any = None,
+    top_k: int = 8,
+    max_chars_per_unindexed_doc: int = 4000,
+) -> List[str]:
+    """
+    Knowledge passages for a chat prompt: the passages most relevant to the
+    current message, each labelled with where it came from.
+
+    Documents that have never been indexed (uploaded before indexing worked)
+    are still included as capped text, so nothing the twin used to see is lost.
+    With no message yet (an opening turn), only that fallback is used.
+    """
+    passages: List[str] = []
+    if query and query.strip():
+        avatar_id = getattr(avatar, "id", None)
+        for chunk in retrieve_for_twin(db, query, session=session, avatar_id=avatar_id, top_k=top_k):
+            passages.append(f"(from {_chunk_label(chunk)})\n{chunk['content'].strip()}")
+
+    cfg = getattr(avatar, "configuration", None)
+    if cfg is not None:
+        indexed = {
+            row[0].rsplit(":", 1)[-1]
+            for row in db.query(KnowledgeChunk.source)
+            .filter(KnowledgeChunk.source.like(_avatar_source_prefix(cfg.id) + "%"))
+            .distinct()
+            .all()
+        }
+        for doc in cfg.knowledge_documents or []:
+            if str(doc.id) in indexed or not (doc.content_text or "").strip():
+                continue
+            passages.append(
+                f"(from document: {doc.title or 'uploaded document'})\n"
+                f"{doc.content_text[:max_chars_per_unindexed_doc].strip()}"
+            )
+    return passages

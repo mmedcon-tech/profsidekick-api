@@ -39,7 +39,10 @@ from app.schemas.schemas import (
 )
 from app.services.avatar_service import AvatarService
 from app.services.private_storage import get_private_storage
-from app.services.rag_service import ingest_avatar_knowledge_document_background
+from app.services.rag_service import (
+    ingest_avatar_knowledge_document_background,
+    ingest_avatar_knowledge_text_background,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -386,7 +389,7 @@ async def add_knowledge_document(
             get_private_storage().delete_quietly(file_path)
             raise
 
-        # Trigger background RAG ingestion if a file was uploaded.
+        # Index it for retrieval: an uploaded file, or text typed in directly.
         if file_content_bytes and file_name:
             background_tasks.add_task(
                 ingest_avatar_knowledge_document_background,
@@ -394,6 +397,13 @@ async def add_knowledge_document(
                 doc.avatar_configuration_id,
                 file_content_bytes,
                 file_name,
+            )
+        elif content_text and content_text.strip():
+            background_tasks.add_task(
+                ingest_avatar_knowledge_text_background,
+                doc.id,
+                doc.avatar_configuration_id,
+                content_text,
             )
 
         return doc

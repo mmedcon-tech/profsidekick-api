@@ -8,7 +8,11 @@ from app.database.models import (
     PublisherAvatarProfile,
     Rubric, KnowledgeDocument, ReferenceSolution, KnowledgeChunk,
 )
+import logging
+
+from app.services import voice_service
 from app.services.prompt_generator import generate_teaching_persona_prompt
+from app.services.profession_profiles import resolve_avatar_profession
 from app.services.private_storage import get_private_storage
 from app.schemas.schemas import (
     AvatarCreate, AvatarUpdate,
@@ -27,7 +31,21 @@ def _enrich_avatar(avatar: Avatar) -> Avatar:
     avatar.template_name = (
         avatar.template.name if avatar.template else None
     )
+    # Lets clients pick profession wording (e.g. healthcare session styles).
+    avatar.profession = resolve_avatar_profession(avatar)
     return avatar
+
+
+def _require_voice_for_provider(config: AvatarConfiguration) -> None:
+    """An ElevenLabs avatar needs a voice id, or sessions would have no voice."""
+    if config.voice_provider == "elevenlabs" and not config.elevenlabs_voice_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Choose an ElevenLabs voice before selecting ElevenLabs "
+                "as the voice provider"
+            ),
+        )
 
 
 class AvatarService:
@@ -213,8 +231,11 @@ class AvatarService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Avatar not found")
         self._require_owner(avatar, publisher_id)
 
+        clone_id = _api_created_clone_id(avatar)
         db.delete(avatar)
         db.commit()
+        if clone_id:
+            await _delete_clone_best_effort(avatar_id, clone_id)
 
     # ── AvatarConfiguration ──────────────────────────────────────────────
 
@@ -243,9 +264,13 @@ class AvatarService:
             language=data.language,
             difficulty_level=data.difficulty_level,
             additional_settings=data.additional_settings,
+            heygen_avatar_id=data.heygen_avatar_id,
+            voice_provider=data.voice_provider,
+            elevenlabs_voice_id=data.elevenlabs_voice_id,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
         )
+        _require_voice_for_provider(config)
         db.add(config)
         db.commit()
         db.refresh(config)
@@ -291,6 +316,24 @@ class AvatarService:
             config.difficulty_level = data.difficulty_level
         if data.additional_settings is not None:
             config.additional_settings = data.additional_settings
+        # A clone is replaced or removed only through the voice-clone routes, so
+        # the recording at ElevenLabs is never orphaned.
+        if (
+            "elevenlabs_voice_id" in data.model_fields_set
+            and config.voice_clone_consent_at
+            and data.elevenlabs_voice_id != config.elevenlabs_voice_id
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Delete the voice clone before choosing another ElevenLabs voice"
+                ),
+            )
+        # Sent fields win, including an explicit null (to clear a choice).
+        for field in ("heygen_avatar_id", "voice_provider", "elevenlabs_voice_id"):
+            if field in data.model_fields_set:
+                setattr(config, field, getattr(data, field))
+        _require_voice_for_provider(config)
 
         config.updated_at = datetime.utcnow()
         db.commit()
@@ -481,3 +524,26 @@ class AvatarService:
         db.delete(solution)
         db.commit()
         get_private_storage().delete_quietly(stored_file)
+
+
+_clone_logger = logging.getLogger(__name__)
+
+
+def _api_created_clone_id(avatar) -> Optional[str]:
+    """The avatar's ElevenLabs clone, only if this API created it (consent recorded)."""
+    config = getattr(avatar, "configuration", None)
+    if config and config.voice_clone_consent_at and config.elevenlabs_voice_id:
+        return config.elevenlabs_voice_id
+    return None
+
+
+async def _delete_clone_best_effort(avatar_id, voice_id: str) -> None:
+    try:
+        await voice_service.delete_elevenlabs_voice(voice_id)
+        _clone_logger.info("Deleted voice clone of deleted avatar %s", avatar_id)
+    except Exception as exc:  # never fail the avatar delete; no provider text
+        _clone_logger.warning(
+            "Could not delete voice clone of deleted avatar %s (%s)",
+            avatar_id,
+            type(exc).__name__,
+        )

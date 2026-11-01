@@ -124,6 +124,7 @@ class AuthService:
         
         try:
             db.add(new_user)
+            db.flush()  # the audit row references users.id; insert the user first
             record_audit_event(
                 db,
                 action="user.registered",

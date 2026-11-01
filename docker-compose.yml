@@ -24,6 +24,24 @@ services:
       - profsidekick-network
     restart: unless-stopped
 
+  memory-worker:
+    build: .
+    command: ["python", "-m", "scripts.memory_worker"]
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://profsidekick:password123@postgres:5432/profsidekick
+      - RUN_MIGRATIONS_ON_STARTUP=false
+    depends_on:
+      backend:
+        condition: service_started
+    networks:
+      - profsidekick-network
+    # This worker has no HTTP server; do not inherit the API image probe.
+    healthcheck:
+      disable: true
+    restart: unless-stopped
+
   # PostgreSQL Database (pgvector/pgvector:pg16 — includes the vector extension for RAG)
   postgres:
     image: pgvector/pgvector:pg16

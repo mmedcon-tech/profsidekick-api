@@ -26,9 +26,28 @@ def _run_migrations() -> None:
         from app.database.migrate import migrate
 
         print(f"DB migrations applied successfully ({migrate()}).")
+        _ensure_fertility_kb()
     except Exception as exc:
         # Log but do not crash — a partially migrated DB is better than a dead server.
         print(f"Migration startup error (non-fatal): {exc}")
+
+
+def _ensure_fertility_kb() -> None:
+    """Index the IVF Doctor Twin knowledge base if it is missing or out of date."""
+    from app.database.connection import SessionLocal
+    from app.database.models import FertilityKnowledgeDocument
+    from app.services.fertility.knowledge import KB_DOCUMENT_KEY, KB_PATH, ingest_kb, kb_digest
+
+    db = SessionLocal()
+    try:
+        doc = db.query(FertilityKnowledgeDocument).filter_by(document_key=KB_DOCUMENT_KEY).first()
+        current = kb_digest(KB_PATH.read_text(encoding="utf-8"))
+        if doc is None or doc.content_sha256 != current:
+            print(f"Fertility knowledge base indexed: {ingest_kb(db)}")
+    except Exception as exc:  # noqa: BLE001
+        print(f"Fertility KB indexing skipped: {exc}")
+    finally:
+        db.close()
 
 
 from app.api.sessions.api import router as sessions_router
@@ -49,6 +68,11 @@ from app.api.admin.models_api import (
     publisher_router as publisher_models_router,
 )
 from app.api.subscriber.api import router as subscriber_router
+from app.api.renderer.api import router as renderer_router
+from app.api.voices.api import router as voices_router
+from app.api.voices.authorize import router as voice_authorize_router
+from app.api.fertility.api import router as fertility_router
+from app.api.care.api import router as care_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -189,6 +213,13 @@ app.include_router(admin_analytics_router)
 app.include_router(admin_models_router)
 app.include_router(publisher_models_router)
 app.include_router(subscriber_router)
+from app.api.memory.api import router as memory_router
+app.include_router(memory_router)
+app.include_router(renderer_router)
+app.include_router(voices_router)
+app.include_router(voice_authorize_router)
+app.include_router(fertility_router)
+app.include_router(care_router)
 
 # Add middleware for request logging (optional)
 @app.middleware("http")
