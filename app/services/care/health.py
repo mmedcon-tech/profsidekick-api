@@ -80,6 +80,19 @@ async def check_tts(live: bool = True, request_id: Optional[str] = None) -> Dict
         async with httpx.AsyncClient(timeout=10) as c:
             r = await c.get("https://api.elevenlabs.io/v1/models", headers={"xi-api-key": key})
         if r.status_code == 200:
+            # Quota: a valid key with an exhausted character allowance fails every real synthesis.
+            try:
+                async with httpx.AsyncClient(timeout=10) as c:
+                    s = await c.get("https://api.elevenlabs.io/v1/user/subscription", headers={"xi-api-key": key})
+                if s.status_code == 200:
+                    d = s.json()
+                    used, limit = int(d.get("character_count") or 0), int(d.get("character_limit") or 0)
+                    left = max(limit - used, 0)
+                    if limit and left < 1000:
+                        return _result("elevenlabs", False, "quota", t, rid, key=state, live=True, characters_left=left)
+                    return _result("elevenlabs", True, None, t, rid, key=state, live=True, characters_left=left)
+            except Exception:  # noqa: BLE001 - quota is best-effort; the key check already passed
+                pass
             return _result("elevenlabs", True, None, t, rid, key=state, live=True)
         kind = "auth" if r.status_code in (401, 403) else "rate_limit" if r.status_code == 429 else \
             "upstream" if r.status_code >= 500 else "unknown"

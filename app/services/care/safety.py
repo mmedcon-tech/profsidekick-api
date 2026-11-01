@@ -21,7 +21,8 @@ EDUCATION, RED_FLAG, EMERGENCY, CRISIS, PERSONAL = "education", "red_flag", "eme
 _PERSONAL = (
     r"\b(dose|doses|dosage|dosing|how (much|many) (should|do|can) i (take|inject|use))\b",
     r"\b(increase|decrease|raise|lower|double|skip|change|adjust)\b.{0,25}\b(dose|medication|medicine|injection|shot)",
-    r"\btitrat", r"\bwhen should i (inject|take|have my)\b", r"\b(what|which) (day|time) should i inject\b",
+    r"\btitrat", r"\b(will|could|can|would|does|might) (this|it|that|the \w+)\b.{0,40}\b(harm|hurt|damage|affect)\b",
+    r"\bshould i (take|inject|use) (it|this|my|the)\b", r"\bwhen should i (inject|take|have my)\b", r"\b(what|which) (day|time) should i inject\b",
     r"\b(am i|would i be|is it right for me to be) (a )?(good |suitable |right )?(candidate|suitable|eligible)\b",
     r"\b(should|can) i (stop|start|switch|restart|come off|go on)\b",
     r"\bis (it|this|the procedure|surgery) (safe|right|ok|okay) for me\b", r"\bshould i (have|get|do) (the|this|a)\b.{0,40}(surgery|procedure|filler|injection|treatment)",

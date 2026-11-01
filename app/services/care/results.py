@@ -30,6 +30,7 @@ class SourceCard(BaseModel):
     is_demo: bool
     item_id: str
     video_id: Optional[str] = None
+    excerpt: Optional[str] = Field(None, max_length=300)  # the approved passage the answer drew on
 
 
 class ContactPath(BaseModel):
