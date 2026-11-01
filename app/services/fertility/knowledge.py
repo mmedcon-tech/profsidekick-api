@@ -239,12 +239,19 @@ def parse_kb(text: str) -> List[KBChunk]:
 def _try_embed(texts: List[str]) -> Optional[List[List[float]]]:
     if not texts:
         return []
+    from app.config import settings
+    from app.services.care.health import classify, key_state
+
+    if key_state(settings.openai_api_key, "sk-") != "present":
+        return None  # no usable key configured: keyword retrieval, no wasted call
     try:
         from app.services.rag_service import _embed
 
         return _embed(texts)
     except Exception as exc:  # noqa: BLE001 — keyword retrieval still works
-        logger.warning("fertility knowledge: embedding unavailable (%s); keyword retrieval only", exc)
+        # provider messages can echo key fragments, so log the type and kind only
+        logger.warning("fertility knowledge: embedding unavailable (%s, %s); keyword retrieval only",
+                       type(exc).__name__, classify(exc))
         return None
 
 

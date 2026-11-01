@@ -1,0 +1,105 @@
+"""Sanitized dependency health checks with typed error kinds.
+
+Kinds: config | auth | rate_limit | timeout | upstream | network | playback | unknown.
+Results never include keys, key fragments, raw provider messages or user text.
+"""
+from __future__ import annotations
+
+import os
+import time
+import uuid
+from typing import Any, Dict, Optional
+
+from app.config import settings
+
+KINDS = ("config", "auth", "rate_limit", "timeout", "upstream", "network", "playback", "unknown")
+PLACEHOLDER_PREFIXES = ("your", "sk-your", "sk-xxx", "sk-placeholder", "sk-test-", "changeme", "replace", "dummy", "example", "xxx")
+
+
+def key_state(value: Optional[str], prefix: Optional[str] = None) -> str:
+    """'missing' | 'placeholder' | 'present' — inspects shape only, never returns the value."""
+    v = (value or "").strip().strip("'\"")
+    if not v:
+        return "missing"
+    low = v.lower()
+    if low.startswith(PLACEHOLDER_PREFIXES) or "placeholder" in low or len(v) < 20 or (prefix and not v.startswith(prefix)):
+        return "placeholder"
+    return "present"
+
+
+def classify(exc: BaseException) -> str:
+    name = type(exc).__name__
+    code = getattr(exc, "status_code", None) or getattr(getattr(exc, "response", None), "status_code", None)
+    if code in (401, 403) or "Authentication" in name or "PermissionDenied" in name:
+        return "auth"
+    if code == 429 or "RateLimit" in name:
+        return "rate_limit"
+    if "Timeout" in name:
+        return "timeout"
+    if "Connection" in name or "Connect" in name:
+        return "network"
+    if isinstance(code, int) and code >= 500:
+        return "upstream"
+    return "unknown"
+
+
+def _result(service: str, ok: bool, kind: Optional[str], started: float, rid: str, **extra) -> Dict[str, Any]:
+    return {"service": service, "ok": ok, "error_kind": kind, "request_id": rid,
+            "latency_ms": int((time.monotonic() - started) * 1000), **extra}
+
+
+async def check_llm(live: bool = True, request_id: Optional[str] = None) -> Dict[str, Any]:
+    rid = request_id or uuid.uuid4().hex[:16]
+    t = time.monotonic()
+    state = key_state(settings.openai_api_key, "sk-")
+    if state != "present":
+        return _result("openai", False, "config", t, rid, key=state)
+    if not live:
+        return _result("openai", True, None, t, rid, key=state, live=False)
+    try:
+        from openai import AsyncOpenAI
+
+        await AsyncOpenAI(api_key=settings.openai_api_key, timeout=15).models.list()
+        return _result("openai", True, None, t, rid, key=state, live=True)
+    except Exception as exc:  # noqa: BLE001
+        return _result("openai", False, classify(exc), t, rid, key=state, live=True)
+
+
+async def check_tts(live: bool = True, request_id: Optional[str] = None) -> Dict[str, Any]:
+    rid = request_id or uuid.uuid4().hex[:16]
+    t = time.monotonic()
+    key = os.getenv("ELEVENLABS_API_KEY") or getattr(settings, "elevenlabs_api_key", "")
+    state = key_state(key)
+    if state != "present":
+        return _result("elevenlabs", False, "config", t, rid, key=state)
+    if not live:
+        return _result("elevenlabs", True, None, t, rid, key=state, live=False)
+    import httpx
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as c:
+            r = await c.get("https://api.elevenlabs.io/v1/models", headers={"xi-api-key": key})
+        if r.status_code == 200:
+            return _result("elevenlabs", True, None, t, rid, key=state, live=True)
+        kind = "auth" if r.status_code in (401, 403) else "rate_limit" if r.status_code == 429 else \
+            "upstream" if r.status_code >= 500 else "unknown"
+        return _result("elevenlabs", False, kind, t, rid, key=state, live=True, status=r.status_code)
+    except Exception as exc:  # noqa: BLE001
+        return _result("elevenlabs", False, classify(exc), t, rid, key=state, live=True)
+
+
+def check_liveavatar(request_id: Optional[str] = None) -> Dict[str, Any]:
+    """Config only — a live check would spend LiveAvatar credits."""
+    rid = request_id or uuid.uuid4().hex[:16]
+    t = time.monotonic()
+    state = key_state(os.getenv("LIVEAVATAR_API_KEY") or os.getenv("HEYGEN_API_KEY"))
+    has_avatar = bool(os.getenv("LIVEAVATAR_DEFAULT_AVATAR_ID"))
+    ok = state == "present" and has_avatar
+    return _result("liveavatar", ok, None if ok else "config", t, rid, key=state, avatar_configured=has_avatar,
+                   live=False, note="Not called live; sessions consume credits.")
+
+
+def demo_environment() -> Dict[str, Any]:
+    flag = (os.getenv("MYOS_ENVIRONMENT") or "demo").lower()
+    return {"environment": flag, "is_demo": flag != "production",
+            "notice": "Synthetic demo environment. Not for real patient data." if flag != "production" else None}

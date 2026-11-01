@@ -1239,6 +1239,7 @@ class CareContentItem(Base):
     approved_at = Column(DateTime, nullable=True)
     expires_at = Column(DateTime, nullable=True)
     is_demo = Column(Boolean, nullable=False, default=False, server_default="false")
+    video_id = Column(UUID(as_uuid=True), ForeignKey("instructional_videos.id", ondelete="CASCADE"), nullable=True)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
@@ -1287,4 +1288,81 @@ class CareHandoff(Base):
     contact_route = Column(String(100), nullable=True)
     status = Column(String(20), nullable=False, default="open", server_default="open")
     simulated = Column(Boolean, nullable=False, default=True, server_default="true")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    # Review queue (phase 3). received_at = the platform stored it (receipt);
+    # acknowledged_at = a human looked at it. They are never conflated.
+    idempotency_key = Column(String(80), nullable=True)
+    received_at = Column(DateTime, nullable=True)
+    assigned_to = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    acknowledged_at = Column(DateTime, nullable=True)
+    closed_at = Column(DateTime, nullable=True)
+    updated_at = Column(DateTime, nullable=True)
+
+
+class CareHandoffEvent(Base):
+    """Audit trail of one review request: received|assigned|acknowledged|reply|closed."""
+    __tablename__ = "care_handoff_events"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    handoff_id = Column(UUID(as_uuid=True), ForeignKey("care_handoffs.id", ondelete="CASCADE"), nullable=False, index=True)
+    actor_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    kind = Column(String(20), nullable=False)
+    body = Column(Text, nullable=True)
+    is_synthetic = Column(Boolean, nullable=False, default=False, server_default="false")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class CareInvitation(Base):
+    """Enrollment code (clinic -> patient) or supporter invitation (patient -> supporter).
+    Only a SHA-256 of the code is stored."""
+    __tablename__ = "care_invitations"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    kind = Column(String(20), nullable=False)  # enrollment|support
+    code_hash = Column(String(64), nullable=False, unique=True)
+    code_hint = Column(String(8), nullable=True)
+    clinic_id = Column(UUID(as_uuid=True), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False, index=True)
+    program_id = Column(UUID(as_uuid=True), ForeignKey("care_programs.id", ondelete="CASCADE"), nullable=False, index=True)
+    care_role = Column(String(20), nullable=False, default="patient")
+    scopes = Column(JSONB, nullable=False, default=list, server_default="[]")
+    label = Column(String(120), nullable=True)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    patient_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
+    expires_at = Column(DateTime, nullable=False)
+    max_uses = Column(Integer, nullable=False, default=1, server_default="1")
+    use_count = Column(Integer, nullable=False, default=0, server_default="0")
+    revoked_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class CareSupportGrant(Base):
+    """A patient's scoped, revocable grant to a supporter's own account."""
+    __tablename__ = "care_support_grants"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    clinic_id = Column(UUID(as_uuid=True), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False)
+    program_id = Column(UUID(as_uuid=True), ForeignKey("care_programs.id", ondelete="CASCADE"), nullable=False, index=True)
+    patient_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    supporter_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    invitation_id = Column(UUID(as_uuid=True), ForeignKey("care_invitations.id", ondelete="SET NULL"), nullable=True)
+    entitlement_id = Column(UUID(as_uuid=True), ForeignKey("care_entitlements.id", ondelete="SET NULL"), nullable=True)
+    scopes = Column(JSONB, nullable=False, default=list, server_default="[]")
+    expires_at = Column(DateTime, nullable=True)
+    revoked_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class CareDeviceAssignment(Base):
+    """Verified medication/device: program-wide clinic configuration (user_id NULL)
+    or a per-patient assignment. The assistant never guesses a device."""
+    __tablename__ = "care_device_assignments"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    clinic_id = Column(UUID(as_uuid=True), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False)
+    program_id = Column(UUID(as_uuid=True), ForeignKey("care_programs.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    medication = Column(String(120), nullable=False)
+    device = Column(String(120), nullable=True)
+    guide_lineage_id = Column(UUID(as_uuid=True), nullable=True)
+    video_id = Column(UUID(as_uuid=True), ForeignKey("instructional_videos.id", ondelete="SET NULL"), nullable=True)
+    verified_by = Column(String(255), nullable=False)
+    source = Column(String(20), nullable=False)  # clinic_config|assignment
+    is_demo = Column(Boolean, nullable=False, default=False, server_default="false")
+    revoked_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

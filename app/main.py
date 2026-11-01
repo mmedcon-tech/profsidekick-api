@@ -73,6 +73,7 @@ from app.api.voices.api import router as voices_router
 from app.api.voices.authorize import router as voice_authorize_router
 from app.api.fertility.api import router as fertility_router
 from app.api.care.api import router as care_router
+from app.api.care.phase3 import router as care_phase3_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -124,6 +125,22 @@ app = FastAPI(
     redoc_url="/redoc",
     lifespan=lifespan
 )
+
+_RID = __import__("re").compile(r"^[A-Za-z0-9-]{8,64}$")
+
+
+@app.middleware("http")
+async def request_id_middleware(request, call_next):
+    """Correlation id for support: echoed as X-Request-ID, never contains user data."""
+    import uuid as _uuid
+
+    rid = request.headers.get("x-request-id", "")
+    rid = rid if _RID.match(rid) else _uuid.uuid4().hex[:16]
+    request.state.request_id = rid
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = rid
+    return response
+
 
 # CORS middleware - Must be added before other middleware and mounts
 app.add_middleware(
@@ -220,6 +237,7 @@ app.include_router(voices_router)
 app.include_router(voice_authorize_router)
 app.include_router(fertility_router)
 app.include_router(care_router)
+app.include_router(care_phase3_router)
 
 # Add middleware for request logging (optional)
 @app.middleware("http")

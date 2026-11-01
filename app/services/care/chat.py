@@ -7,6 +7,7 @@ client can drop a response that arrives after the user switched program.
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -15,10 +16,10 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session as DBSession
 
 from app.config import settings
-from app.database.models import (CareHandoff, CareProgram, Clinic, Consultation, ConsultationMessage,
-                                 DoctorPersona, User)
+from app.database.models import (CareDeviceAssignment, CareHandoff, CareProgram, Clinic, Consultation,
+                                 ConsultationMessage, DoctorPersona, User)
 from app.services.audit_service import record_audit_event
-from app.services.care import content, safety
+from app.services.care import content, health, results, safety
 from app.services.care.access import ProgramAccess
 
 logger = logging.getLogger(__name__)
@@ -46,8 +47,52 @@ def get_or_create(db: DBSession, user: User, access: ProgramAccess) -> Consultat
 
 
 def msg_dict(m: ConsultationMessage) -> Dict[str, Any]:
+    sd = m.safety or {}
     return {"id": str(m.id), "sender": m.sender, "content": m.content, "mode": m.mode, "provenance": m.provenance,
-            "safety": m.safety, "sources": m.sources or [], "created_at": m.created_at.isoformat() + "Z"}
+            "safety": sd, "sources": m.sources or [], "result_type": sd.get("result_type"),
+            "created_at": m.created_at.isoformat() + "Z"}
+
+
+# Questions about preparing / using a specific medication or device. These are
+# answered only against the clinic-verified assignment, never a guessed product.
+_DEVICE = (r"\b(pen|pens|syringe|needle|vial|cartridge|injector|auto-?injector)\b",
+           r"\b(prepar\w*|mix\w*|reconstitut\w*|prime|priming|attach|dial)\b.{0,40}\b(medication|medicine|injection|dose|pen|vial)",
+           r"\b(inject\w*|injection)\b")
+
+
+def device_question(text: str) -> bool:
+    t = (text or "").lower()
+    return any(re.search(p, t) for p in _DEVICE)
+
+
+def verified_device(db: DBSession, user: User, a: ProgramAccess) -> Optional[CareDeviceAssignment]:
+    """Patient-specific assignment first, else program-wide clinic configuration.
+    Supporters see the assignment of the patient whose grant they hold."""
+    uid = a.grant.patient_user_id if a.grant else user.id
+    q = (db.query(CareDeviceAssignment)
+         .filter(CareDeviceAssignment.program_id == a.program.id, CareDeviceAssignment.revoked_at.is_(None)))
+    return (q.filter(CareDeviceAssignment.user_id == uid).order_by(CareDeviceAssignment.created_at.desc()).first()
+            or q.filter(CareDeviceAssignment.user_id.is_(None)).order_by(CareDeviceAssignment.created_at.desc()).first())
+
+
+def device_dict(d: Optional[CareDeviceAssignment]) -> Optional[Dict[str, Any]]:
+    if not d:
+        return None
+    return {"medication": d.medication, "device": d.device, "verified_by": d.verified_by, "source": d.source,
+            "video_id": str(d.video_id) if d.video_id else None, "is_demo": d.is_demo}
+
+
+def _contact(clinic: Clinic, key: Optional[str]) -> Optional[Dict[str, Any]]:
+    r = safety.route_info(clinic, key) or safety.route_info(clinic, "urgent")
+    return {"label": r.get("label", "Clinic contact"), "detail": r.get("detail"), "hours": r.get("hours")} if r else None
+
+
+def _result_type(route) -> str:
+    if route.kind in (safety.CRISIS, safety.EMERGENCY):
+        return "urgent_contact_path"
+    if route.kind == safety.RED_FLAG:
+        return "urgent_contact_path" if route.urgency in ("emergency", "urgent", "same_day") else "needs_clinician"
+    return "needs_clinician"
 
 
 async def _complete(messages: List[Dict[str, str]]) -> str:
@@ -63,67 +108,104 @@ def _context(clinic: Clinic, program: CareProgram, c: Consultation) -> Dict[str,
 
 
 async def send(db: DBSession, user: User, clinic: Clinic, access: ProgramAccess, text: str,
-               mode: str = "text") -> Dict[str, Any]:
+               mode: str = "text", request_id: Optional[str] = None) -> Dict[str, Any]:
     text = (text or "").strip()
     if not text:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Message is empty")
     if len(text) > 4000:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Message is too long")
+    access.require("education")
     program = access.program
     c = get_or_create(db, user, access)
     courses = content.visible_course_ids(db, access)
     route = safety.classify(db, clinic, program, text, courses)
-    provider = {"llm": "not_called"}
+    provider: Dict[str, Any] = {"llm": "not_called"}
     sources: List[Dict[str, Any]] = []
+    result: Dict[str, Any]
+    device = None
     if route.kind != safety.EDUCATION:
+        rtype = _result_type(route)
         reply = route.reply or ""
+        result = {"type": rtype, "text": reply, "provenance": "clinic_configured", "handoff_offered": route.handoff_offered,
+                  "reason": route.kind, "contact": _contact(clinic, route.contact_route) if rtype == "urgent_contact_path" else None}
+    elif device_question(text) and not (device := verified_device(db, user, access)):
+        reply = ("Your clinic hasn't confirmed which medication or device you were given, so I won't guess — "
+                 "instructions differ between products. Please check the medication sheet from your clinic, or use "
+                 "“Ask my care team” and they can confirm it for you.\n\n" + safety._expectation(clinic))
+        result = {"type": "needs_clinician", "text": reply, "provenance": "clinic_configured", "handoff_offered": True,
+                  "reason": "device_unverified"}
     else:
-        chunks = content.retrieve(db, program_id=program.id, clinic_id=clinic.id, visible_course_ids=courses,
-                                  audience=access.role if access.role in ("caregiver", "staff") else "patient",
-                                  query=text)
+        lineages = [device.guide_lineage_id] if device is not None and device.guide_lineage_id else None
+        kw = dict(program_id=program.id, clinic_id=clinic.id, visible_course_ids=courses,
+                  audience="caregiver" if access.role in ("caregiver", "supporter") else
+                  ("staff" if access.role == "staff" else "patient"), query=text)
+        chunks = content.retrieve(db, lineage_ids=lineages, **kw) if lineages else []
+        # a device guide first, then any approved source (e.g. the video transcript)
+        if lineages:
+            seen = {ch["chunk_id"] for ch in chunks}
+            chunks += [ch for ch in content.retrieve(db, **kw) if ch["chunk_id"] not in seen]
+            chunks = chunks[:4]
+        else:
+            chunks = content.retrieve(db, **kw)
         sources = [{"n": i + 1, "title": ch["title"], "kind": ch["kind"], "version": ch["version"],
                     "reviewer": ch["reviewer"], "approved_at": ch["approved_at"], "is_demo": ch["is_demo"],
-                    "item_id": ch["item_id"]} for i, ch in enumerate(chunks)]
+                    "item_id": ch["item_id"], "segment": ch["segment"], "segments": ch["segments"],
+                    "video_id": ch["video_id"]} for i, ch in enumerate(chunks)]
         if not chunks:
             reply = ("Your clinic hasn't provided approved information on that in this program, so I can't answer it "
                      "reliably. You can ask your care team — use “Ask my care team” and I'll pass the question on.")
             route.handoff_offered = True
+            result = {"type": "source_unavailable", "text": reply, "provenance": "clinic_configured",
+                      "handoff_offered": True, "reason": "no_approved_source"}
         else:
             persona = db.query(DoctorPersona).filter_by(id=program.persona_id).first() if program.persona_id else None
             style = f"Persona (tone only): {persona.name}, {persona.title or ''}. {persona.prompt or ''}" if persona else ""
+            dev = (f"Clinic-verified medication for this person: {device.medication}"
+                   + (f" with {device.device}" if device.device else "") + ". Do not mention any other product."
+                   ) if device is not None else ""
             block = "\n\n".join(f"[{i + 1}] {ch['title']} (v{ch['version']})\n{ch['content']}" for i, ch in enumerate(chunks))
             recent = list(c.messages)[-RECENT_TURNS:]
             msgs = [{"role": "system", "content": "\n\n".join(filter(None, [
-                PLATFORM_RULES, style, f"Program: {program.name} at {clinic.name}.",
+                PLATFORM_RULES, style, f"Program: {program.name} at {clinic.name}.", dev,
                 f"Clinic response expectation: {safety._expectation(clinic)}", "SOURCES:\n" + block]))}]
             msgs += [{"role": "assistant" if m.sender == "assistant" else "user", "content": m.content} for m in recent]
             msgs.append({"role": "user", "content": text})
-            try:
-                reply = await _complete(msgs)
-                provider = {"llm": "ok", "model": CHAT_MODEL}
-            except Exception as exc:  # noqa: BLE001
-                code = getattr(exc, "status_code", None)
-                logger.warning("care LLM call failed: %s %s", type(exc).__name__, code)
-                provider = {"llm": "error", "error": type(exc).__name__, "status": code}
+            prov = "ai_generated"
+            if health.key_state(settings.openai_api_key, "sk-") != "present":
+                provider = {"llm": "error", "error_kind": "config", "request_id": request_id}
+            else:
+                try:
+                    reply = await _complete(msgs)
+                    provider = {"llm": "ok", "model": CHAT_MODEL, "request_id": request_id}
+                except Exception as exc:  # noqa: BLE001
+                    kind = health.classify(exc)
+                    logger.warning("care LLM call failed rid=%s kind=%s type=%s", request_id, kind, type(exc).__name__)
+                    provider = {"llm": "error", "error_kind": kind, "error": type(exc).__name__, "request_id": request_id}
+            if provider["llm"] != "ok":
                 top = chunks[0]
                 reply = ("(The AI model is unavailable, so this is the closest approved clinic passage, quoted "
                          f"unedited — not a generated answer.)\n\n{top['content'][:1200]} [1]")
                 sources = sources[:1]
+                prov = "source_quote"
+            result = {"type": "education", "text": reply, "provenance": prov, "sources": sources,
+                      "handoff_offered": route.handoff_offered}
+    result = results.build(result)
+    reply = result["text"]
+    sources = result["sources"]
     now = datetime.utcnow()
-    sd = {**route.to_dict(), "provider": provider}
+    sd = {**route.to_dict(), "provider": provider, "result_type": result["type"], "reason": result.get("reason"),
+          "contact": result.get("contact"), "handoff_offered": result["handoff_offered"]}
     um = ConsultationMessage(id=uuid.uuid4(), consultation_id=c.id, sender="user", content=text, mode=mode,
                              care_role=access.role, provenance="patient_reported", safety=sd, created_at=now)
     am = ConsultationMessage(id=uuid.uuid4(), consultation_id=c.id, sender="assistant", content=reply, mode=mode,
-                             care_role=access.role,
-                             provenance="clinic_configured" if route.kind != safety.EDUCATION else
-                             ("source_quote" if provider.get("llm") == "error" else "ai_generated"),
-                             safety=sd, sources=sources, created_at=datetime.utcnow())
+                             care_role=access.role, provenance=result["provenance"], safety=sd, sources=sources,
+                             created_at=datetime.utcnow())
     db.add_all([um, am])
     c.last_activity_at = now
     c.last_mode = mode
     db.commit()
     return {"context": _context(clinic, program, c), "user_message": msg_dict(um), "reply": msg_dict(am),
-            "route": sd}
+            "route": sd, "result": result, "device": device_dict(device)}
 
 
 def create_handoff(db: DBSession, user: User, clinic: Clinic, access: ProgramAccess, reason: str, summary: str) -> Dict[str, Any]:

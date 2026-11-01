@@ -25,6 +25,8 @@ from app.services.audit_service import record_audit_event
 logger = logging.getLogger(__name__)
 
 KINDS = ("protocol", "patient_instruction", "faq", "document", "deidentified_case")
+# Created only by sync_video_transcript, never through the content editor.
+SYSTEM_KINDS = ("video_transcript",)
 AUDIENCES = ("patient", "caregiver", "both", "staff")
 TRANSITIONS = {
     "submit": ("draft", "in_review"),
@@ -146,7 +148,7 @@ def _terms(q: str) -> List[str]:
 
 
 def retrieve(db: DBSession, *, program_id, clinic_id, visible_course_ids: Set, audience: str, query: str,
-             top_k: int = 4) -> List[Dict[str, Any]]:
+             top_k: int = 4, lineage_ids: Optional[List] = None) -> List[Dict[str, Any]]:
     if not (query or "").strip():
         return []
     now = datetime.utcnow()
@@ -159,6 +161,8 @@ def retrieve(db: DBSession, *, program_id, clinic_id, visible_course_ids: Set, a
                     CareContentItem.audience.in_(aud),
                     or_(CareContentItem.course_id.is_(None),
                         CareContentItem.course_id.in_(list(visible_course_ids) or [uuid.uuid4()]))))
+    if lineage_ids:
+        base = base.filter(CareContentItem.lineage_id.in_(lineage_ids))
     pool: Dict[Any, tuple] = {}
     vec = _try_embed([query])
     if vec:
@@ -173,14 +177,60 @@ def retrieve(db: DBSession, *, program_id, clinic_id, visible_course_ids: Set, a
             score = 0.25 + 0.5 * frac
             if ch.id not in pool or pool[ch.id][2] < score:
                 pool[ch.id] = (ch, it, score)
-    ranked = sorted(pool.values(), key=lambda x: x[2], reverse=True)
+    ranked = [r for r in sorted(pool.values(), key=lambda x: x[2], reverse=True) if r[2] >= 0.3][:top_k]
+    counts: Dict[Any, int] = {}
+    if ranked:
+        from sqlalchemy import func
+
+        ids = list({it.id for _, it, _ in ranked})
+        counts = dict(db.query(CareContentChunk.item_id, func.count(CareContentChunk.id))
+                      .filter(CareContentChunk.item_id.in_(ids)).group_by(CareContentChunk.item_id).all())
     return [{
         "chunk_id": str(ch.id), "item_id": str(it.id), "content": ch.content, "score": round(s, 3),
         "title": it.title, "kind": it.kind, "version": it.version, "reviewer": it.reviewer,
         "approved_at": it.approved_at.date().isoformat() if it.approved_at else None, "is_demo": it.is_demo,
-    } for ch, it, s in ranked if s >= 0.3][:top_k]
+        "segment": ch.position + 1, "segments": max(counts.get(it.id, 1), ch.position + 1),
+        "video_id": str(it.video_id) if it.video_id else None,
+    } for ch, it, s in ranked]
 
 
 def visible_course_ids(db: DBSession, access) -> Set:
     courses = db.query(CareCourse).filter_by(program_id=access.program.id).all()
     return {c.id for c in courses if access.can_see_course(c)}
+
+
+def sync_video_transcript(db: DBSession, video, actor: User) -> Optional[CareContentItem]:
+    """Video transcripts follow the video's own review lifecycle: the transcript
+    becomes retrievable only when the video is approved (same reviewer, same
+    date), and is retired with it. Re-approval creates a new version."""
+    if not video.program_id:
+        return None
+    from app.database.models import CareProgram
+
+    prog = db.query(CareProgram).filter_by(id=video.program_id).first()
+    current = (db.query(CareContentItem).filter_by(video_id=video.id)
+               .order_by(CareContentItem.version.desc()).first())
+    now = datetime.utcnow()
+    if video.status != "approved" or not (video.transcript or "").strip():
+        if current and current.status == "approved":
+            current.status = "retired"
+            current.updated_at = now
+            db.query(CareContentChunk).filter_by(item_id=current.id).delete()
+        return current
+    if current and current.status == "approved" and current.body == video.transcript:
+        return current
+    if current and current.status == "approved":
+        current.status = "retired"
+        db.query(CareContentChunk).filter_by(item_id=current.id).delete()
+    item = CareContentItem(
+        id=uuid.uuid4(), lineage_id=current.lineage_id if current else uuid.uuid4(),
+        version=(current.version + 1) if current else 1, clinic_id=prog.clinic_ref_id, program_id=prog.id,
+        course_id=video.course_id, kind="video_transcript", title=f"Video transcript: {video.title}",
+        body=video.transcript, language=video.language or "en", audience="both", source="Approved video transcript",
+        status="approved", reviewer=video.reviewer, approved_by=actor.id if actor else None,
+        approved_at=video.approved_at or now, is_demo=bool(getattr(prog, "is_demo", False)), video_id=video.id,
+        created_by=actor.id if actor else None, created_at=now, updated_at=now)
+    db.add(item)
+    db.flush()
+    index_item(db, item)
+    return item

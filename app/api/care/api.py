@@ -28,7 +28,7 @@ from app.database.models import (Avatar, CareContentItem, CareCourse, CareEntitl
 from app.dependencies.auth import get_current_user
 from app.services.audit_service import record_audit_event
 from app.services.care import access as acl
-from app.services.care import chat, content
+from app.services.care import chat, content, review
 
 router = APIRouter(prefix="/api/care", tags=["care"])
 
@@ -114,7 +114,8 @@ def video_dict(v: InstructionalVideo) -> Dict[str, Any]:
     return {"id": str(v.id), "title": v.title, "description": v.description, "language": v.language,
             "status": v.status, "course_id": str(v.course_id) if v.course_id else None,
             "lesson_id": str(v.lesson_id) if v.lesson_id else None, "position": v.position,
-            "has_file": bool(v.storage_uri), "external_url": v.external_url, "has_captions": bool(v.captions_vtt),
+            "has_file": bool(v.storage_uri),
+            "footage": "available" if (v.storage_uri or v.external_url) else "placeholder", "external_url": v.external_url, "has_captions": bool(v.captions_vtt),
             "has_transcript": bool(v.transcript), "has_thumbnail": bool(v.thumbnail_uri),
             "reviewer": v.reviewer, "approved_at": _iso(v.approved_at), "uploaded_at": _iso(v.created_at)}
 
@@ -238,6 +239,11 @@ def program_view(clinic_slug: str, program_slug: str, db: Session = Depends(get_
     clinic, a = _ctx(db, user, clinic_slug, program_slug)
     d = _program_view(db, clinic, a.program, a.can_see_course)
     d["care_role"] = a.role
+    d["scopes"] = a.scopes
+    if not a.has("videos"):
+        d["videos"] = []
+    if not a.has("education"):
+        d["content"] = []
     return d
 
 
@@ -246,7 +252,8 @@ def get_consultation(clinic_slug: str, program_slug: str, db: Session = Depends(
                      user: User = Depends(get_current_user)):
     clinic, a = _ctx(db, user, clinic_slug, program_slug)
     c = chat.get_or_create(db, user, a)
-    return {"context": chat._context(clinic, a.program, c), "messages": [chat.msg_dict(m) for m in c.messages]}
+    return {"context": chat._context(clinic, a.program, c), "messages": [chat.msg_dict(m) for m in c.messages],
+            "device": chat.device_dict(chat.verified_device(db, user, a))}
 
 
 class SendBody(BaseModel):
@@ -255,10 +262,11 @@ class SendBody(BaseModel):
 
 
 @router.post("/p/{clinic_slug}/{program_slug}/messages")
-async def send_message(clinic_slug: str, program_slug: str, body: SendBody, db: Session = Depends(get_db),
-                       user: User = Depends(get_current_user)):
+async def send_message(clinic_slug: str, program_slug: str, body: SendBody, request: Request,
+                       db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     clinic, a = _ctx(db, user, clinic_slug, program_slug)
-    return await chat.send(db, user, clinic, a, body.content, body.mode if body.mode in ("text", "voice", "avatar") else "text")
+    return await chat.send(db, user, clinic, a, body.content, body.mode if body.mode in ("text", "voice", "avatar") else "text",
+                           request_id=getattr(request.state, "request_id", None))
 
 
 @router.delete("/p/{clinic_slug}/{program_slug}/messages", status_code=204)
@@ -278,22 +286,38 @@ class HandoffBody(BaseModel):
 
 
 @router.post("/p/{clinic_slug}/{program_slug}/handoffs")
-def handoff(clinic_slug: str, program_slug: str, body: HandoffBody, db: Session = Depends(get_db),
-            user: User = Depends(get_current_user)):
+def handoff(clinic_slug: str, program_slug: str, body: HandoffBody, request: Request, response: Response,
+            db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Legacy alias of POST .../requests (review queue). Honors Idempotency-Key."""
     clinic, a = _ctx(db, user, clinic_slug, program_slug)
-    return chat.create_handoff(db, user, clinic, a, body.reason, body.summary)
+    c = chat.get_or_create(db, user, a)
+    view, created = review.create(db, user, clinic, a, c.id, body.reason, body.summary,
+                                  request.headers.get("idempotency-key"))
+    response.status_code = 201 if created else 200
+    return view
 
 
 def _sign(video_id: str, exp: int) -> str:
     return hmac.new(settings.secret_key.encode(), f"care-video:{video_id}:{exp}".encode(), hashlib.sha256).hexdigest()
 
 
+PLACEHOLDER_LABEL = ("Approved footage not yet provided by the clinic — placeholder. "
+                     "The transcript below is clinic-reviewed.")
+
+
 def _playback(v: InstructionalVideo, request: Request):
+    """Media playback contract. No approved footage → an explicit placeholder;
+    footage is never generated or substituted."""
+    base_info = {"video_id": str(v.id), "title": v.title, "reviewer": v.reviewer, "version": v.version,
+                 "approved_at": _iso(v.approved_at), "transcript": v.transcript}
+    if not v.storage_uri and not v.external_url:
+        return {**base_info, "status": "placeholder", "url": None, "captions_url": None, "expires_at": None,
+                "placeholder_label": PLACEHOLDER_LABEL}
     if not v.storage_uri:
-        return {"url": v.external_url, "expires_at": None}
+        return {**base_info, "status": "ready", "url": v.external_url, "expires_at": None}
     exp = int(time.time()) + PLAYBACK_TTL_S
     base = str(request.base_url).rstrip("/")
-    return {"url": f"{base}/api/care/videos/{v.id}/stream?exp={exp}&sig={_sign(str(v.id), exp)}",
+    return {**base_info, "status": "ready", "url": f"{base}/api/care/videos/{v.id}/stream?exp={exp}&sig={_sign(str(v.id), exp)}",
             "captions_url": f"{base}/api/care/videos/{v.id}/captions?exp={exp}&sig={_sign(str(v.id), exp)}" if v.captions_vtt else None,
             "expires_at": _iso(datetime.utcfromtimestamp(exp))}
 
@@ -302,6 +326,7 @@ def _playback(v: InstructionalVideo, request: Request):
 def video_playback(clinic_slug: str, program_slug: str, video_id: uuid.UUID, request: Request,
                    db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     clinic, a = _ctx(db, user, clinic_slug, program_slug)
+    a.require("videos")
     v = db.query(InstructionalVideo).filter_by(id=video_id, program_id=a.program.id, status="approved").first()
     if not v:
         raise acl.not_found("Video not found")
@@ -309,7 +334,7 @@ def video_playback(clinic_slug: str, program_slug: str, video_id: uuid.UUID, req
         course = db.query(CareCourse).filter_by(id=v.course_id).first()
         if not course or not a.can_see_course(course):
             raise acl.not_found("Video not found")
-    return _playback(v, request)
+    return {**_playback(v, request), "is_demo": bool(a.program.is_demo)}
 
 
 def _signed_video(db, video_id, exp, sig) -> InstructionalVideo:
@@ -912,6 +937,8 @@ def _item_for_staff(db, user, item_id, perm="can_publish") -> CareContentItem:
 def edit_content(item_id: uuid.UUID, body: ContentBody, db: Session = Depends(get_db),
                  user: User = Depends(get_current_user)):
     it = _item_for_staff(db, user, item_id)
+    if it.kind in content.SYSTEM_KINDS:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Video transcripts are edited on the video and re-reviewed with it")
     p = db.query(CareProgram).filter_by(id=it.program_id).first()
     target = content.new_version(db, it, user, **_content_changes(db, p, body))
     db.commit()
@@ -927,6 +954,8 @@ def content_action(item_id: uuid.UUID, action: str, body: TransitionBody = Trans
                    db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     perm = "can_approve" if action == "approve" else "can_publish"
     it = _item_for_staff(db, user, item_id, perm)
+    if it.kind in content.SYSTEM_KINDS:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Video transcripts follow the video's review; act on the video")
     content.transition(db, it, action, user, body.reviewer)
     db.commit()
     return content.item_dict(it)
@@ -1089,6 +1118,7 @@ def video_action(video_id: uuid.UUID, action: str, body: TransitionBody = Transi
         v.approved_at = datetime.utcnow()
     v.status = to
     v.approval_status = to
+    content.sync_video_transcript(db, v, user)  # transcript shares the video's review lifecycle
     record_audit_event(db, action=f"care.video_{action}", entity_type="instructional_video", entity_id=v.id,
                        actor_user_id=user.id, data={"status": to})
     db.commit()

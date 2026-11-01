@@ -20,7 +20,11 @@ TERMS = "2026-11"
 
 @pytest.fixture(autouse=True)
 def stub_ai(monkeypatch):
+    from app.config import settings
+
     monkeypatch.setattr(content, "_try_embed", lambda texts: None)
+    # shape-valid fake so the configured-key gate lets the stubbed model run
+    monkeypatch.setattr(settings, "openai_api_key", "sk-" + "f" * 40)
     calls = []
 
     async def fake_complete(messages):
