@@ -108,6 +108,15 @@ def create(db: DBSession, user: User, clinic: Clinic, a: acl.ProgramAccess, cons
             if prior.program_id != a.program.id:
                 raise HTTPException(status.HTTP_409_CONFLICT, "Idempotency-Key reused for a different program")
             return patient_view(db, prior, clinic), False
+    # Same open question already queued (e.g. filed automatically by the chat, then the
+    # patient also pressed "Ask my care team"): return it instead of a second case.
+    norm = " ".join((summary or "").lower().split())[:2000]
+    if norm:
+        for prior in (db.query(CareHandoff).filter(CareHandoff.user_id == user.id, CareHandoff.program_id == a.program.id,
+                                                   CareHandoff.status != "closed")
+                      .order_by(CareHandoff.created_at.desc()).limit(50).all()):
+            if " ".join((prior.summary or "").lower().split()) == norm:
+                return patient_view(db, prior, clinic), False
     now = datetime.utcnow()
     h = CareHandoff(id=uuid.uuid4(), clinic_id=clinic.id, program_id=a.program.id, user_id=user.id,
                     consultation_id=consultation_id, reason=reason, summary=(summary or "")[:2000],

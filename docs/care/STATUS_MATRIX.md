@@ -10,8 +10,13 @@
 | Supporter invites, scopes, revoke | ✅ | API + e2e (G4) | – | – |
 | Safe redirects / open-redirect fix | ✅ | unit + e2e (G7, D) | – | – |
 | Program switch isolation (audio, in-flight requests) | ✅ | e2e (G7) | – | – |
-| Voice replies (ElevenLabs) | ✅ | e2e A3 audible earlier; graceful 503 path verified | ElevenLabs quota exhausted until 30 Nov | Paid tier |
+| Voice replies (ElevenLabs) | ✅ | e2e A3 audible earlier; graceful 503 path verified | ElevenLabs quota exhausted until 30 Nov (2026-11-02: real call returned 503; UI fallback verified in browser) | Paid tier |
 | AI avatar (LiveAvatar) | ✅ (existing) | short manual sessions | LiveAvatar credits low | – |
+| Content SHA-256 pins, immutable approved versions, hash-tagged index invalidation | ✅ | API (tests/test_care_integrity.py) | – | – |
+| Untrusted-source fencing in prompt, injection-doc test, no tools/web | ✅ | API (stubbed model) | Live model behaviour unverified (no key) | – |
+| Invite verifiers (HMAC), expiry/revoke/single-use, rate limits | ✅ | API | – | Shared rate-limit store |
+| Auto review request when unanswerable / needs clinician (deduplicated) | ✅ | API + e2e (G5) | – | Real staff paging |
+| Passwords: bcrypt cost 12, rehash on login, no timing oracle | ✅ | API | – | – |
 | OpenAI-generated answers | ✅ code path | quoted fallback only | **Needs real key** | – |
 | Health + admin status | ✅ | API | – | – |
 | Telemetry (enum-only) | ✅ | API | – | Dashboard |

@@ -13,5 +13,10 @@
 | H9 | Clinical review of all content and safety rules by licensed clinician | Open (fictional reviewer) | Clinical |
 | H10 | Identity proofing for patients/supporters beyond invite codes | Open | Product |
 | H11 | Pen test + dependency scan | Open | Security |
+| H12 | Invitation/redeem rate limits are in-process memory only; multi-worker deploys need a shared store (Redis) | Open | Eng |
+| H13 | Content hash pins detect tampering at read time but the DB itself has no write-ahead signing / WORM audit storage | Open | Eng/Infra |
+| H14 | Prompt-injection defence is fencing + instructions + no tools; it reduces but cannot eliminate model compliance with malicious source text. Source review by clinicians stays mandatory | Open (mitigated) | Clinical/Eng |
+
+2026-11-02: integrity work (hash pins, HMAC invite verifiers, rate limits, bcrypt rehash) is engineering hardening only. It does **not** make the system HIPAA compliant and no compliance claim is made.
 
 Current environment is labelled demo everywhere and uses synthetic data only.

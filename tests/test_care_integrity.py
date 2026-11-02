@@ -250,6 +250,10 @@ def test_unanswerable_question_files_durable_deduplicated_request(demo):
     assert db.query(CareHandoff).filter_by(user_id=demo["emily"].id, reason="no_approved_source").count() == 1
     pj = _ask(c, "How much should I inject tonight?")["review_request"]
     assert pj["created"] and pj["reason"] == "personal_judgment"
+    # the patient then also presses "Ask my care team" (new Idempotency-Key, same question): no second case
+    r = c.post(f"{P}/requests", json={"reason": "personal_judgment", "summary": "How much should I inject tonight?"},
+               headers={"Idempotency-Key": str(uuid.uuid4())})
+    assert r.status_code == 200 and r.json()["id"] == pj["id"]
     # urgent paths are never parked in a queue
     assert _ask(c, "I have severe abdominal pain")["review_request"] is None
 
