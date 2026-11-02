@@ -24,7 +24,7 @@
       "video"
     ],
     "first_messages": {
-      "en": "Hi {first_name}, I'm Dr. Avery, an AI guide for your fertility care. I answer from your clinic's approved material and tell you when something needs your care team. What would you like to go through today?"
+      "en": "Hi {first_name}, I'm Dr. Avery, an AI guide for MYOS Fertility Pilot. I explain your clinic's approved material on IVF and egg freezing. For anything about your own dose, results or symptoms, I'll help you reach your care team. What's on your mind?"
     }
   },
   {
@@ -51,7 +51,7 @@
       "video"
     ],
     "first_messages": {
-      "en": "Hi {first_name}, I'm Nurse Jordan, an AI guide for preparing your medication. I can walk you through your clinic's guides step by step. Your own doses and times always come from your care team. Which medication are you getting ready?"
+      "en": "Hi {first_name}, I'm Nurse Jordan, an AI guide. I can walk you through your medication guides and what to have ready tonight. Your clinic's instructions always come first."
     }
   },
   {
@@ -77,8 +77,8 @@
       "voice"
     ],
     "first_messages": {
-      "en": "Hi {first_name}, I'm Dr. Maryam, an AI guide for your ACL recovery. I answer from your hospital's material and point you to your care team when needed. How is your knee today?",
-      "ar": "مرحبًا {first_name}، أنا الدكتورة مريم، مرشدة بالذكاء الاصطناعي لمرحلة تعافي الرباط الصليبي. أجيب من مواد المستشفى المعتمدة وأوجهك إلى فريق الرعاية عند الحاجة. كيف حال ركبتك اليوم؟"
+      "en": "Hi {first_name}, I'm Dr. Maryam, an AI guide for your ACL recovery. I use your hospital's approved recovery plan. If something feels wrong, I'll point you to the team right away.",
+      "ar": "مرحبًا {first_name}، أنا الدكتورة مريم، مرشدة بالذكاء الاصطناعي لمرحلة تعافيك بعد إصلاح الرباط الصليبي. أعتمد على خطة التعافي المعتمدة من المستشفى. إذا شعرت أن هناك شيئًا غير طبيعي، سأوجهك إلى الفريق فورًا."
     }
   }
 ]
