@@ -54,8 +54,8 @@ def context(clinic_slug: str, program_slug: str, db: Session = Depends(get_db), 
     return {"clinic": clinic.slug, "program": a.program.slug, "consultation_id": str(c.id), "care_role": a.role,
             "scopes": a.scopes, "is_demo": bool(a.program.is_demo or clinic.is_demo),
             "assistant": {"name": persona.name if persona else "Care assistant", "is_ai": True,
-                          "disclosure": "AI assistant using a demo avatar identity — not a real clinician."
-                          if (a.program.is_demo or clinic.is_demo) else "AI assistant — not a clinician."},
+                          "disclosure": "AI guide with a sample identity, not a real clinician."
+                          if (a.program.is_demo or clinic.is_demo) else "AI guide, not a clinician."},
             "device": chat.device_dict(chat.verified_device(db, user, a)),
             "environment": health.demo_environment()}
 
