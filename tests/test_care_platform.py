@@ -310,3 +310,50 @@ def test_admin_integrations_never_return_secrets(world, monkeypatch):
     assert r.status_code == 200 and "SECRET" not in body and "your_elevenlabs" not in body
     j = r.json()
     assert j["openai"]["state"] == "present" and j["elevenlabs"]["state"] == "placeholder"
+
+
+def _tiny_pdf(lines):
+    """A minimal one-page text PDF built by hand (no extra dependency)."""
+    esc = lambda s: s.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")  # noqa: E731
+    stream = "BT /F1 12 Tf 72 720 Td 16 TL " + " ".join(f"({esc(l)}) Tj T*" for l in lines) + " ET"
+    objs = ["<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+            f"<< /Length {len(stream)} >>\nstream\n{stream}\nendstream",
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"]
+    out, offs = b"%PDF-1.4\n", []
+    for i, o in enumerate(objs, 1):
+        offs.append(len(out))
+        out += f"{i} 0 obj\n{o}\nendobj\n".encode()
+    xref = len(out)
+    out += f"xref\n0 {len(objs) + 1}\n0000000000 65535 f \n".encode() + b"".join(f"{o:010d} 00000 n \n".encode() for o in offs)
+    out += f"trailer\n<< /Size {len(objs) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
+    return out
+
+
+def test_upload_pdf_creates_draft_then_retrievable_after_approval(world, stub_ai):
+    c, db, staff = world["client"], world["db"], world["staff"]
+    _as(staff)
+    pid = str(db.query(CareProgram).filter_by(slug="a-weight-management").first().id)
+    pdf = _tiny_pdf(["Wombatberry weigh-in policy", "Wombatberry weigh-ins run 7:30 to 9:30 am, Monday to Saturday."])
+    r = c.post(f"/api/care/studio/programs/{pid}/content/upload", data={"title": "Wombatberry weigh-ins"},
+               files={"file": ("weighins.pdf", pdf, "application/pdf")})
+    assert r.status_code == 200, r.text
+    it = r.json()
+    assert it["status"] == "draft" and "7:30 to 9:30" in it["body"] and it["source"] == "weighins.pdf"
+    assert c.post(f"/api/care/studio/programs/{pid}/content/upload",
+                  files={"file": ("x.exe", b"MZ", "application/octet-stream")}).status_code == 422
+    assert c.post(f"/api/care/studio/programs/{pid}/content/upload",
+                  files={"file": ("empty.txt", b"   ", "text/plain")}).status_code == 422
+    pat = _user(db)
+    _as(pat)
+    _enroll(c, "demo-clinic-a", "a-weight-management")
+    assert c.post(f"/api/care/studio/programs/{pid}/content/upload",
+                  files={"file": ("a.txt", b"hi", "text/plain")}).status_code in (403, 404)
+    ask = lambda: c.post("/api/care/p/demo-clinic-a/a-weight-management/messages", json={"content": "wombatberry weigh-ins hours?"}).json()  # noqa: E731
+    assert all(s["item_id"] != it["id"] for s in ask()["reply"]["sources"])  # draft: never retrieved
+    _as(staff)
+    c.post(f"/api/care/studio/content/{it['id']}/submit", json={})
+    c.post(f"/api/care/studio/content/{it['id']}/approve", json={"reviewer": "Dr. R"})
+    _as(pat)
+    top = ask()["reply"]["sources"][0]
+    assert top["title"] == "Wombatberry weigh-ins" and top["version"] == 1 and top["status_label"].startswith("Approved")

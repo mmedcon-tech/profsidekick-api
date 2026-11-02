@@ -82,7 +82,7 @@ PILOT_STATUSES = ("approved", "in_review")
 
 def visible_statuses(clinic) -> tuple:
     """Approved content everywhere; "in clinical review" content only in Pilot workspaces (labelled
-    "Pilot content · in clinical review"). Recorded in docs/care/HIPAA_BLOCKERS.md and STATUS_MATRIX.md."""
+    "In clinical review"). Recorded in docs/care/HIPAA_BLOCKERS.md and STATUS_MATRIX.md."""
     return PILOT_STATUSES if getattr(clinic, "is_pilot", False) else ("approved",)
 
 
@@ -93,7 +93,7 @@ def status_label(i: CareContentItem, now=None) -> str:
     if i.status == "approved":
         return f"Approved · reviewed {i.approved_at.strftime('%-d %b %Y')}" if i.approved_at else "Approved"
     if i.status == "in_review":
-        return "Pilot content · in clinical review"
+        return "In clinical review"
     return "Draft" if i.status == "draft" else "Retired"
 
 

@@ -42,7 +42,7 @@ def test_in_review_content_only_visible_in_pilot_workspaces(myos):
     _as(myos["u"]["sofia"])
     view = c.get(f"{FERT}/ivf-care").json()
     labels = {i["status_label"] for i in view["content"]}
-    assert labels == {"Pilot content · in clinical review"}
+    assert labels == {"In clinical review"}
     clinic = db.query(Clinic).filter_by(slug="myos-fertility-sf").one()
     clinic.is_pilot = False
     db.commit()

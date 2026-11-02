@@ -31,6 +31,7 @@ class SourceCard(BaseModel):
     item_id: str
     video_id: Optional[str] = None
     excerpt: Optional[str] = Field(None, max_length=300)  # the approved passage the answer drew on
+    status_label: Optional[str] = None  # e.g. "Approved · reviewed 2 Nov 2026" or "In clinical review"
 
 
 class ContactPath(BaseModel):

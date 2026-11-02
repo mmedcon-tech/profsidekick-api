@@ -177,7 +177,8 @@ async def send(db: DBSession, user: User, clinic: Clinic, access: ProgramAccess,
         sources = [{"n": i + 1, "title": ch["title"], "kind": ch["kind"], "version": ch["version"],
                     "reviewer": ch["reviewer"], "approved_at": ch["approved_at"], "is_demo": ch["is_demo"],
                     "item_id": ch["item_id"], "segment": ch["segment"], "segments": ch["segments"],
-                    "video_id": ch["video_id"], "excerpt": (ch["content"] or "")[:280]} for i, ch in enumerate(chunks)]
+                    "video_id": ch["video_id"], "excerpt": (ch["content"] or "")[:280],
+                    "status_label": ch.get("status_label")} for i, ch in enumerate(chunks)]
         if not chunks:
             reply = ("Your clinic hasn't provided approved information on that in this program, so I can't answer it "
                      "reliably. Use “Ask my care team” and I'll pass the question on.")

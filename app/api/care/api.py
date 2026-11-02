@@ -950,6 +950,46 @@ def create_content(program_id: uuid.UUID, body: ContentBody, db: Session = Depen
     return content.item_dict(item)
 
 
+UPLOAD_TYPES = ("pdf", "docx", "txt", "md")
+UPLOAD_MAX_BYTES = 10 * 1024 * 1024
+
+
+@router.post("/studio/programs/{program_id}/content/upload")
+async def upload_content(program_id: uuid.UUID, file: UploadFile = File(...), title: str = Form(""),
+                         kind: str = Form("document"), course_id: str = Form(""), audience: str = Form("patient"),
+                         language: str = Form("en"), source: str = Form(""), applicability: str = Form(""),
+                         db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Upload clinic material (PDF, DOCX, TXT, MD). The text is extracted with the existing RAG extractor and saved
+    as a DRAFT content item; nothing is indexed or shown to patients until it is approved through the normal workflow."""
+    p = _program_for_staff(db, user, program_id)
+    name = (file.filename or "upload").strip()
+    ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+    if ext not in UPLOAD_TYPES:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Upload a PDF, Word (.docx), .txt or .md file")
+    data = await file.read(UPLOAD_MAX_BYTES + 1)
+    if len(data) > UPLOAD_MAX_BYTES:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "File is larger than 10 MB")
+    from app.services.rag_service import _extract_text_from_content
+
+    text = (_extract_text_from_content(data, name) or "").replace("\x00", "").strip()
+    if not text:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            "No text could be read from this file. Scanned PDFs need a text layer.")
+    body = ContentBody(course_id=course_id or None, kind=kind or "document", title=(title or name.rsplit(".", 1)[0])[:200],
+                       body=text, audience=audience or "patient", language=language or "en",
+                       source=source or name, applicability=applicability or None)
+    ch = _content_changes(db, p, body)
+    now = datetime.utcnow()
+    item = CareContentItem(id=uuid.uuid4(), lineage_id=uuid.uuid4(), version=1, clinic_id=p.clinic_ref_id,
+                           program_id=p.id, status="draft", created_by=user.id, created_at=now, updated_at=now,
+                           source_type="clinic_material", **ch)
+    db.add(item)
+    record_audit_event(db, action="care_content.upload", entity_type="care_content_item", entity_id=item.id,
+                       actor_user_id=user.id, data={"kind": item.kind, "file_type": ext, "chars": len(text)})
+    db.commit()
+    return content.item_dict(item)
+
+
 def _item_for_staff(db, user, item_id, perm="can_publish") -> CareContentItem:
     it = db.query(CareContentItem).filter_by(id=item_id).first()
     if not it:
