@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 from enum import Enum
+from sqlalchemy import text
 from sqlalchemy import Column, String, Integer, DateTime, Text, ForeignKey, Enum as SQLEnum, Boolean, BigInteger, Numeric, Index
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
@@ -1240,6 +1241,9 @@ class CareContentItem(Base):
     expires_at = Column(DateTime, nullable=True)
     is_demo = Column(Boolean, nullable=False, default=False, server_default="false")
     video_id = Column(UUID(as_uuid=True), ForeignKey("instructional_videos.id", ondelete="CASCADE"), nullable=True)
+    # SHA-256 of the canonical content (see services/care/integrity.py); approved_sha256 is pinned at approval.
+    content_sha256 = Column(String(64), nullable=True)
+    approved_sha256 = Column(String(64), nullable=True)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
@@ -1252,6 +1256,7 @@ class CareContentChunk(Base):
     position = Column(Integer, nullable=False, default=0)
     content = Column(Text, nullable=False)
     embedding = Column(Vector(1536), nullable=True)
+    item_sha256 = Column(String(64), nullable=True)  # hash of the item text this chunk was cut from
 
 
 class RedFlagRule(Base):
@@ -1278,6 +1283,8 @@ class RedFlagRule(Base):
 class CareHandoff(Base):
     """Request for human review. Simulated in demo clinics (nothing is sent)."""
     __tablename__ = "care_handoffs"
+    __table_args__ = (Index("uq_care_handoffs_user_idem", "user_id", "idempotency_key", unique=True,
+                            postgresql_where=text("idempotency_key IS NOT NULL")),)
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     clinic_id = Column(UUID(as_uuid=True), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False, index=True)
     program_id = Column(UUID(as_uuid=True), ForeignKey("care_programs.id", ondelete="CASCADE"), nullable=False)
@@ -1317,7 +1324,8 @@ class CareInvitation(Base):
     __tablename__ = "care_invitations"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     kind = Column(String(20), nullable=False)  # enrollment|support
-    code_hash = Column(String(64), nullable=False, unique=True)
+    code_hash = Column(String(64), nullable=False, unique=True)  # verifier only, never the code
+    hash_alg = Column(String(16), nullable=False, default="hmac-sha256", server_default="sha256")
     code_hint = Column(String(8), nullable=True)
     clinic_id = Column(UUID(as_uuid=True), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False, index=True)
     program_id = Column(UUID(as_uuid=True), ForeignKey("care_programs.id", ondelete="CASCADE"), nullable=False, index=True)

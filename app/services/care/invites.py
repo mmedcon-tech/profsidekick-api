@@ -1,7 +1,12 @@
 """Enrollment codes and supporter invitations.
 
-* Codes are random, shown once, stored only as SHA-256, expire, can be
-  revoked, and have a use limit.
+* Codes are random (16 chars from a 32-symbol alphabet = 80 bits), shown
+  once, and stored only as a keyed verifier: HMAC-SHA256(SECRET_KEY, code).
+  The stored verifier is compared in constant time. Codes expire, can be
+  revoked, and have a use limit (support invitations are single-use).
+  Legacy rows (hash_alg="sha256", plain SHA-256) still redeem until they
+  expire; new rows are always "hmac-sha256".
+* Creation and redemption are rate limited per user (see RATE_LIMITS).
 * A supporter invitation is created by the patient, is scoped (subset of
   access.SUPPORT_SCOPES), and must be redeemed by the supporter's OWN signed-in
   account. Redeeming creates a CareSupportGrant plus a `supporter` entitlement;
@@ -13,7 +18,11 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import logging
+import threading
+import time
+from collections import defaultdict, deque
 import secrets
 import uuid
 from datetime import datetime, timedelta
@@ -22,6 +31,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session as DBSession
 
+from app.config import settings
 from app.database.models import (CareEntitlement, CareInvitation, CareProgram, CareSupportGrant, Clinic, User)
 from app.services.audit_service import record_audit_event
 from app.services.care import access as acl
@@ -31,14 +41,57 @@ MAX_DAYS = 30
 ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O/1/I
 
 
+CODE_LEN = 16
+# (max events, window seconds) per user. In-process: a multi-worker deployment needs a shared store (TASKS.md).
+RATE_LIMITS = {"redeem": (10, 15 * 60), "create": (30, 60 * 60)}
+_hits: Dict[str, deque] = defaultdict(deque)
+_lock = threading.Lock()
+
+
+def rate_limit(kind: str, user_id) -> None:
+    limit, window = RATE_LIMITS[kind]
+    key = f"{kind}:{user_id}"
+    now = time.monotonic()
+    with _lock:
+        q = _hits[key]
+        while q and q[0] <= now - window:
+            q.popleft()
+        if len(q) >= limit:
+            logger.info("care.invite rate_limited kind=%s user=%s", kind, user_id)
+            raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many attempts. Please wait and try again.",
+                                headers={"Retry-After": str(int(window - (now - q[0])) + 1)})
+        q.append(now)
+
+
+def reset_rate_limits() -> None:  # tests
+    with _lock:
+        _hits.clear()
+
+
+def _norm(code: str) -> str:
+    return "".join(ch for ch in (code or "").upper() if ch.isalnum())
+
+
 def _hash(code: str) -> str:
-    norm = "".join(ch for ch in (code or "").upper() if ch.isalnum())
-    return hashlib.sha256(norm.encode()).hexdigest()
+    """Stored verifier: keyed HMAC so a leaked table cannot be brute-forced offline without the key."""
+    return hmac.new(settings.secret_key.encode(), f"care-invite:{_norm(code)}".encode(), hashlib.sha256).hexdigest()
+
+
+def _legacy_hash(code: str) -> str:
+    return hashlib.sha256(_norm(code).encode()).hexdigest()
+
+
+def _lookup(db: DBSession, code: str) -> Optional[CareInvitation]:
+    for alg, verifier in (("hmac-sha256", _hash(code)), ("sha256", _legacy_hash(code))):
+        i = db.query(CareInvitation).filter_by(code_hash=verifier, hash_alg=alg).with_for_update().first()
+        if i is not None and hmac.compare_digest(i.code_hash, verifier):
+            return i
+    return None
 
 
 def _new_code() -> str:
-    raw = "".join(secrets.choice(ALPHABET) for _ in range(12))
-    return f"{raw[:4]}-{raw[4:8]}-{raw[8:]}"
+    raw = "".join(secrets.choice(ALPHABET) for _ in range(CODE_LEN))
+    return "-".join(raw[k:k + 4] for k in range(0, CODE_LEN, 4))
 
 
 def invite_dict(i: CareInvitation, code: Optional[str] = None) -> Dict[str, Any]:
@@ -54,9 +107,10 @@ def invite_dict(i: CareInvitation, code: Optional[str] = None) -> Dict[str, Any]
 
 
 def _create(db, *, kind, clinic_id, program_id, care_role, scopes, label, actor, patient_id, days, max_uses):
+    rate_limit("create", actor.id)
     days = max(1, min(int(days or 7), MAX_DAYS))
     code = _new_code()
-    i = CareInvitation(id=uuid.uuid4(), kind=kind, code_hash=_hash(code), code_hint=code[-4:], clinic_id=clinic_id,
+    i = CareInvitation(id=uuid.uuid4(), kind=kind, code_hash=_hash(code), hash_alg="hmac-sha256", code_hint=code[-4:], clinic_id=clinic_id,
                        program_id=program_id, care_role=care_role, scopes=scopes, label=(label or "")[:120] or None,
                        created_by=actor.id, patient_user_id=patient_id,
                        expires_at=datetime.utcnow() + timedelta(days=days), max_uses=max(1, min(int(max_uses or 1), 500)),
@@ -94,7 +148,8 @@ def _invalid(reason: str, i: Optional[CareInvitation] = None) -> HTTPException:
 
 
 def redeem(db: DBSession, user: User, code: str, terms_version: str, current_terms: str) -> Dict[str, Any]:
-    i = db.query(CareInvitation).filter_by(code_hash=_hash(code)).with_for_update().first()
+    rate_limit("redeem", user.id)
+    i = _lookup(db, code)
     now = datetime.utcnow()
     if not i:
         raise _invalid("unknown")

@@ -23,14 +23,32 @@ class AuthService:
         self.algorithm = "HS256"
         self.access_token_expire_hours = 24
     
+    BCRYPT_ROUNDS = 12
+    # Used to spend the same bcrypt time when the username does not exist (no timing oracle).
+    _DUMMY_HASH = bcrypt.hashpw(b"timing-equaliser", bcrypt.gensalt(BCRYPT_ROUNDS)).decode()
+
     def hash_password(self, password: str) -> str:
-        """Hash a password using bcrypt"""
-        salt = bcrypt.gensalt()
+        """Hash a password using bcrypt (cost BCRYPT_ROUNDS)."""
+        salt = bcrypt.gensalt(self.BCRYPT_ROUNDS)
         return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
-    
+
     def verify_password(self, password: str, hashed_password: str) -> bool:
-        """Verify a password against its hash"""
-        return bcrypt.checkpw(password.encode('utf-8'), hashed_password.encode('utf-8'))
+        """Verify a password against its bcrypt hash. Anything that is not a valid
+        bcrypt hash (legacy/plaintext/corrupt) never verifies."""
+        if not hashed_password or not hashed_password.startswith(("$2a$", "$2b$", "$2y$")):
+            return False
+        try:
+            return bcrypt.checkpw(password.encode('utf-8'), hashed_password.encode('utf-8'))
+        except ValueError:
+            return False
+
+    def needs_rehash(self, hashed_password: str) -> bool:
+        """True for bcrypt hashes below the current cost or using an old prefix."""
+        try:
+            prefix, cost = hashed_password.split("$")[1:3]
+            return prefix != "2b" or int(cost) < self.BCRYPT_ROUNDS
+        except (ValueError, IndexError, AttributeError):
+            return True
     
     def create_access_token(self, user_id: str, username: str) -> Dict[str, Any]:
         """Create a JWT access token"""
@@ -151,12 +169,19 @@ class AuthService:
     async def login_user(self, db: Session, username: str, password: str) -> AuthResponse:
         """Authenticate user and return token"""
         user = db.query(User).filter(User.username == username).first()
-        
-        if not user or not self.verify_password(password, user.password_hash):
+
+        if not user:
+            self.verify_password(password, self._DUMMY_HASH)
+            return AuthResponse(success=False, message="Invalid username or password")
+        if not self.verify_password(password, user.password_hash):
             return AuthResponse(
                 success=False,
                 message="Invalid username or password"
             )
+        if self.needs_rehash(user.password_hash):
+            # transparent upgrade at login: the plaintext is only available now
+            user.password_hash = self.hash_password(password)
+            db.commit()
         
         # Check if account is approved (skip check if is_approved is None for old accounts)
         if user.is_approved is False:

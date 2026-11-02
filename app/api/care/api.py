@@ -297,15 +297,17 @@ def handoff(clinic_slug: str, program_slug: str, body: HandoffBody, request: Req
     return view
 
 
-def _sign(video_id: str, exp: int) -> str:
-    return hmac.new(settings.secret_key.encode(), f"care-video:{video_id}:{exp}".encode(), hashlib.sha256).hexdigest()
+def _sign(video_id: str, exp: int, purpose: str = "p") -> str:
+    # purpose "p" = patient link (approved videos only), "s" = studio review link (any status, staff-issued)
+    return hmac.new(settings.secret_key.encode(), f"care-video:{purpose}:{video_id}:{exp}".encode(),
+                    hashlib.sha256).hexdigest()
 
 
 PLACEHOLDER_LABEL = ("Approved footage not yet provided by the clinic — placeholder. "
                      "The transcript below is clinic-reviewed.")
 
 
-def _playback(v: InstructionalVideo, request: Request):
+def _playback(v: InstructionalVideo, request: Request, purpose: str = "p"):
     """Media playback contract. No approved footage → an explicit placeholder;
     footage is never generated or substituted."""
     base_info = {"video_id": str(v.id), "title": v.title, "reviewer": v.reviewer, "version": v.version,
@@ -317,8 +319,9 @@ def _playback(v: InstructionalVideo, request: Request):
         return {**base_info, "status": "ready", "url": v.external_url, "expires_at": None}
     exp = int(time.time()) + PLAYBACK_TTL_S
     base = str(request.base_url).rstrip("/")
-    return {**base_info, "status": "ready", "url": f"{base}/api/care/videos/{v.id}/stream?exp={exp}&sig={_sign(str(v.id), exp)}",
-            "captions_url": f"{base}/api/care/videos/{v.id}/captions?exp={exp}&sig={_sign(str(v.id), exp)}" if v.captions_vtt else None,
+    q = f"exp={exp}&sig={_sign(str(v.id), exp, purpose)}" + ("&purpose=s" if purpose == "s" else "")
+    return {**base_info, "status": "ready", "url": f"{base}/api/care/videos/{v.id}/stream?{q}",
+            "captions_url": f"{base}/api/care/videos/{v.id}/captions?{q}" if v.captions_vtt else None,
             "expires_at": _iso(datetime.utcfromtimestamp(exp))}
 
 
@@ -334,22 +337,36 @@ def video_playback(clinic_slug: str, program_slug: str, video_id: uuid.UUID, req
         course = db.query(CareCourse).filter_by(id=v.course_id).first()
         if not course or not a.can_see_course(course):
             raise acl.not_found("Video not found")
-    return {**_playback(v, request), "is_demo": bool(a.program.is_demo)}
+    out = {**_playback(v, request), "is_demo": bool(a.program.is_demo)}
+    # Patients get the transcript bound to the approved, hash-pinned transcript version only.
+    from app.services.care import integrity
+
+    t = (db.query(CareContentItem).filter_by(video_id=v.id, status="approved")
+         .order_by(CareContentItem.version.desc()).first())
+    ok = t is not None and integrity.verify(t)
+    out["transcript"] = t.body if ok else None
+    out["transcript_sha256"] = t.approved_sha256 if ok else None
+    out["transcript_version"] = t.version if ok else None
+    return out
 
 
-def _signed_video(db, video_id, exp, sig) -> InstructionalVideo:
-    if exp < time.time() or not hmac.compare_digest(sig, _sign(str(video_id), exp)):
+def _signed_video(db, video_id, exp, sig, purpose: str = "p") -> InstructionalVideo:
+    if purpose not in ("p", "s") or exp < time.time() or not hmac.compare_digest(sig, _sign(str(video_id), exp, purpose)):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Playback link expired or invalid")
     v = db.query(InstructionalVideo).filter(InstructionalVideo.id == video_id,
                                             InstructionalVideo.program_id.isnot(None)).first()
     if not v:
         raise acl.not_found("Video not found")
+    # A signed link must stop working as soon as the video is retired or sent back to draft.
+    if purpose == "p" and v.status != "approved":
+        raise acl.not_found("Video not found")
     return v
 
 
 @router.get("/videos/{video_id}/stream")
-def stream(video_id: uuid.UUID, exp: int, sig: str, request: Request, db: Session = Depends(get_db)):
-    v = _signed_video(db, video_id, exp, sig)
+def stream(video_id: uuid.UUID, exp: int, sig: str, request: Request, purpose: str = "p",
+           db: Session = Depends(get_db)):
+    v = _signed_video(db, video_id, exp, sig, purpose)
     if not v.storage_uri:
         raise acl.not_found("Video not found")
     from app.services.private_storage import get_private_storage
@@ -369,8 +386,8 @@ def stream(video_id: uuid.UUID, exp: int, sig: str, request: Request, db: Sessio
 
 
 @router.get("/videos/{video_id}/captions")
-def captions(video_id: uuid.UUID, exp: int, sig: str, db: Session = Depends(get_db)):
-    v = _signed_video(db, video_id, exp, sig)
+def captions(video_id: uuid.UUID, exp: int, sig: str, purpose: str = "p", db: Session = Depends(get_db)):
+    v = _signed_video(db, video_id, exp, sig, purpose)
     if not v.captions_vtt:
         raise acl.not_found("No captions")
     return Response(v.captions_vtt, media_type="text/vtt", headers={"Cache-Control": "private, no-store"})
@@ -1133,7 +1150,7 @@ def studio_video_playback(video_id: uuid.UUID, request: Request, db: Session = D
     if not v:
         raise acl.not_found()
     _program_for_staff(db, user, v.program_id)
-    return _playback(v, request)
+    return _playback(v, request, "s")
 
 
 # entitlements (staff-granted access)

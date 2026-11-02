@@ -127,6 +127,7 @@ def seed_demo(db: DBSession) -> dict:
                                  created_at=now, updated_at=now)
             db.add(it)
             db.flush()
+            content.pin_seeded(it)
             content.index_item(db, it)
             stats["content"] += 1
         for symptom, terms, action, urgency, route, cs in flags:

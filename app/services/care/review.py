@@ -28,7 +28,7 @@ from app.services.care import access as acl
 from app.services.care import safety
 
 logger = logging.getLogger(__name__)
-REASONS = ("red_flag", "personal_judgment", "patient_request")
+REASONS = ("red_flag", "personal_judgment", "patient_request", "no_approved_source")
 ACTIONS = ("assign", "acknowledge", "reply", "close")
 
 
@@ -57,7 +57,9 @@ def _events(db, h: CareHandoff, include_bodies: bool) -> List[Dict[str, Any]]:
     out = []
     for e in (db.query(CareHandoffEvent).filter_by(handoff_id=h.id).order_by(CareHandoffEvent.created_at).all()):
         d = {"kind": e.kind, "at": _iso(e.created_at), "by": _name(db, e.actor_user_id) if e.kind != "received" else "System",
-             "is_synthetic": e.is_synthetic}
+             "is_synthetic": e.is_synthetic,
+             # replies are typed by a person on the clinic's staff, never generated
+             "author_type": "system" if e.kind == "received" else "human_staff"}
         if include_bodies and e.body:
             d["body"] = e.body
         out.append(d)

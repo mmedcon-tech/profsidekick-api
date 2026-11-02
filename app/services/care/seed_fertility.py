@@ -105,6 +105,8 @@ def seed(db: DBSession, users: dict | None = None) -> dict:
                               expires_at=now + timedelta(days=335), is_demo=True, created_at=now, updated_at=now)
         db.add_all([old, guide, faq])
         db.flush()
+        content.pin_seeded(guide)
+        content.pin_seeded(faq)
         content.index_item(db, guide)
         content.index_item(db, faq)
         video = InstructionalVideo(id=uuid.uuid4(), title="Preparing a multi-dose pen (nurse walkthrough)",

@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session as DBSession
 
 from app.database.models import CareContentChunk, CareContentItem, CareCourse, User
 from app.services.audit_service import record_audit_event
+from app.services.care import integrity
 
 logger = logging.getLogger(__name__)
 
@@ -60,12 +61,32 @@ def _try_embed(texts: List[str]):
     return embed(texts)
 
 
+def invalidate_item(db: DBSession, item_id) -> int:
+    """Drop every retrieval artefact of one item version: chunks (keyword
+    index) and their embeddings (vector index). There is no other cache of
+    care content; answers are never cached."""
+    n = db.query(CareContentChunk).filter_by(item_id=item_id).delete(synchronize_session=False)
+    if n:
+        logger.info("care_content.invalidate item=%s chunks=%s", item_id, n)
+    return n
+
+
+def pin_seeded(item: CareContentItem) -> None:
+    """Seed data is created already approved (demo, labelled); pin its hash the same way approval does."""
+    assert item.status == "approved" and item.approved_sha256 is None
+    item.content_sha256 = item.approved_sha256 = integrity.content_hash(item)
+
+
 def index_item(db: DBSession, item: CareContentItem) -> int:
-    db.query(CareContentChunk).filter_by(item_id=item.id).delete()
+    """(Re)build chunks + embeddings for an approved item, tagged with its pinned hash."""
+    invalidate_item(db, item.id)
+    if item.status != "approved" or not item.approved_sha256:
+        return 0
     parts = chunk_text(f"{item.title}\n\n{item.body}")
     vecs = _try_embed(parts) or [None] * len(parts)
     for i, (p, v) in enumerate(zip(parts, vecs)):
-        db.add(CareContentChunk(id=uuid.uuid4(), item_id=item.id, position=i, content=p, embedding=v))
+        db.add(CareContentChunk(id=uuid.uuid4(), item_id=item.id, position=i, content=p, embedding=v,
+                                item_sha256=item.approved_sha256))
     return len(parts)
 
 
@@ -76,6 +97,7 @@ def item_dict(i: CareContentItem) -> Dict[str, Any]:
         "title": i.title, "body": i.body, "language": i.language, "audience": i.audience,
         "applicability": i.applicability, "source": i.source, "status": i.status, "reviewer": i.reviewer,
         "approved_at": i.approved_at.isoformat() if i.approved_at else None,
+        "content_sha256": i.content_sha256, "approved_sha256": i.approved_sha256,
         "expires_at": i.expires_at.isoformat() if i.expires_at else None, "is_demo": i.is_demo,
         "updated_at": i.updated_at.isoformat() if i.updated_at else None,
     }
@@ -102,17 +124,20 @@ def transition(db: DBSession, item: CareContentItem, action: str, actor: User, r
                             CareContentItem.status == "approved").all()):
             old.status = "retired"
             old.updated_at = now
-            db.query(CareContentChunk).filter_by(item_id=old.id).delete()
+            invalidate_item(db, old.id)
+        item.content_sha256 = integrity.content_hash(item)
+        item.approved_sha256 = item.content_sha256  # pin: what was reviewed is what gets retrieved
         item.status = to
         index_item(db, item)
     else:
         item.status = to
         if to in ("retired", "draft"):
-            db.query(CareContentChunk).filter_by(item_id=item.id).delete()
+            invalidate_item(db, item.id)
     item.updated_at = now
     record_audit_event(db, action=f"care_content.{action}", entity_type="care_content_item", entity_id=item.id,
                        actor_user_id=actor.id, data={"version": item.version, "status": item.status,
-                                                     "lineage_id": str(item.lineage_id)})
+                                                     "lineage_id": str(item.lineage_id),
+                                                     "sha256": item.approved_sha256 if action == "approve" else None})
     return item
 
 
@@ -123,6 +148,7 @@ def new_version(db: DBSession, item: CareContentItem, actor: User, **changes) ->
         for k, v in changes.items():
             setattr(item, k, v)
         item.updated_at = now
+        item.content_sha256 = integrity.content_hash(item)
         target = item
     else:
         latest = (db.query(CareContentItem).filter_by(lineage_id=item.lineage_id)
@@ -135,6 +161,7 @@ def new_version(db: DBSession, item: CareContentItem, actor: User, **changes) ->
             created_at=now, updated_at=now)
         for k, v in changes.items():
             setattr(target, k, v)
+        target.content_sha256 = integrity.content_hash(target)
         db.add(target)
     record_audit_event(db, action="care_content.edit", entity_type="care_content_item", entity_id=target.id,
                        actor_user_id=actor.id, data={"version": target.version, "fields": sorted(changes)})
@@ -157,6 +184,8 @@ def retrieve(db: DBSession, *, program_id, clinic_id, visible_course_ids: Set, a
             .join(CareContentItem, CareContentItem.id == CareContentChunk.item_id)
             .filter(CareContentItem.clinic_id == clinic_id, CareContentItem.program_id == program_id,
                     CareContentItem.status == "approved",
+                    CareContentItem.approved_sha256.isnot(None),
+                    CareContentChunk.item_sha256 == CareContentItem.approved_sha256,
                     or_(CareContentItem.expires_at.is_(None), CareContentItem.expires_at > now),
                     CareContentItem.audience.in_(aud),
                     or_(CareContentItem.course_id.is_(None),
@@ -177,7 +206,16 @@ def retrieve(db: DBSession, *, program_id, clinic_id, visible_course_ids: Set, a
             score = 0.25 + 0.5 * frac
             if ch.id not in pool or pool[ch.id][2] < score:
                 pool[ch.id] = (ch, it, score)
-    ranked = [r for r in sorted(pool.values(), key=lambda x: x[2], reverse=True) if r[2] >= 0.3][:top_k]
+    ranked = []
+    for r in sorted(pool.values(), key=lambda x: x[2], reverse=True):
+        if r[2] < 0.3:
+            break
+        if not integrity.verify(r[1]):  # row changed outside the workflow: never serve it
+            logger.warning("care_content.hash_mismatch item=%s v%s - excluded from retrieval", r[1].id, r[1].version)
+            continue
+        ranked.append(r)
+        if len(ranked) >= top_k:
+            break
     counts: Dict[Any, int] = {}
     if ranked:
         from sqlalchemy import func
@@ -189,7 +227,7 @@ def retrieve(db: DBSession, *, program_id, clinic_id, visible_course_ids: Set, a
         "chunk_id": str(ch.id), "item_id": str(it.id), "content": ch.content, "score": round(s, 3),
         "title": it.title, "kind": it.kind, "version": it.version, "reviewer": it.reviewer,
         "approved_at": it.approved_at.date().isoformat() if it.approved_at else None, "is_demo": it.is_demo,
-        "segment": ch.position + 1, "segments": max(counts.get(it.id, 1), ch.position + 1),
+        "sha256": it.approved_sha256, "segment": ch.position + 1, "segments": max(counts.get(it.id, 1), ch.position + 1),
         "video_id": str(it.video_id) if it.video_id else None,
     } for ch, it, s in ranked]
 
@@ -215,13 +253,13 @@ def sync_video_transcript(db: DBSession, video, actor: User) -> Optional[CareCon
         if current and current.status == "approved":
             current.status = "retired"
             current.updated_at = now
-            db.query(CareContentChunk).filter_by(item_id=current.id).delete()
+            invalidate_item(db, current.id)
         return current
-    if current and current.status == "approved" and current.body == video.transcript:
+    if current and current.status == "approved" and current.body == video.transcript and integrity.verify(current):
         return current
     if current and current.status == "approved":
         current.status = "retired"
-        db.query(CareContentChunk).filter_by(item_id=current.id).delete()
+        invalidate_item(db, current.id)
     item = CareContentItem(
         id=uuid.uuid4(), lineage_id=current.lineage_id if current else uuid.uuid4(),
         version=(current.version + 1) if current else 1, clinic_id=prog.clinic_ref_id, program_id=prog.id,
@@ -230,6 +268,7 @@ def sync_video_transcript(db: DBSession, video, actor: User) -> Optional[CareCon
         status="approved", reviewer=video.reviewer, approved_by=actor.id if actor else None,
         approved_at=video.approved_at or now, is_demo=bool(getattr(prog, "is_demo", False)), video_id=video.id,
         created_by=actor.id if actor else None, created_at=now, updated_at=now)
+    item.content_sha256 = item.approved_sha256 = integrity.content_hash(item)
     db.add(item)
     db.flush()
     index_item(db, item)
