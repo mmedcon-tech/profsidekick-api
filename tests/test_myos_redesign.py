@@ -134,7 +134,7 @@ def test_seed_holds_exact_avery_first_message(myos):
     from app.database.models import DoctorPersona
     p = myos["db"].query(DoctorPersona).filter_by(slug="dr-avery").one()
     assert p.first_messages["en"].replace("{first_name}", "Sofia") == (
-        "Hi Sofia, I'm Dr. Avery, an AI guide for MYOS Fertility Pilot. I explain your clinic's approved material "
+        "Hi Sofia, I'm Dr. Avery, an AI guide for MYOS Fertility Clinic. I explain your clinic's approved material "
         "on IVF and egg freezing. For anything about your own dose, results or symptoms, I'll help you reach your "
         "care team. What's on your mind?")
 

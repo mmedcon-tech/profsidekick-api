@@ -84,7 +84,7 @@ def seed(db: DBSession, now: datetime | None = None) -> dict:
         c.name = workspace_name(ws)
         c.is_pilot, c.languages, c.is_demo, c.status = ws["is_pilot"], ws["languages"], False, "active"
         c.branding, c.contact_routes, c.response_expectation = ws["branding"], ws["contact_routes"], ws["response_expectation"]
-        c.description = "Pilot" if ws["is_pilot"] else None
+        c.description = None
         c.updated_at = now
         db.flush()
         clinics[ws["slug"]] = c
