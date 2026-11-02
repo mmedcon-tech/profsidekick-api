@@ -20,6 +20,13 @@
 | OpenAI-generated answers | ✅ code path | quoted fallback only | **Needs real key** | – |
 | Health + admin status | ✅ | API | – | – |
 | Telemetry (enum-only) | ✅ | API | – | Dashboard |
+| MYOS seed (`scripts/seed_myos.py`, `npm run seed`): 2 workspaces, 4 programs, 3 twins with exact opening lines, idempotent, respects edited_at | ✅ | API (tests/test_myos_redesign.py) | – | Exact section-7 memory text (drafts seeded) |
+| Pilot in_review rule (in_review content only in pilot workspaces, shown with its review status) | ✅ | API | Clinician sign-off | – |
+| Patient navigation: Home / Talk / Guides / Care team tabs, side nav on desktop, menu, My history, Account settings, Sharing | ✅ | vitest (nav by role) + e2e/myos-guide.mjs | – | – |
+| First-run guide (patient 6 / supporter 3 / publisher 5 steps), server-tracked, reopen from menu and Account | ✅ | vitest + e2e/myos-guide.mjs | – | – |
+| Arabic toggle (both apps, `dir=rtl`) | ✅ shell, nav, guide, home | e2e | – | Arabic for chat panel and Studio page bodies |
+| Studio "Needs your attention" | ✅ | e2e | – | – |
+| Page performance (prod build < 1.5 s every page; model first text budget 5 s with fallback) | ✅ | e2e/perf-check.mjs, API tests | Live model timing needs key | Token streaming |
 | HIPAA readiness | – | – | BAAs | see HIPAA_BLOCKERS.md |
 
 OpenAPI check (`/openapi.json`, 2026-11-01): 200 paths, 60 under `/api/care`, including context,
