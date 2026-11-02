@@ -38,3 +38,14 @@ Test DB for pytest: `DATABASE_URL=postgresql://postgres:postgres@localhost:5435/
 - [ ] T26 Studio drawer with active state; dashboard leads with "Needs your attention".
 - [ ] T27 First-run guide (custom, no dep), server-tracked `onboarding_completed_at` (API done: GET/POST /api/care/me/onboarding); Skip/Back/Next/Done; reopen from menu "How MYOS works" + Account settings; spotlight + small-screen card; patient/supporter/publisher variants; RTL + i18n; vitest + Playwright; screenshots per step.
 - [x] T28 Supporters cannot open or post to the AI conversation (server-side `chat_history` scope check).
+
+## T29+ Create doctor avatar (Studio), queued after A-D. Spec: parent message, 2 Nov 2026 11:04
+- T29 Plan check: done, see docs/DOCTOR_AVATAR_PLAN_CHECK.md.
+- T30 Uploads and validation (headshots with a primary, audio, SHA-256, private store, resumable draft); owner or clinical-reviewer roles only.
+- T31 Per-item consent (likeness, voice, providers, uses, signer, date, file, version). Doctor-completed verification. Shared PVC voice-ID link and verify. Revocation with audit.
+- T32 Visual avatar: LiveAvatar image avatar only when the plan allows; otherwise the pending step "Complete in LiveAvatar dashboard" plus pasting an avatar ID.
+- T33 DB-backed jobs, worker loop, idempotency keys, restart recovery; storage abstraction (S3 or local); signed short-lived URLs.
+- T34 Preview, separate approvals (appearance, voice, pronunciation list); patient label "AI avatar of Dr [name]."
+- T35 Program/course assignment within the clinic only; retrieval unchanged.
+- T36 LIVEAVATAR_PATIENT_DATA_APPROVED=false boundary, enforced in the session-token endpoint.
+- T37 Tests listed in the spec, plus one ≤30 s stock-avatar session if credits allow (7.3 left).
