@@ -243,6 +243,9 @@ def program_view(clinic_slug: str, program_slug: str, db: Session = Depends(get_
     d = _program_view(db, clinic, a.program, a.can_see_course)
     d["care_role"] = a.role
     d["scopes"] = a.scopes
+    from app.database.models import CareProgramMembership
+    m = db.query(CareProgramMembership).filter_by(program_id=a.program.id, user_id=user.id).first()
+    d["stage"] = m.treatment_stage if (m and a.role == "patient") else None
     if not a.has("videos"):
         d["videos"] = []
     if not a.has("education"):
@@ -1316,3 +1319,29 @@ async def model_health(request: Request):
 
     r = await health.check_llm(live=False, request_id=getattr(request.state, "request_id", None))
     return {"service": "model", "ok": r.get("ok"), "error_kind": r.get("error_kind")}
+
+
+class StageIn(BaseModel):
+    stage: str = Field(..., min_length=1, max_length=50)
+
+
+@router.put("/p/{clinic_slug}/{program_slug}/stage")
+def set_my_stage(clinic_slug: str, program_slug: str, body: StageIn, db: Session = Depends(get_db),
+                 user: User = Depends(get_current_user)):
+    """The patient moves their own plan to another stage (one of the program's published stages)."""
+    from app.database.models import CareProgramMembership
+    clinic, a = _ctx(db, user, clinic_slug, program_slug)
+    if a.role != "patient":
+        raise HTTPException(status_code=403, detail="Only the patient can change their stage")
+    valid = {c.slug for c in db.query(CareCourse).filter_by(program_id=a.program.id).all() if a.can_see_course(c)}
+    if body.stage not in valid:
+        raise HTTPException(status_code=422, detail="Unknown stage")
+    m = db.query(CareProgramMembership).filter_by(program_id=a.program.id, user_id=user.id).first()
+    now = datetime.utcnow()
+    if not m:
+        m = CareProgramMembership(id=uuid.uuid4(), program_id=a.program.id, user_id=user.id, care_role="patient",
+                                  joined_at=now)
+        db.add(m)
+    m.treatment_stage, m.updated_at = body.stage, now
+    db.commit()
+    return {"stage": m.treatment_stage}

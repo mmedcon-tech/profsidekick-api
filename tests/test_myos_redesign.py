@@ -153,3 +153,16 @@ def test_hanging_model_falls_back_within_one_shared_budget(myos, monkeypatch):
     r = myos["client"].post(f"{FERT}/ivf-care/messages", json={"content": "What happens during stimulation?"}).json()
     assert _t.monotonic() - t0 < 2.5
     assert r["reply"]["content"].startswith(chat.FALLBACK_INTRO)
+
+
+def test_patient_can_change_own_stage_supporter_cannot(myos):
+    c = myos["client"]
+    _as(myos["u"]["sofia"])
+    v = c.get(f"{FERT}/ivf-care").json()
+    slugs = [x["slug"] for x in v["courses"]]
+    assert v["stage"] in slugs
+    assert c.put(f"{FERT}/ivf-care/stage", json={"stage": slugs[-1]}).json()["stage"] == slugs[-1]
+    assert c.get(f"{FERT}/ivf-care").json()["stage"] == slugs[-1]
+    assert c.put(f"{FERT}/ivf-care/stage", json={"stage": "nope"}).status_code == 422
+    _as(myos["u"]["daniel"])
+    assert c.put(f"{FERT}/ivf-medication-preparation/stage", json={"stage": "guides"}).status_code == 403
