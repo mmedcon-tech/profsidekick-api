@@ -1,0 +1,64 @@
+[
+  {
+    "slug": "myos-fertility-sf",
+    "name": "MYOS Fertility Pilot · San Francisco",
+    "is_pilot": true,
+    "languages": [
+      "en"
+    ],
+    "branding": {
+      "primary_color": "#8B124B",
+      "accent": "#F3C969"
+    },
+    "response_expectation": "Your care team reads messages on weekdays, 8 am to 5 pm, and replies within one working day.",
+    "contact_routes": [
+      {
+        "key": "urgent",
+        "label": "Clinic nurse line",
+        "detail": "Use the number on your treatment plan",
+        "hours": "weekdays 8 am to 6 pm"
+      },
+      {
+        "key": "routine",
+        "label": "Ask my care team",
+        "detail": "In this app",
+        "hours": "weekdays 8 am to 5 pm"
+      }
+    ]
+  },
+  {
+    "slug": "burjeel-orthopaedics",
+    "name": "Burjeel Hospital · Orthopaedics, Abu Dhabi",
+    "neutral_name": "Orthopaedic partner hospital, Abu Dhabi",
+    "is_pilot": true,
+    "languages": [
+      "en",
+      "ar"
+    ],
+    "branding": {
+      "primary_color": "#8B124B",
+      "accent": "#F3C969"
+    },
+    "response_expectation": "The orthopaedic team reads messages daily and replies within one working day.",
+    "contact_routes": [
+      {
+        "key": "urgent",
+        "label": "Call the hospital",
+        "detail": "Use the number on your discharge letter",
+        "hours": "24 hours"
+      },
+      {
+        "key": "emergency",
+        "label": "Emergency",
+        "detail": "999 in the UAE",
+        "hours": "24 hours"
+      },
+      {
+        "key": "routine",
+        "label": "Ask my care team",
+        "detail": "In this app",
+        "hours": "daily"
+      }
+    ]
+  }
+]

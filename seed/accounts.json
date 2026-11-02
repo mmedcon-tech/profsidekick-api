@@ -1,0 +1,89 @@
+[
+  {
+    "key": "publisher",
+    "env": "SEED_PUBLISHER_EMAIL",
+    "email": "publisher@myos.test",
+    "username": "publisher",
+    "first": "Terezia",
+    "last": "Juras",
+    "role": "publisher"
+  },
+  {
+    "key": "sofia",
+    "env": "SEED_SUBSCRIBER_EMAIL",
+    "email": "sofia@myos.test",
+    "username": "sofia",
+    "first": "Sofia",
+    "last": "Marin",
+    "age": 33,
+    "role": "subscriber",
+    "programs": [
+      [
+        "myos-fertility-sf",
+        "ivf-care",
+        "patient",
+        "stimulation"
+      ],
+      [
+        "myos-fertility-sf",
+        "ivf-medication-preparation",
+        "patient",
+        null
+      ],
+      [
+        "myos-fertility-sf",
+        "egg-freezing",
+        "patient",
+        "consultation"
+      ]
+    ]
+  },
+  {
+    "key": "daniel",
+    "env": "SEED_SUPPORTER_EMAIL",
+    "email": "daniel@myos.test",
+    "username": "daniel",
+    "first": "Daniel",
+    "last": "Marin",
+    "role": "subscriber",
+    "support_for": "sofia",
+    "programs": [
+      [
+        "myos-fertility-sf",
+        "ivf-medication-preparation",
+        "partner",
+        null
+      ]
+    ]
+  },
+  {
+    "key": "ahmed",
+    "env": "SEED_ACL_EMAIL",
+    "email": "ahmed@myos.test",
+    "username": "ahmed",
+    "first": "Ahmed",
+    "last": "K.",
+    "age": 28,
+    "role": "subscriber",
+    "programs": [
+      [
+        "burjeel-orthopaedics",
+        "acl-reconstruction",
+        "patient",
+        "phase-2"
+      ]
+    ]
+  },
+  {
+    "key": "kim",
+    "email": "nurse.kim@myos.test",
+    "username": "nurse.kim",
+    "first": "Kim",
+    "last": "Nurse",
+    "role": "publisher",
+    "staff_display": "Nurse Kim",
+    "staff_of": [
+      "myos-fertility-sf"
+    ]
+  }
+]

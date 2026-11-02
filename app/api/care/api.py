@@ -71,7 +71,8 @@ def _date(v) -> Optional[datetime]:
 # ─────────────────────────── serializers ───────────────────────────
 def clinic_dict(c: Clinic, full: bool = False) -> Dict[str, Any]:
     d = {"id": str(c.id), "slug": c.slug, "name": c.name, "description": c.description,
-         "branding": c.branding or {}, "is_demo": c.is_demo}
+         "branding": c.branding or {}, "is_demo": c.is_demo, "is_pilot": bool(getattr(c, "is_pilot", False)),
+         "languages": getattr(c, "languages", None) or ["en"]}
     if full:
         d.update(contact_routes=c.contact_routes or [], response_expectation=c.response_expectation, status=c.status)
     return d
@@ -85,7 +86,9 @@ def template_dict(t: ProgramTemplate) -> Dict[str, Any]:
 def persona_dict(p: DoctorPersona, full: bool = False) -> Dict[str, Any]:
     d = {"id": str(p.id), "name": p.name, "title": p.title, "specialty": p.specialty, "is_demo": p.is_demo,
          "liveavatar_avatar_id": p.liveavatar_avatar_id, "variant": p.variant, "voice_id": p.voice_id,
-         "gender": p.gender, "avatar_id": str(p.avatar_id) if p.avatar_id else None}
+         "gender": p.gender, "avatar_id": str(p.avatar_id) if p.avatar_id else None,
+         "slug": p.slug, "photo": (p.profile or {}).get("photo"), "first_messages": p.first_messages or {},
+         "modes": (p.profile or {}).get("modes") or ["text"], "reviewed_by": (p.profile or {}).get("reviewed_by")}
     if full:
         d.update(prompt=p.prompt, status=p.status, clinic_id=str(p.clinic_id))
     return d
@@ -98,7 +101,7 @@ def program_dict(db: Session, p: CareProgram, clinic: Clinic) -> Dict[str, Any]:
             "enrollment_policy": p.enrollment_policy, "branding": {**(clinic.branding or {}), **(p.branding or {})},
             "position": p.position, "is_demo": p.is_demo or clinic.is_demo,
             "template": template_dict(t) if t else None, "persona": persona_dict(persona) if persona else None,
-            "clinic": clinic_dict(clinic), "legacy": p.slug == "ivf-care"}
+            "clinic": clinic_dict(clinic), "legacy": p.slug == "ivf-care" and clinic.slug == "demo-harbor"}
 
 
 def course_dict(c: CareCourse, lessons=None) -> Dict[str, Any]:
@@ -218,7 +221,7 @@ def _program_view(db: Session, clinic: Clinic, p: CareProgram, can_see_course, i
     fq = db.query(RedFlagRule).filter(RedFlagRule.program_id == p.id)
     if not include_drafts:
         vq = vq.filter(InstructionalVideo.status == "approved")
-        items_q = items_q.filter(CareContentItem.status == "approved")
+        items_q = items_q.filter(CareContentItem.status.in_(content.visible_statuses(clinic)))
         fq = fq.filter(RedFlagRule.status == "approved")
     in_scope = lambda cid: cid is None or cid in ids  # noqa: E731
     items = [i for i in items_q.order_by(CareContentItem.kind, CareContentItem.title).all()
@@ -251,6 +254,7 @@ def program_view(clinic_slug: str, program_slug: str, db: Session = Depends(get_
 def get_consultation(clinic_slug: str, program_slug: str, db: Session = Depends(get_db),
                      user: User = Depends(get_current_user)):
     clinic, a = _ctx(db, user, clinic_slug, program_slug)
+    a.require("chat_history")  # supporters get guides and videos only (server-side, not just a hidden menu)
     c = chat.get_or_create(db, user, a)
     return {"context": chat._context(clinic, a.program, c), "messages": [chat.msg_dict(m) for m in c.messages],
             "device": chat.device_dict(chat.verified_device(db, user, a))}
@@ -265,6 +269,7 @@ class SendBody(BaseModel):
 async def send_message(clinic_slug: str, program_slug: str, body: SendBody, request: Request,
                        db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     clinic, a = _ctx(db, user, clinic_slug, program_slug)
+    a.require("chat_history")
     return await chat.send(db, user, clinic, a, body.content, body.mode if body.mode in ("text", "voice", "avatar") else "text",
                            request_id=getattr(request.state, "request_id", None))
 
@@ -1228,3 +1233,86 @@ def integrations(live: bool = False, db: Session = Depends(get_db), user: User =
     from app.services.care.integrations import status_report
 
     return status_report(db, live=live)
+
+
+# ─────────────────────────── MYOS: first-run guide, history, home ───────────────────────────
+class OnboardingBody(BaseModel):
+    action: str  # complete | reset
+
+
+def _guide_kind(db: Session, user: User) -> str:
+    if user.role in ("publisher", "admin"):
+        return "publisher"
+    roles = {e.care_role for e in db.query(CareEntitlement).filter_by(user_id=user.id, revoked_at=None).all()}
+    return "supporter" if roles and roles <= {"supporter"} else "patient"
+
+
+@router.get("/me/onboarding")
+def get_onboarding(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    return {"completed_at": _iso(user.onboarding_completed_at), "show": user.onboarding_completed_at is None,
+            "kind": _guide_kind(db, user)}
+
+
+@router.post("/me/onboarding")
+def set_onboarding(body: OnboardingBody, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if body.action not in ("complete", "reset"):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Unknown action")
+    user.onboarding_completed_at = datetime.utcnow() if body.action == "complete" else None
+    db.commit()
+    return get_onboarding(db, user)
+
+
+@router.get("/me/conversations")
+def my_conversations(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """One entry per program conversation (newest first) with dates, answered-question count, the last
+    real exchange and this user's own requests. Three queries in total, no N+1."""
+    from sqlalchemy import func
+
+    progs = my_programs(db, user)["programs"]
+    by_id = {p["id"]: p for p in progs}
+    if not by_id:
+        return {"conversations": []}
+    convs = (db.query(Consultation).filter(Consultation.user_id == user.id,
+                                           Consultation.program_id.in_([uuid.UUID(i) for i in by_id])).all())
+    cids = [c.id for c in convs]
+    stats = dict((cid, (n, last)) for cid, n, last in (
+        db.query(ConsultationMessage.consultation_id, func.count(ConsultationMessage.id), func.max(ConsultationMessage.created_at))
+        .filter(ConsultationMessage.consultation_id.in_(cids), ConsultationMessage.sender == "assistant",
+                ConsultationMessage.provenance == "ai_generated")
+        .group_by(ConsultationMessage.consultation_id).all())) if cids else {}
+    reqs: Dict[str, list] = {}
+    for h in (db.query(CareHandoff).filter(CareHandoff.user_id == user.id,
+                                           CareHandoff.program_id.in_([uuid.UUID(i) for i in by_id]))
+              .order_by(CareHandoff.created_at.desc()).limit(200).all()):
+        reqs.setdefault(str(h.program_id), []).append(
+            {"id": str(h.id), "summary": h.summary, "state": "answered" if h.status in ("replied", "closed") else "waiting",
+             "created_at": _iso(h.created_at)})
+    out = []
+    for c in convs:
+        p = by_id[str(c.program_id)]
+        last = (db.query(ConsultationMessage).filter_by(consultation_id=c.id)
+                .order_by(ConsultationMessage.created_at.desc()).limit(2).all())
+        q = next((m for m in last if m.sender == "user"), None)
+        a = next((m for m in last if m.sender == "assistant"), None)
+        n, last_at = stats.get(c.id, (0, None))
+        out.append({"program": {"slug": p["slug"], "name": p["name"], "clinic": p["clinic"]["slug"]},
+                    "twin": p["persona"], "started_at": _iso(c.created_at),
+                    "last_activity_at": _iso(c.last_activity_at or last_at or c.created_at),
+                    "answered_questions": n,
+                    "last_exchange": {"question": q.content[:300], "answer": a.content[:300]} if q and a else None,
+                    "requests": reqs.get(str(c.program_id), [])})
+    for pid, p in by_id.items():
+        if not any(o["program"]["slug"] == p["slug"] for o in out) and reqs.get(pid):
+            out.append({"program": {"slug": p["slug"], "name": p["name"], "clinic": p["clinic"]["slug"]},
+                        "twin": p["persona"], "started_at": None, "last_activity_at": reqs[pid][0]["created_at"],
+                        "answered_questions": 0, "last_exchange": None, "requests": reqs[pid]})
+    out.sort(key=lambda o: o["last_activity_at"] or "", reverse=True)
+    return {"conversations": out}
+
+
+@router.get("/health/model")
+async def model_health(request: Request):
+    from app.services.care import health
+
+    r = await health.check_llm(live=False, request_id=getattr(request.state, "request_id", None))
+    return {"service": "model", "ok": r.get("ok"), "error_kind": r.get("error_kind")}

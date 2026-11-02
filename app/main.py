@@ -202,6 +202,14 @@ async def health_check():
         "app": settings.app_name
     }
 
+@app.get("/api/health")
+async def api_health():
+    """Liveness plus the model provider's configuration state (no live call, no secrets)."""
+    from app.services.care import health as care_health
+
+    llm = await care_health.check_llm(live=False)
+    return {"status": "healthy", "model_provider": {"ok": llm.get("ok"), "error_kind": llm.get("error_kind")}}
+
 @app.get("/")
 async def root():
     """Root endpoint with API information"""

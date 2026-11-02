@@ -180,7 +180,7 @@ def _source_only_reply(chunks: List[Dict[str, Any]]) -> Optional[str]:
         return None
     top = answers[0]
     body = top["content"].split("\n", 1)[-1].strip()
-    return ("(The AI model is unavailable right now, so here is the closest passage from the knowledge base, unedited.) "
+    return ("I can't reach the answer service right now. Here's the most relevant part of your clinic's guide: "
             f"{body[:1200]} [1]\n\nFor anything about your own treatment, please check with your fertility team.")
 
 

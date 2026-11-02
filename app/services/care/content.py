@@ -77,10 +77,30 @@ def pin_seeded(item: CareContentItem) -> None:
     item.content_sha256 = item.approved_sha256 = integrity.content_hash(item)
 
 
+PILOT_STATUSES = ("approved", "in_review")
+
+
+def visible_statuses(clinic) -> tuple:
+    """Approved content everywhere; "in clinical review" content only in Pilot workspaces (labelled
+    "Pilot content · in clinical review"). Recorded in docs/care/HIPAA_BLOCKERS.md and STATUS_MATRIX.md."""
+    return PILOT_STATUSES if getattr(clinic, "is_pilot", False) else ("approved",)
+
+
+def status_label(i: CareContentItem, now=None) -> str:
+    now = now or datetime.utcnow()
+    if i.expires_at and i.expires_at <= now:
+        return "Review overdue"
+    if i.status == "approved":
+        return f"Approved · reviewed {i.approved_at.strftime('%-d %b %Y')}" if i.approved_at else "Approved"
+    if i.status == "in_review":
+        return "Pilot content · in clinical review"
+    return "Draft" if i.status == "draft" else "Retired"
+
+
 def index_item(db: DBSession, item: CareContentItem) -> int:
-    """(Re)build chunks + embeddings for an approved item, tagged with its pinned hash."""
+    """(Re)build chunks + embeddings for an approved (or pinned in-review pilot) item, tagged with its pinned hash."""
     invalidate_item(db, item.id)
-    if item.status != "approved" or not item.approved_sha256:
+    if item.status not in PILOT_STATUSES or not item.approved_sha256:
         return 0
     parts = chunk_text(f"{item.title}\n\n{item.body}")
     vecs = _try_embed(parts) or [None] * len(parts)
@@ -100,6 +120,8 @@ def item_dict(i: CareContentItem) -> Dict[str, Any]:
         "content_sha256": i.content_sha256, "approved_sha256": i.approved_sha256,
         "expires_at": i.expires_at.isoformat() if i.expires_at else None, "is_demo": i.is_demo,
         "updated_at": i.updated_at.isoformat() if i.updated_at else None,
+        "source_url": i.source_url, "source_type": i.source_type, "status_label": status_label(i),
+        "edited_at": i.edited_at.isoformat() if i.edited_at else None,
     }
 
 
@@ -121,7 +143,7 @@ def transition(db: DBSession, item: CareContentItem, action: str, actor: User, r
         # supersede the previous active version in this lineage
         for old in (db.query(CareContentItem)
                     .filter(CareContentItem.lineage_id == item.lineage_id, CareContentItem.id != item.id,
-                            CareContentItem.status == "approved").all()):
+                            CareContentItem.status.in_(PILOT_STATUSES)).all()):
             old.status = "retired"
             old.updated_at = now
             invalidate_item(db, old.id)
@@ -158,11 +180,13 @@ def new_version(db: DBSession, item: CareContentItem, actor: User, **changes) ->
             program_id=item.program_id, course_id=item.course_id, kind=item.kind, title=item.title, body=item.body,
             language=item.language, audience=item.audience, applicability=item.applicability, source=item.source,
             status="draft", expires_at=item.expires_at, is_demo=item.is_demo, created_by=actor.id,
+            source_url=item.source_url, source_type=item.source_type, seed_key=item.seed_key,
             created_at=now, updated_at=now)
         for k, v in changes.items():
             setattr(target, k, v)
         target.content_sha256 = integrity.content_hash(target)
         db.add(target)
+    target.edited_at = now  # publisher edit: `npm run seed` never overwrites this lineage again
     record_audit_event(db, action="care_content.edit", entity_type="care_content_item", entity_id=target.id,
                        actor_user_id=actor.id, data={"version": target.version, "fields": sorted(changes)})
     return target
@@ -179,11 +203,14 @@ def retrieve(db: DBSession, *, program_id, clinic_id, visible_course_ids: Set, a
     if not (query or "").strip():
         return []
     now = datetime.utcnow()
+    from app.database.models import Clinic
+
+    statuses = visible_statuses(db.query(Clinic).filter_by(id=clinic_id).first())
     aud = ["both", "patient"] if audience == "patient" else ["both", audience]
     base = (db.query(CareContentChunk, CareContentItem)
             .join(CareContentItem, CareContentItem.id == CareContentChunk.item_id)
             .filter(CareContentItem.clinic_id == clinic_id, CareContentItem.program_id == program_id,
-                    CareContentItem.status == "approved",
+                    CareContentItem.status.in_(statuses),
                     CareContentItem.approved_sha256.isnot(None),
                     CareContentChunk.item_sha256 == CareContentItem.approved_sha256,
                     or_(CareContentItem.expires_at.is_(None), CareContentItem.expires_at > now),
@@ -229,6 +256,7 @@ def retrieve(db: DBSession, *, program_id, clinic_id, visible_course_ids: Set, a
         "approved_at": it.approved_at.date().isoformat() if it.approved_at else None, "is_demo": it.is_demo,
         "sha256": it.approved_sha256, "segment": ch.position + 1, "segments": max(counts.get(it.id, 1), ch.position + 1),
         "video_id": str(it.video_id) if it.video_id else None,
+        "source_url": it.source_url, "status_label": status_label(it, now),
     } for ch, it, s in ranked]
 
 

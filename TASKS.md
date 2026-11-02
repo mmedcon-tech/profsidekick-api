@@ -29,3 +29,12 @@ Test DB for pytest: `DATABASE_URL=postgresql://postgres:postgres@localhost:5435/
 | T20 | P2 | Real voice | ElevenLabs quota | Terezia | audible RMS > 0 | **blocked** | – | quota resets 30 Nov or paid plan |
 | T21 | P2 | Shared rate-limit store for multi-worker | – | agent | – | open | 0 | H12 |
 | T22 | P2 | Move e2e script into repo | – | agent | file in repo | done | 1 | `profsidekick-frontend/e2e/care-demo.mjs` (credentials read from /tmp, not committed) |
+
+## Round: MYOS redesign follow-ups (2026-11-02)
+
+- [ ] T23 (HIGH, do first after checkpoint) Performance: measure Studio + patient pages on `next dev` :3000 and prod build :3001 (Playwright timing, `curl -w`, backend logs), model time vs rest; record before table. Fix N+1, indexes, unbounded lists (pagination), waterfalls (combined dashboard endpoint), heavy bundles (dynamic import of three.js / avatar-1.glb), per-tenant/per-user reference caching, embedding in request paths; stream model replies, timeouts <= 5 s with friendly fallback. No new deps, no weaker entitlement checks. Add `e2e/perf-check.mjs` (fail > 5 s). Report before/after.
+- [ ] T24 UX navigation review `docs/UX_NAVIGATION_REVIEW.md` (frontend): GfG UX principles, audit of current patient + Studio nav, changes mapped to principles.
+- [ ] T25 Patient nav: "Talk to [twin]" primary above fold; mobile bottom tabs (Home · Talk · Guides · Care team) + menu; desktop visible side nav; active state, labelled icons, one title/primary button per page, actionable empty states, contrast, 44px targets, focus, aria. "My history" page.
+- [ ] T26 Studio drawer with active state; dashboard leads with "Needs your attention".
+- [ ] T27 First-run guide (custom, no dep), server-tracked `onboarding_completed_at` (API done: GET/POST /api/care/me/onboarding); Skip/Back/Next/Done; reopen from menu "How MYOS works" + Account settings; spotlight + small-screen card; patient/supporter/publisher variants; RTL + i18n; vitest + Playwright; screenshots per step.
+- [x] T28 Supporters cannot open or post to the AI conversation (server-side `chat_history` scope check).

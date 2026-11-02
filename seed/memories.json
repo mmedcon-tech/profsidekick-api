@@ -1,0 +1,58 @@
+[
+  {
+    "user": "sofia",
+    "twin": "dr-avery",
+    "category": "about_you",
+    "text": "Sofia is 33 and in her first IVF cycle.",
+    "source": "Conversation with Dr. Avery",
+    "days_ago": 6
+  },
+  {
+    "user": "sofia",
+    "twin": "dr-avery",
+    "category": "treatment",
+    "text": "Monitoring scan booked for Thursday morning.",
+    "source": "Conversation with Dr. Avery",
+    "days_ago": 2
+  },
+  {
+    "user": "sofia",
+    "twin": "nurse-jordan",
+    "category": "preferences",
+    "text": "Prefers step by step instructions with short sentences.",
+    "source": "Conversation with Nurse Jordan",
+    "days_ago": 5
+  },
+  {
+    "user": "sofia",
+    "twin": "nurse-jordan",
+    "category": "follow_up",
+    "text": "Asked how to travel with fridge medication next month.",
+    "source": "Conversation with Nurse Jordan",
+    "days_ago": 1
+  },
+  {
+    "user": "ahmed",
+    "twin": "dr-maryam",
+    "category": "about_you",
+    "text": "Ahmed plays football and wants to return to the game.",
+    "source": "Conversation with Dr. Maryam",
+    "days_ago": 10
+  },
+  {
+    "user": "ahmed",
+    "twin": "dr-maryam",
+    "category": "preferences",
+    "text": "Prefers Arabic for voice.",
+    "source": "Conversation with Dr. Maryam",
+    "days_ago": 4
+  },
+  {
+    "user": "publisher",
+    "twin": "dr-avery",
+    "category": "preferences",
+    "text": "Reviews new content on Monday mornings.",
+    "source": "Studio",
+    "days_ago": 7
+  }
+]

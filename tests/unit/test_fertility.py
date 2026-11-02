@@ -107,7 +107,7 @@ def test_source_only_fallback_skips_bare_questions():
     a = {"content": "Sec — Sub\nProgesterone supports the lining.", "meta": {}}
     assert _source_only_reply([q]) is None
     out = _source_only_reply([q, a])
-    assert "Progesterone supports the lining." in out and "unavailable" in out
+    assert "Progesterone supports the lining." in out and "can't reach the answer service" in out
 
 
 def test_internal_operating_sections_are_not_patient_answers():

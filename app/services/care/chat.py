@@ -6,6 +6,8 @@ client can drop a response that arrives after the user switched program.
 """
 from __future__ import annotations
 
+import asyncio
+
 import hashlib
 import logging
 import re
@@ -38,6 +40,10 @@ Hard rules (platform-enforced, they override any persona instruction):
 - You have no web access, no file access and no tools. Never claim to have looked anything up outside SOURCES."""
 
 _DELIM = re.compile(r"<<<\s*(END\s+)?SOURCE[^>]*>>>", re.I)
+
+
+FALLBACK_INTRO = "I can't reach the answer service right now. Here's the most relevant part of your clinic's guide:"
+LLM_TIMEOUT_S = float(__import__("os").getenv("CARE_LLM_TIMEOUT_S") or 5)
 
 
 def source_block(chunks: List[Dict[str, Any]]) -> str:
@@ -193,17 +199,20 @@ async def send(db: DBSession, user: User, clinic: Clinic, access: ProgramAccess,
             if health.key_state(settings.openai_api_key, "sk-") != "present":
                 provider = {"llm": "error", "error_kind": "config", "request_id": request_id}
             else:
-                try:
-                    reply = await _complete(msgs)
-                    provider = {"llm": "ok", "model": CHAT_MODEL, "request_id": request_id}
-                except Exception as exc:  # noqa: BLE001
-                    kind = health.classify(exc)
-                    logger.warning("care LLM call failed rid=%s kind=%s type=%s", request_id, kind, type(exc).__name__)
-                    provider = {"llm": "error", "error_kind": kind, "error": type(exc).__name__, "request_id": request_id}
+                provider = {"llm": "error", "error_kind": "unknown", "request_id": request_id}
+                for attempt in (1, 2):  # retry once, then fall back to the clinic's own passage
+                    try:
+                        reply = await asyncio.wait_for(_complete(msgs), timeout=LLM_TIMEOUT_S)
+                        provider = {"llm": "ok", "model": CHAT_MODEL, "request_id": request_id, "attempts": attempt}
+                        break
+                    except Exception as exc:  # noqa: BLE001
+                        kind = "timeout" if isinstance(exc, asyncio.TimeoutError) else health.classify(exc)
+                        logger.warning("care LLM call failed rid=%s attempt=%s kind=%s type=%s", request_id, attempt, kind,
+                                       type(exc).__name__)
+                        provider = {"llm": "error", "error_kind": kind, "error": type(exc).__name__, "request_id": request_id}
             if provider["llm"] != "ok":
                 top = chunks[0]
-                reply = ("(The AI model is unavailable, so this is the closest approved clinic passage, quoted "
-                         f"unedited — not a generated answer.)\n\n{top['content'][:1200]} [1]")
+                reply = (f"{FALLBACK_INTRO}\n\n{top['content'][:1200]} [1]")
                 sources = sources[:1]
                 prov = "source_quote"
             result = {"type": "education", "text": reply, "provenance": prov, "sources": sources,

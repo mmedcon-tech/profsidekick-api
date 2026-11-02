@@ -1,0 +1,37 @@
+{
+  "hfea_ivf": {
+    "title": "HFEA: In vitro fertilisation (IVF)",
+    "url": "https://www.hfea.gov.uk/treatments/explore-all-treatments/in-vitro-fertilisation-ivf/",
+    "verified": "2026-11-02, curl HTTP 200 with matching page title"
+  },
+  "hfea_eggs": {
+    "title": "HFEA: Egg freezing",
+    "url": "https://www.hfea.gov.uk/treatments/fertility-preservation/egg-freezing/",
+    "verified": "2026-11-02, curl HTTP 200 with matching page title"
+  },
+  "hfea_risks": {
+    "title": "HFEA: Risks of fertility treatment",
+    "url": "https://www.hfea.gov.uk/treatments/explore-all-treatments/risks-of-fertility-treatment/",
+    "verified": "2026-11-02, curl HTTP 200 with matching page title"
+  },
+  "hfea_drugs": {
+    "title": "HFEA: Fertility drugs",
+    "url": "https://www.hfea.gov.uk/treatments/explore-all-treatments/fertility-drugs/",
+    "verified": "2026-11-02, curl HTTP 200 with matching page title"
+  },
+  "rf_eggs": {
+    "title": "ReproductiveFacts.org: Can I freeze my eggs to use later if I'm not sick?",
+    "url": "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/can-i-freeze-my-eggs-to-use-later-if-im-not-sick/",
+    "verified": "2026-11-02, curl HTTP 200 with matching page title"
+  },
+  "rf_ohss": {
+    "title": "ReproductiveFacts.org: Ovarian hyperstimulation syndrome (OHSS)",
+    "url": "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/ovarian-hyperstimulation-syndrome-ohss/",
+    "verified": "2026-11-02, curl HTTP 200 with matching page title"
+  },
+  "rf_art": {
+    "title": "ReproductiveFacts.org: Assisted reproductive technologies booklet",
+    "url": "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/assisted-reproductive-technologies-booklet/",
+    "verified": "2026-11-02, curl HTTP 200 with matching page title"
+  }
+}

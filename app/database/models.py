@@ -57,6 +57,7 @@ class User(Base):
     
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
+    onboarding_completed_at = Column(DateTime, nullable=True)  # first-run guide finished or skipped
     
     # Relationships
     sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
@@ -1123,6 +1124,8 @@ class Clinic(Base):
     response_expectation = Column(Text, nullable=True)  # e.g. "Messages are read on weekdays 9-17"
     status = Column(String(20), nullable=False, default="active", server_default="active")
     is_demo = Column(Boolean, nullable=False, default=False, server_default="false")
+    is_pilot = Column(Boolean, nullable=False, default=False, server_default="false")
+    languages = Column(JSONB, nullable=False, default=lambda: ["en"], server_default='["en"]')
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
@@ -1170,6 +1173,9 @@ class DoctorPersona(Base):
     gender = Column(String(10), nullable=True)
     is_demo = Column(Boolean, nullable=False, default=False, server_default="false")
     status = Column(String(20), nullable=False, default="active", server_default="active")
+    slug = Column(String(100), nullable=True, unique=True, index=True)
+    profile = Column(JSONB, nullable=False, default=dict, server_default="{}")  # photo, voices, reviewed_by, likeness, consent, modes, programs
+    first_messages = Column(JSONB, nullable=False, default=dict, server_default="{}")  # {"en": "...", "ar": "..."}
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
 
@@ -1234,6 +1240,10 @@ class CareContentItem(Base):
     audience = Column(String(20), nullable=False, default="patient", server_default="patient")  # patient|caregiver|both|staff
     applicability = Column(Text, nullable=True)
     source = Column(String(500), nullable=True)
+    source_url = Column(String(500), nullable=True)
+    source_type = Column(String(30), nullable=True)  # clinic_material | public_guidance
+    seed_key = Column(String(150), nullable=True, index=True)
+    edited_at = Column(DateTime, nullable=True)  # set on publisher edits; seeding never overwrites these
     status = Column(String(20), nullable=False, default="draft", server_default="draft")  # draft|in_review|approved|retired
     reviewer = Column(String(255), nullable=True)
     approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

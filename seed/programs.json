@@ -1,0 +1,542 @@
+[
+  {
+    "workspace": "myos-fertility-sf",
+    "slug": "ivf-care",
+    "name": "IVF care",
+    "twin": "dr-avery",
+    "stages": [
+      [
+        "before-you-start",
+        "Before you start"
+      ],
+      [
+        "stimulation",
+        "Stimulation"
+      ],
+      [
+        "monitoring",
+        "Monitoring"
+      ],
+      [
+        "trigger-and-retrieval",
+        "Trigger and egg collection"
+      ],
+      [
+        "fertilisation",
+        "Fertilisation and embryo development"
+      ],
+      [
+        "embryo-transfer",
+        "Embryo transfer"
+      ],
+      [
+        "pregnancy-test",
+        "The wait and pregnancy test"
+      ]
+    ],
+    "items": [
+      {
+        "key": "ivf-overview",
+        "title": "What happens in an IVF cycle",
+        "body": "IVF usually has these steps: medication to help several eggs mature, scans and blood tests to check progress, a trigger injection, egg collection, fertilisation in the laboratory, and transfer of an embryo to the womb. Your clinic sets the exact plan and timing for you.",
+        "kind": "faq",
+        "stage": "before-you-start",
+        "source": "hfea_ivf",
+        "source_type": "public_guidance",
+        "suggested_questions": [
+          "What are the steps of IVF?",
+          "How long does one cycle take?"
+        ]
+      },
+      {
+        "key": "ivf-stimulation",
+        "title": "Ovarian stimulation",
+        "body": "During stimulation you take fertility medication, usually by injection, for around ten days to help several eggs mature at once. Your clinic chooses the medication and dose for you and may adjust it after your scans.",
+        "kind": "faq",
+        "stage": "stimulation",
+        "source": "hfea_drugs",
+        "source_type": "public_guidance",
+        "suggested_questions": [
+          "Why do I need injections?",
+          "Can my dose change?"
+        ]
+      },
+      {
+        "key": "ivf-monitoring",
+        "title": "Monitoring scans and blood tests",
+        "body": "While you take stimulation medication, the clinic checks the growth of your follicles with vaginal ultrasound scans and sometimes blood tests. These visits decide when you are ready for the trigger injection.",
+        "kind": "faq",
+        "stage": "monitoring",
+        "source": "hfea_ivf",
+        "source_type": "public_guidance",
+        "suggested_questions": [
+          "What do the scans show?"
+        ]
+      },
+      {
+        "key": "ivf-ohss",
+        "title": "Ovarian hyperstimulation syndrome (OHSS)",
+        "body": "OHSS is a possible reaction to fertility medication. Mild symptoms include bloating and discomfort. Severe abdominal pain, fast weight gain, shortness of breath or passing very little urine need urgent contact with your clinic.",
+        "kind": "faq",
+        "stage": "monitoring",
+        "source": "rf_ohss",
+        "source_type": "public_guidance",
+        "suggested_questions": [
+          "What are the signs of OHSS?"
+        ]
+      },
+      {
+        "key": "ivf-retrieval",
+        "title": "Trigger injection and egg collection",
+        "body": "When the follicles are ready, a trigger injection helps the eggs finish maturing. Egg collection is timed from the trigger and is done with a fine needle guided by ultrasound, usually under sedation.",
+        "kind": "faq",
+        "stage": "trigger-and-retrieval",
+        "source": "hfea_ivf",
+        "source_type": "public_guidance",
+        "suggested_questions": [
+          "Why is the trigger timing so exact?",
+          "What happens on collection day?"
+        ]
+      },
+      {
+        "key": "ivf-fertilisation",
+        "title": "Fertilisation and embryo development",
+        "body": "After collection, the eggs are mixed with sperm or injected with a single sperm (ICSI). The laboratory checks fertilisation the next day and watches the embryos develop for several days.",
+        "kind": "faq",
+        "stage": "fertilisation",
+        "source": "rf_art",
+        "source_type": "public_guidance",
+        "suggested_questions": [
+          "What is ICSI?"
+        ]
+      },
+      {
+        "key": "ivf-transfer",
+        "title": "Embryo transfer",
+        "body": "An embryo is placed in the womb through a thin tube. It is usually quick and does not need sedation. Your clinic will discuss how many embryos to transfer; transferring one reduces the risks of a multiple pregnancy.",
+        "kind": "faq",
+        "stage": "embryo-transfer",
+        "source": "hfea_risks",
+        "source_type": "public_guidance",
+        "suggested_questions": [
+          "How many embryos should be transferred?"
+        ]
+      },
+      {
+        "key": "ivf-test",
+        "title": "The wait and the pregnancy test",
+        "body": "Your clinic tells you when to take a pregnancy test after transfer. Keep taking any medication your clinic prescribed, such as progesterone, until they tell you to stop.",
+        "kind": "faq",
+        "stage": "pregnancy-test",
+        "source": "hfea_ivf",
+        "source_type": "public_guidance",
+        "suggested_questions": [
+          "When can I test?",
+          "Do I keep taking progesterone?"
+        ]
+      }
+    ],
+    "status": "published",
+    "position": 0,
+    "description": "Your IVF cycle, step by step, from your clinic's material.",
+    "red_flags": [
+      [
+        "Severe abdominal pain or bloating",
+        [
+          "severe abdominal pain",
+          "severe bloating",
+          "severe pain"
+        ],
+        "Call your clinic's nurse line now. If you cannot reach them and symptoms are severe, call emergency services.",
+        "urgent"
+      ],
+      [
+        "Shortness of breath",
+        [
+          "short of breath",
+          "shortness of breath",
+          "can't breathe",
+          "cannot breathe"
+        ],
+        "Call emergency services now.",
+        "emergency"
+      ]
+    ]
+  },
+  {
+    "workspace": "myos-fertility-sf",
+    "slug": "ivf-medication-preparation",
+    "name": "IVF medication preparation",
+    "twin": "nurse-jordan",
+    "stages": [
+      [
+        "guides",
+        "Medication guides"
+      ]
+    ],
+    "items": [
+      {
+        "key": "fsh-pen",
+        "title": "FSH pen",
+        "body": "What it does\nFSH medication helps several follicles grow at the same time.\n\nWhat to have ready\nThe pen, a new pen needle, an alcohol swab, your sharps container and your treatment plan.\n\nYour clinic's video\nShown below when your clinic adds it.\n\nManufacturer instructions\nUse the leaflet in the box. It is the reference for your exact device.\n\nStorage\nFollow the storage instructions in the box; many pens are kept in the fridge before first use.\n\nWhen to call your team\nIf the pen looks damaged, the liquid looks unusual, or you are not sure of your dose.",
+        "kind": "patient_instruction",
+        "stage": "guides",
+        "source": "hfea_drugs",
+        "source_type": "public_guidance",
+        "suggested_questions": []
+      },
+      {
+        "key": "mixing-medication",
+        "title": "Mixing medication",
+        "body": "What it does\nSome medicines come as a powder and liquid that you mix before injecting.\n\nWhat to have ready\nBoth vials, the syringe and needles from your clinic, swabs and your sharps container.\n\nYour clinic's video\nShown below when your clinic adds it.\n\nManufacturer instructions\nUse the leaflet in the box. It is the reference for your exact device.\n\nStorage\nStore unmixed vials as the box says. Use mixed medication straight away unless your clinic says otherwise.\n\nWhen to call your team\nIf the powder does not dissolve, or you are unsure how much to draw up.",
+        "kind": "patient_instruction",
+        "stage": "guides",
+        "source": "hfea_drugs",
+        "source_type": "public_guidance",
+        "suggested_questions": []
+      },
+      {
+        "key": "early-ovulation-prevention",
+        "title": "Medication to prevent early ovulation",
+        "body": "What it does\nThis medication stops your body releasing eggs before the clinic collects them.\n\nWhat to have ready\nThe prefilled syringe or pen, swabs and your sharps container.\n\nYour clinic's video\nShown below when your clinic adds it.\n\nManufacturer instructions\nUse the leaflet in the box. It is the reference for your exact device.\n\nStorage\nFollow the box instructions.\n\nWhen to call your team\nIf you miss a dose or inject at the wrong time, contact your care team now.",
+        "kind": "patient_instruction",
+        "stage": "guides",
+        "source": "hfea_drugs",
+        "source_type": "public_guidance",
+        "suggested_questions": []
+      },
+      {
+        "key": "trigger-injection",
+        "title": "Trigger injection",
+        "body": "What it does\nThe trigger helps the eggs finish maturing so they can be collected. Its timing is set exactly by your clinic.\n\nWhat to have ready\nThe trigger medication, needles, swabs, your sharps container and the exact time from your clinic.\n\nYour clinic's video\nShown below when your clinic adds it.\n\nManufacturer instructions\nUse the leaflet in the box. It is the reference for your exact device.\n\nStorage\nFollow the box instructions.\n\nWhen to call your team\nIf you are unsure of the time, or think you took it at the wrong time, contact your care team now.",
+        "kind": "patient_instruction",
+        "stage": "guides",
+        "source": "hfea_drugs",
+        "source_type": "public_guidance",
+        "suggested_questions": []
+      },
+      {
+        "key": "progesterone",
+        "title": "Progesterone",
+        "body": "What it does\nProgesterone supports the lining of the womb after egg collection and embryo transfer. It may be given as a vaginal gel or pessary, or as an injection.\n\nWhat to have ready\nThe form your clinic prescribed and your treatment plan.\n\nYour clinic's video\nShown below when your clinic adds it.\n\nManufacturer instructions\nUse the leaflet in the box. It is the reference for your exact device.\n\nStorage\nFollow the box instructions.\n\nWhen to call your team\nIf you have side effects, or if you are unsure whether to stop or continue progesterone.",
+        "kind": "patient_instruction",
+        "stage": "guides",
+        "source": "hfea_drugs",
+        "source_type": "public_guidance",
+        "suggested_questions": []
+      },
+      {
+        "key": "sharps-disposal",
+        "title": "Sharps and disposal",
+        "body": "Put used needles straight into a sharps container. Do not recap needles. Close the container when it is about three quarters full and return it as your clinic or pharmacy explains.",
+        "kind": "patient_instruction",
+        "stage": "guides",
+        "source": "hfea_drugs",
+        "source_type": "public_guidance",
+        "suggested_questions": []
+      },
+      {
+        "key": "travelling",
+        "title": "Travelling with your medication",
+        "body": "Carry your medication in your hand luggage with your prescription or clinic letter. Keep fridge items cool with a cool bag and plan dose times across time zones with your care team.",
+        "kind": "patient_instruction",
+        "stage": "guides",
+        "source": "hfea_drugs",
+        "source_type": "public_guidance",
+        "suggested_questions": []
+      },
+      {
+        "key": "missed-dose",
+        "title": "Missed or late dose",
+        "body": "If you missed a dose or took it late, contact your care team now. They will tell you what to do. Do not take an extra dose unless your care team tells you to.",
+        "kind": "patient_instruction",
+        "stage": "guides",
+        "source": "hfea_drugs",
+        "source_type": "public_guidance",
+        "suggested_questions": [
+          "I missed my dose, what now?"
+        ]
+      }
+    ],
+    "status": "published",
+    "position": 1,
+    "description": "Step by step guides for your fertility medication.",
+    "red_flags": [
+      [
+        "Missed or late dose",
+        [
+          "missed my dose",
+          "missed a dose",
+          "forgot my injection",
+          "late dose"
+        ],
+        "Contact your care team now.",
+        "same_day"
+      ]
+    ]
+  },
+  {
+    "workspace": "myos-fertility-sf",
+    "slug": "egg-freezing",
+    "name": "Egg freezing",
+    "twin": "dr-avery",
+    "stages": [
+      [
+        "consultation",
+        "Consultation and tests"
+      ],
+      [
+        "stimulation",
+        "Stimulation"
+      ],
+      [
+        "retrieval",
+        "Egg collection"
+      ],
+      [
+        "freezing-and-storage",
+        "Freezing and storage"
+      ],
+      [
+        "using-your-eggs",
+        "Using your eggs later"
+      ]
+    ],
+    "items": [
+      {
+        "key": "egg-what",
+        "title": "What egg freezing involves",
+        "body": "Egg freezing uses the same first steps as IVF: medication to mature several eggs, monitoring scans and egg collection. The eggs are then frozen by vitrification and stored for later use.",
+        "kind": "faq",
+        "stage": "consultation",
+        "source": "hfea_eggs",
+        "source_type": "public_guidance",
+        "suggested_questions": [
+          "What does egg freezing involve?"
+        ]
+      },
+      {
+        "key": "egg-age",
+        "title": "Age and success",
+        "body": "The chance of a future pregnancy from frozen eggs is higher when eggs are frozen at a younger age. Freezing eggs does not guarantee a future pregnancy.",
+        "kind": "faq",
+        "stage": "consultation",
+        "source": "rf_eggs",
+        "source_type": "public_guidance",
+        "suggested_questions": [
+          "Does my age matter?",
+          "How many eggs should I freeze?"
+        ]
+      },
+      {
+        "key": "egg-stim",
+        "title": "Stimulation for egg freezing",
+        "body": "You take stimulation medication for around ten to twelve days and have scans to check how the follicles are growing. Your clinic chooses the medication and dose.",
+        "kind": "faq",
+        "stage": "stimulation",
+        "source": "hfea_drugs",
+        "source_type": "public_guidance",
+        "suggested_questions": []
+      },
+      {
+        "key": "egg-collection",
+        "title": "Egg collection",
+        "body": "Eggs are collected with a fine needle under ultrasound guidance, usually with sedation. Plan to rest for the remainder of the day.",
+        "kind": "faq",
+        "stage": "retrieval",
+        "source": "hfea_eggs",
+        "source_type": "public_guidance",
+        "suggested_questions": []
+      },
+      {
+        "key": "egg-storage",
+        "title": "Freezing and storage",
+        "body": "Mature eggs are frozen quickly by vitrification and stored in liquid nitrogen. Your clinic explains storage consent, renewal and costs.",
+        "kind": "faq",
+        "stage": "freezing-and-storage",
+        "source": "hfea_eggs",
+        "source_type": "public_guidance",
+        "suggested_questions": [
+          "How long can my eggs be stored?"
+        ]
+      },
+      {
+        "key": "egg-use",
+        "title": "Using your eggs later",
+        "body": "When you want to use them, the eggs are thawed, fertilised in the laboratory and an embryo is transferred, as in IVF. Not every egg survives thawing.",
+        "kind": "faq",
+        "stage": "using-your-eggs",
+        "source": "rf_eggs",
+        "source_type": "public_guidance",
+        "suggested_questions": []
+      }
+    ],
+    "status": "published",
+    "position": 2,
+    "description": "What to expect when freezing your eggs."
+  },
+  {
+    "workspace": "burjeel-orthopaedics",
+    "slug": "acl-reconstruction",
+    "name": "ACL",
+    "twin": "dr-maryam",
+    "stages": [
+      [
+        "phase-0",
+        "Before surgery"
+      ],
+      [
+        "phase-1",
+        "Week 0 to 2: protect and move"
+      ],
+      [
+        "phase-2",
+        "Week 2 to 6: walking normally"
+      ],
+      [
+        "phase-3",
+        "Week 6 to 12: strength"
+      ],
+      [
+        "phase-4",
+        "Month 3 to 4: running"
+      ],
+      [
+        "phase-5",
+        "Month 4 to 6: agility"
+      ],
+      [
+        "phase-6",
+        "Month 6 to 9: return to sport"
+      ]
+    ],
+    "items": [
+      {
+        "key": "acl-phase-0",
+        "title": "Before surgery",
+        "body": "",
+        "kind": "patient_instruction",
+        "stage": "phase-0",
+        "source": null,
+        "source_type": "clinic_material",
+        "status": "draft",
+        "placeholder": true,
+        "suggested_questions": []
+      },
+      {
+        "key": "acl-phase-1",
+        "title": "Week 0 to 2: protect and move",
+        "body": "",
+        "kind": "patient_instruction",
+        "stage": "phase-1",
+        "source": null,
+        "source_type": "clinic_material",
+        "status": "draft",
+        "placeholder": true,
+        "suggested_questions": []
+      },
+      {
+        "key": "acl-phase-2",
+        "title": "Week 2 to 6: walking normally",
+        "body": "",
+        "kind": "patient_instruction",
+        "stage": "phase-2",
+        "source": null,
+        "source_type": "clinic_material",
+        "status": "draft",
+        "placeholder": true,
+        "suggested_questions": []
+      },
+      {
+        "key": "acl-phase-3",
+        "title": "Week 6 to 12: strength",
+        "body": "",
+        "kind": "patient_instruction",
+        "stage": "phase-3",
+        "source": null,
+        "source_type": "clinic_material",
+        "status": "draft",
+        "placeholder": true,
+        "suggested_questions": []
+      },
+      {
+        "key": "acl-phase-4",
+        "title": "Month 3 to 4: running",
+        "body": "",
+        "kind": "patient_instruction",
+        "stage": "phase-4",
+        "source": null,
+        "source_type": "clinic_material",
+        "status": "draft",
+        "placeholder": true,
+        "suggested_questions": []
+      },
+      {
+        "key": "acl-phase-5",
+        "title": "Month 4 to 6: agility",
+        "body": "",
+        "kind": "patient_instruction",
+        "stage": "phase-5",
+        "source": null,
+        "source_type": "clinic_material",
+        "status": "draft",
+        "placeholder": true,
+        "suggested_questions": []
+      },
+      {
+        "key": "acl-phase-6",
+        "title": "Month 6 to 9: return to sport",
+        "body": "",
+        "kind": "patient_instruction",
+        "stage": "phase-6",
+        "source": null,
+        "source_type": "clinic_material",
+        "status": "draft",
+        "placeholder": true,
+        "suggested_questions": []
+      }
+    ],
+    "status": "published",
+    "position": 0,
+    "description": "Your ACL recovery, phase by phase.",
+    "suggested_questions": [
+      "When can I bend my knee fully?",
+      "Is swelling normal?",
+      "When can I drive?",
+      "When can I go back to sport?"
+    ],
+    "red_flags": [
+      [
+        "Calf pain or swelling",
+        [
+          "calf pain",
+          "calf swelling",
+          "swollen calf"
+        ],
+        "Call the hospital now. If you are short of breath or have chest pain, call emergency services.",
+        "urgent"
+      ],
+      [
+        "Fever or a hot, red wound",
+        [
+          "fever",
+          "wound is hot",
+          "pus",
+          "wound red"
+        ],
+        "Call the hospital today.",
+        "same_day"
+      ],
+      [
+        "Chest pain or shortness of breath",
+        [
+          "chest pain",
+          "short of breath",
+          "shortness of breath"
+        ],
+        "Call emergency services now.",
+        "emergency"
+      ]
+    ]
+  }
+]

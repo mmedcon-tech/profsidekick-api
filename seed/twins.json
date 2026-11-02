@@ -1,0 +1,84 @@
+[
+  {
+    "slug": "dr-avery",
+    "workspace": "myos-fertility-sf",
+    "name": "Dr. Avery",
+    "title": "Fertility physician · AI",
+    "specialty": "Fertility",
+    "programs": [
+      "ivf-care",
+      "egg-freezing"
+    ],
+    "gender": "female",
+    "env_avatar": "HEYGEN_AVATAR_AVERY",
+    "env_voice": "HEYGEN_VOICE_AVERY",
+    "fallback_avatar": "0f563214-1cb5-4dc0-a2f9-43f44e5e6b57",
+    "fallback_avatar_name": "Judy Doctor Standing (LiveAvatar stock)",
+    "reviewed_by": "Awaiting clinician",
+    "likeness_source": "LiveAvatar stock avatar",
+    "consent_file": null,
+    "status": "in_review",
+    "modes": [
+      "text",
+      "voice",
+      "video"
+    ],
+    "first_messages": {
+      "en": "Hi {first_name}, I'm Dr. Avery, an AI guide for your fertility care. I answer from your clinic's approved material and tell you when something needs your care team. What would you like to go through today?"
+    }
+  },
+  {
+    "slug": "nurse-jordan",
+    "workspace": "myos-fertility-sf",
+    "name": "Nurse Jordan",
+    "title": "Fertility nurse educator · AI",
+    "specialty": "Fertility medication",
+    "programs": [
+      "ivf-medication-preparation"
+    ],
+    "gender": "female",
+    "env_avatar": "HEYGEN_AVATAR_JORDAN",
+    "env_voice": "HEYGEN_VOICE_JORDAN",
+    "fallback_avatar": "567e8371-f69f-49ec-9f2d-054083431165",
+    "fallback_avatar_name": "Ann Doctor Standing (LiveAvatar stock)",
+    "reviewed_by": "Awaiting clinician",
+    "likeness_source": "LiveAvatar stock avatar",
+    "consent_file": null,
+    "status": "in_review",
+    "modes": [
+      "text",
+      "voice",
+      "video"
+    ],
+    "first_messages": {
+      "en": "Hi {first_name}, I'm Nurse Jordan, an AI guide for preparing your medication. I can walk you through your clinic's guides step by step. Your own doses and times always come from your care team. Which medication are you getting ready?"
+    }
+  },
+  {
+    "slug": "dr-maryam",
+    "workspace": "burjeel-orthopaedics",
+    "name": "Dr. Maryam",
+    "title": "Orthopaedic surgeon · AI",
+    "specialty": "Orthopaedics",
+    "programs": [
+      "acl-reconstruction"
+    ],
+    "gender": "female",
+    "env_avatar": "HEYGEN_AVATAR_MARYAM",
+    "env_voice": "HEYGEN_VOICE_MARYAM",
+    "env_voice_ar": "HEYGEN_VOICE_MARYAM_AR",
+    "fallback_avatar": null,
+    "reviewed_by": "Awaiting clinician",
+    "likeness_source": "Not provided",
+    "consent_file": null,
+    "status": "in_review",
+    "modes": [
+      "text",
+      "voice"
+    ],
+    "first_messages": {
+      "en": "Hi {first_name}, I'm Dr. Maryam, an AI guide for your ACL recovery. I answer from your hospital's material and point you to your care team when needed. How is your knee today?",
+      "ar": "مرحبًا {first_name}، أنا الدكتورة مريم، مرشدة بالذكاء الاصطناعي لمرحلة تعافي الرباط الصليبي. أجيب من مواد المستشفى المعتمدة وأوجهك إلى فريق الرعاية عند الحاجة. كيف حال ركبتك اليوم؟"
+    }
+  }
+]
