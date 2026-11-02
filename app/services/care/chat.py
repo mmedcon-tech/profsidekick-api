@@ -7,6 +7,7 @@ client can drop a response that arrives after the user switched program.
 from __future__ import annotations
 
 import asyncio
+import time
 
 import hashlib
 import logging
@@ -154,8 +155,9 @@ async def send(db: DBSession, user: User, clinic: Clinic, access: ProgramAccess,
         result = {"type": rtype, "text": reply, "provenance": "clinic_configured", "handoff_offered": route.handoff_offered,
                   "reason": route.kind, "contact": _contact(clinic, route.contact_route) if rtype == "urgent_contact_path" else None}
     elif device_question(text) and not (device := verified_device(db, user, access)):
-        reply = ("Your clinic hasn't confirmed which medication or device you were given, so I won't guess — "
-                 "instructions differ between products. Please check the medication sheet from your clinic, or use "
+        reply = ("Your clinic hasn't confirmed which medication or device you were given, so I won't guess. "
+                 "Instructions differ between products. "
+                 "Please check the medication sheet from your clinic, or use "
                  "“Ask my care team” and they can confirm it for you.\n\n" + safety._expectation(clinic))
         result = {"type": "needs_clinician", "text": reply, "provenance": "clinic_configured", "handoff_offered": True,
                   "reason": "device_unverified"}
@@ -178,7 +180,7 @@ async def send(db: DBSession, user: User, clinic: Clinic, access: ProgramAccess,
                     "video_id": ch["video_id"], "excerpt": (ch["content"] or "")[:280]} for i, ch in enumerate(chunks)]
         if not chunks:
             reply = ("Your clinic hasn't provided approved information on that in this program, so I can't answer it "
-                     "reliably. You can ask your care team — use “Ask my care team” and I'll pass the question on.")
+                     "reliably. Use “Ask my care team” and I'll pass the question on.")
             route.handoff_offered = True
             result = {"type": "source_unavailable", "text": reply, "provenance": "clinic_configured",
                       "handoff_offered": True, "reason": "no_approved_source"}
@@ -200,9 +202,15 @@ async def send(db: DBSession, user: User, clinic: Clinic, access: ProgramAccess,
                 provider = {"llm": "error", "error_kind": "config", "request_id": request_id}
             else:
                 provider = {"llm": "error", "error_kind": "unknown", "request_id": request_id}
-                for attempt in (1, 2):  # retry once, then fall back to the clinic's own passage
+                # One shared budget of LLM_TIMEOUT_S (default 5 s) for both attempts, so the patient sees
+                # text (answer or the clinic's own passage) within ~5 s even when the model hangs.
+                deadline = time.monotonic() + LLM_TIMEOUT_S
+                for attempt in (1, 2):  # retry once if time is left, then fall back to the clinic's own passage
+                    left = deadline - time.monotonic()
+                    if left < 0.5:
+                        break
                     try:
-                        reply = await asyncio.wait_for(_complete(msgs), timeout=LLM_TIMEOUT_S)
+                        reply = await asyncio.wait_for(_complete(msgs), timeout=left)
                         provider = {"llm": "ok", "model": CHAT_MODEL, "request_id": request_id, "attempts": attempt}
                         break
                     except Exception as exc:  # noqa: BLE001

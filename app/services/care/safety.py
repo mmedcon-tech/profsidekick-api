@@ -112,7 +112,7 @@ def classify(db, clinic: Clinic, program: CareProgram, text: str, visible_course
     m = _hits(t, _PERSONAL)
     if m:
         return Route(PERSONAL, m, "routine", handoff_offered=True, contact_route="routine", reply=(
-            "That's a decision your care team needs to make with you — I can't work out doses, injection timing, "
+            "That's a decision your care team needs to make with you. I can't work out doses, injection timing, "
             "dose changes or whether a procedure suits you. I can send this question to your care team for review "
             "(use “Ask my care team”), and in the meantime the education material in this program may help you "
             f"prepare.\n\n{_expectation(clinic)}"))

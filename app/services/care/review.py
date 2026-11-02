@@ -73,7 +73,7 @@ def patient_view(db, h: CareHandoff, clinic: Clinic) -> Dict[str, Any]:
         "assignee": _name(db, h.assigned_to) or "Awaiting assignment", "closed_at": _iso(h.closed_at),
         "simulated": h.simulated, "response_expectation": safety._expectation(clinic),
         "events": _events(db, h, include_bodies=True),
-        "note": ("Simulated for this demo clinic — no message reached a real care team. Any staff activity shown is synthetic demo activity."
+        "note": ("Simulated for this clinic. No message reached a real care team. Any staff activity shown is simulated."
                  if h.simulated else "Received by the platform. A person has not necessarily seen it yet."),
     }
 

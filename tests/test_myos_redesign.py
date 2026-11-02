@@ -137,3 +137,19 @@ def test_seed_holds_exact_avery_first_message(myos):
         "Hi Sofia, I'm Dr. Avery, an AI guide for MYOS Fertility Pilot. I explain your clinic's approved material "
         "on IVF and egg freezing. For anything about your own dose, results or symptoms, I'll help you reach your "
         "care team. What's on your mind?")
+
+
+def test_hanging_model_falls_back_within_one_shared_budget(myos, monkeypatch):
+    import asyncio
+    import time as _t
+
+    async def hang(messages):
+        await asyncio.sleep(30)
+
+    monkeypatch.setattr(chat, "_complete", hang)
+    monkeypatch.setattr(chat, "LLM_TIMEOUT_S", 1.0)
+    _as(myos["u"]["sofia"])
+    t0 = _t.monotonic()
+    r = myos["client"].post(f"{FERT}/ivf-care/messages", json={"content": "What happens during stimulation?"}).json()
+    assert _t.monotonic() - t0 < 2.5
+    assert r["reply"]["content"].startswith(chat.FALLBACK_INTRO)
