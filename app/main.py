@@ -263,6 +263,8 @@ async def _real_patient_data_gate(request, call_next):
 
 from app.api.care.review_agents import router as care_review_agents_router  # noqa: E402
 app.include_router(care_review_agents_router)
+from app.api.care.community import router as care_community_router  # noqa: E402
+app.include_router(care_community_router)
 
 # Add middleware for request logging (optional)
 @app.middleware("http")

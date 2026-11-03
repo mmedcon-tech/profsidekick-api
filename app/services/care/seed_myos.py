@@ -261,7 +261,74 @@ def seed(db: DBSession, now: datetime | None = None) -> dict:
                           times_seen=1, last_confirmed_at=at, expires_at=at + timedelta(days=MEMORY_TTL_DAYS),
                           created_at=at, updated_at=at))
     db.commit()
+    stats["community_posts"] = _seed_community(db, now)
     return {"users": {k: v.email for k, v in users.items()}, "workspaces": list(clinics), **stats}
+
+
+# Clearly fictional example posts so the community is not empty in the pilot. Authors are example
+# accounts that cannot sign in (unusable password hash) and every post is marked is_fictional.
+COMMUNITY_EXAMPLES = [
+    ("example_willow", "Willow (example)", "starting-ivf",
+     "Example post: first consultation next week. What did you wish you had asked at yours?",
+     [("example_harbour", "Harbour (example)", "Example reply: I wrote my questions in my phone notes beforehand. It helped a lot.")]),
+    ("example_harbour", "Harbour (example)", "two-week-wait",
+     "Example post: day 5 of the wait. Long walks and a box set are getting me through. What helps you?", []),
+    ("example_willow", "Willow (example)", "supporters",
+     "Example post: partners, how do you look after yourselves while supporting someone through treatment?", []),
+]
+
+
+def _seed_community(db, now) -> int:
+    from app.database.models import CareCommunityPost, CareCommunityProfile, CareProgramMembership
+    from app.services.care import community
+
+    clinic = db.query(Clinic).filter_by(slug="myos-fertility-sf").first()
+    prog = db.query(CareProgram).filter_by(clinic_ref_id=clinic.id, slug="ivf-care").first() if clinic else None
+    if not prog:
+        return 0
+    if db.query(CareCommunityPost).filter_by(clinic_id=clinic.id, is_fictional=True).first():
+        return 0
+    spaces = {s.slug: s for s in community.ensure_spaces(db, clinic)}
+    profiles = {}
+
+    def prof(username, nick):
+        if username in profiles:
+            return profiles[username]
+        u = db.query(User).filter_by(username=username).first()
+        if not u:
+            u = User(id=uuid.uuid4(), username=username, email=f"{username}@example.invalid", password_hash="!",
+                     first_name="Example", last_name="Member", role="subscriber", email_verified=False,
+                     is_approved=False, created_at=now, updated_at=now)
+            db.add(u)
+            db.flush()
+        if not db.query(CareProgramMembership).filter_by(program_id=prog.id, user_id=u.id).first():
+            db.add(CareProgramMembership(id=uuid.uuid4(), program_id=prog.id, user_id=u.id, care_role="patient",
+                                         authorized_scopes=[], joined_at=now))
+        p = db.query(CareCommunityProfile).filter_by(clinic_id=clinic.id, user_id=u.id).first()
+        if not p:
+            p = CareCommunityProfile(id=uuid.uuid4(), clinic_id=clinic.id, user_id=u.id, nickname=nick,
+                                     nickname_key=nick.lower(), created_at=now)
+            db.add(p)
+            db.flush()
+        profiles[username] = (u, p)
+        return u, p
+
+    n = 0
+    for i, (uname, nick, space, body, replies) in enumerate(COMMUNITY_EXAMPLES):
+        u, p = prof(uname, nick)
+        top = CareCommunityPost(id=uuid.uuid4(), clinic_id=clinic.id, space_id=spaces[space].id, profile_id=p.id,
+                                author_user_id=u.id, body=body, is_fictional=True,
+                                created_at=now - timedelta(hours=30 - i * 5))
+        db.add(top)
+        n += 1
+        for j, (ru, rn, rb) in enumerate(replies):
+            ru_, rp = prof(ru, rn)
+            db.add(CareCommunityPost(id=uuid.uuid4(), clinic_id=clinic.id, space_id=spaces[space].id, parent_id=top.id,
+                                     profile_id=rp.id, author_user_id=ru_.id, body=rb, is_fictional=True,
+                                     created_at=now - timedelta(hours=29 - i * 5 - j)))
+            n += 1
+    db.commit()
+    return n
 
 
 LEGACY_MEMORY_TEXTS = (

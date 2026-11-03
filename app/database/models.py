@@ -1479,3 +1479,70 @@ class CareAgentAccessLog(Base):
     reason = Column(String(60), nullable=True)
     items = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+# ───────────── Peer community (clinic-scoped; never used for AI retrieval or Care Memory) ─────────────
+class CareCommunityProfile(Base):
+    """Pseudonymous community identity: one nickname per user per clinic. Real names are never shown."""
+    __tablename__ = "care_community_profiles"
+    __table_args__ = (UniqueConstraint("clinic_id", "user_id", name="uq_community_profile_user"),
+                      UniqueConstraint("clinic_id", "nickname_key", name="uq_community_profile_nickname"))
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    clinic_id = Column(UUID(as_uuid=True), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    nickname = Column(String(40), nullable=False)
+    nickname_key = Column(String(40), nullable=False)  # lower-cased for uniqueness
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class CareCommunitySpace(Base):
+    __tablename__ = "care_community_spaces"
+    __table_args__ = (UniqueConstraint("clinic_id", "slug", name="uq_community_space_slug"),)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    clinic_id = Column(UUID(as_uuid=True), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False, index=True)
+    slug = Column(String(60), nullable=False)
+    name = Column(String(120), nullable=False)
+    description = Column(Text, nullable=True)
+    sort = Column(Integer, nullable=False, default=0, server_default="0")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class CareCommunityPost(Base):
+    """A post (parent_id NULL) or a reply. Written by people only; AI replies are never stored here."""
+    __tablename__ = "care_community_posts"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    clinic_id = Column(UUID(as_uuid=True), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False, index=True)
+    space_id = Column(UUID(as_uuid=True), ForeignKey("care_community_spaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    parent_id = Column(UUID(as_uuid=True), ForeignKey("care_community_posts.id", ondelete="CASCADE"), nullable=True, index=True)
+    profile_id = Column(UUID(as_uuid=True), ForeignKey("care_community_profiles.id", ondelete="CASCADE"), nullable=False)
+    author_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    body = Column(Text, nullable=False)
+    badge = Column(String(20), nullable=True)  # clinician | moderator (authorised staff only)
+    medical_flag = Column(Boolean, nullable=False, default=False, server_default="false")
+    status = Column(String(20), nullable=False, default="visible", server_default="visible")  # visible | hidden
+    moderated_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    moderated_at = Column(DateTime, nullable=True)
+    is_fictional = Column(Boolean, nullable=False, default=False, server_default="false")
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class CareCommunityReaction(Base):
+    __tablename__ = "care_community_reactions"
+    __table_args__ = (UniqueConstraint("post_id", "user_id", "kind", name="uq_community_reaction"),)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    post_id = Column(UUID(as_uuid=True), ForeignKey("care_community_posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    kind = Column(String(20), nullable=False)  # heart | hug | same
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class CareCommunityReport(Base):
+    __tablename__ = "care_community_reports"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    clinic_id = Column(UUID(as_uuid=True), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False, index=True)
+    post_id = Column(UUID(as_uuid=True), ForeignKey("care_community_posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    reporter_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    reason = Column(String(300), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    resolved_at = Column(DateTime, nullable=True)
+    resolution = Column(String(20), nullable=True)  # hidden | restored | dismissed
