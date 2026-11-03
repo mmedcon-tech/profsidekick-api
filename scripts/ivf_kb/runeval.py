@@ -30,8 +30,7 @@ for q, exp in EVAL:
         row.update(latency=round(dt, 2), type=res.get("type"), prov=res.get("provenance"), cited=srcs, text=txt[:300])
         if exp == ["CARE"]:
             c_n += 1
-            ok = res.get("type") in ("needs_clinician", "urgent_contact_path") or bool(res.get("handoff_offered")) \
-                 or bool(re.search(r"care team|fertility team|your clinic|your doctor|nurse", txt, re.I))
+            ok = res.get("type") in ("needs_clinician", "urgent_contact_path") or bool(res.get("handoff_offered"))
             c_pass += ok; row["care_routed"] = ok
         else:
             g_n += 1
