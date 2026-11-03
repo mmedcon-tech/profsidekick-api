@@ -200,3 +200,29 @@ async def voice_available(clinic, live: bool = True) -> Dict[str, Any]:
     if not cached["ok"]:
         return {"available": False, "reason": cached.get("error_kind") or "unavailable"}
     return {"available": True, "reason": None}
+
+
+GATED_PREFIXES = ("/api/care/c/", "/api/care/agent/", "/api/care/fertility-consultations")
+
+
+def real_data_gate() -> Dict[str, Any]:
+    """Server-level gate for real patient data. In a production deployment, patient-facing care
+    routes stay closed until every blocker in docs/care/HIPAA_BLOCKERS.md is resolved and a named
+    person records the sign-off (MYOS_REAL_DATA_SIGNOFF). Demo deployments are never cleared for
+    real patient data and show the synthetic-data notice instead."""
+    from app.services.ai import registry
+
+    env = demo_environment()
+    if env["is_demo"]:
+        return {"environment": env["environment"], "real_patient_data": False, "open": True, "blockers": []}
+    blockers = []
+    if not (os.getenv("MYOS_REAL_DATA_SIGNOFF") or "").strip():
+        blockers.append("signoff_missing")
+    try:
+        cfg = registry.load()
+        if not any(registry.eligible(cfg, p, "chat", "phi") is None for p in (cfg.get("providers") or {})):
+            blockers.append("no_provider_cleared_for_phi")
+    except Exception:
+        blockers.append("registry_unreadable")
+    return {"environment": env["environment"], "real_patient_data": not blockers, "open": not blockers,
+            "blockers": blockers}

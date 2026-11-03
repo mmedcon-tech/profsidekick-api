@@ -24,6 +24,19 @@ services:
       - profsidekick-network
     restart: unless-stopped
 
+  mcp:
+    # Read-only MyOS agent tools over MCP (Part 4). Own image so the API's dependency pins are untouched.
+    # Not started by default:  docker compose --profile mcp run --rm -e MYOS_AGENT_TOKEN=... mcp
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    profiles: ["mcp"]
+    stdin_open: true
+    environment:
+      MYOS_API_URL: http://backend:8000
+    networks:
+      - profsidekick-network
+
   memory-worker:
     build: .
     command: ["python", "-m", "scripts.memory_worker"]

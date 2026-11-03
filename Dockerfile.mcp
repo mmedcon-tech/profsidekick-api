@@ -1,0 +1,8 @@
+FROM python:3.11-slim
+WORKDIR /srv
+COPY requirements-mcp.txt .
+RUN pip install --no-cache-dir -r requirements-mcp.txt
+COPY mcp_server/ /srv/
+RUN useradd -m mcp
+USER mcp
+CMD ["python", "/srv/server.py"]

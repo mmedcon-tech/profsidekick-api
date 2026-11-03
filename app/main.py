@@ -246,6 +246,21 @@ app.include_router(voice_authorize_router)
 app.include_router(fertility_router)
 app.include_router(care_router)
 app.include_router(care_phase3_router)
+@app.middleware("http")
+async def _real_patient_data_gate(request, call_next):
+    from app.services.care import health as _care_health
+
+    if request.url.path.startswith(_care_health.GATED_PREFIXES):
+        g = _care_health.real_data_gate()
+        if not g["open"]:
+            from fastapi.responses import JSONResponse
+
+            return JSONResponse(status_code=503, content={
+                "error": "real_patient_data_gate", "blockers": g["blockers"],
+                "message": "This deployment is not cleared for real patient data."})
+    return await call_next(request)
+
+
 from app.api.care.review_agents import router as care_review_agents_router  # noqa: E402
 app.include_router(care_review_agents_router)
 
