@@ -271,7 +271,7 @@ def revoke_device(assignment_id: uuid.UUID, db: Session = Depends(get_db), user:
 
 # ───────────── TTS reauthorization ─────────────
 @router.post("/p/{clinic_slug}/{program_slug}/tts-authorization")
-def tts_authorization(clinic_slug: str, program_slug: str, db: Session = Depends(get_db),
+async def tts_authorization(clinic_slug: str, program_slug: str, db: Session = Depends(get_db),
                       user: User = Depends(get_current_user)):
     """Re-checked on every program switch and after a TTS 401: confirms the
     caller may still use voice here and returns the clinic-configured voice.
@@ -283,7 +283,7 @@ def tts_authorization(clinic_slug: str, program_slug: str, db: Session = Depends
             "gender": (persona.gender if persona and persona.gender in ("male", "female") else "female"),
             "liveavatar_avatar_id": persona.liveavatar_avatar_id if persona else None,
             "authorized_until": int(time.time()) + TTS_AUTH_TTL_S,
-            "tts": health.key_state(__import__("os").getenv("ELEVENLABS_API_KEY")) == "present"}
+            "tts": (va := await health.voice_available(clinic))["available"], "tts_reason": va["reason"]}
 
 
 # ───────────── health / admin status / client telemetry ─────────────

@@ -172,3 +172,31 @@ def blocked_kind() -> Optional[str]:
 def reset_breaker() -> None:
     global _blocked_until, _blocked_kind
     _blocked_until, _blocked_kind = 0.0, None
+
+
+# --- Voice availability: "Play reply" is shown only when TTS is configured, eligible for the
+# clinic's data class, and not known to be out of quota / unauthorised. The live check is free
+# (models + subscription endpoints, no synthesis) and cached so it is not run per message.
+_TTS_CACHE: Dict[str, Any] = {"at": 0.0, "result": None}
+TTS_CACHE_S = 600
+
+
+def note_tts_result(result: Dict[str, Any]) -> None:
+    _TTS_CACHE.update(at=time.monotonic(), result=result)
+
+
+async def voice_available(clinic, live: bool = True) -> Dict[str, Any]:
+    from app.services.ai import registry
+
+    cfg = registry.load()
+    why = registry.eligible(cfg, "elevenlabs", "voice", registry.clinic_data_class(cfg, clinic))
+    if why:
+        return {"available": False, "reason": why}
+    cached = _TTS_CACHE["result"]
+    if cached is None or time.monotonic() - _TTS_CACHE["at"] > TTS_CACHE_S:
+        cached = await check_tts(live=live)
+        if live:
+            note_tts_result(cached)
+    if not cached["ok"]:
+        return {"available": False, "reason": cached.get("error_kind") or "unavailable"}
+    return {"available": True, "reason": None}
