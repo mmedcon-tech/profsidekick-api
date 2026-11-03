@@ -63,3 +63,6 @@ langchain-text-splitters
 
 # Document text extraction
 python-docx>=1.1.0
+
+# Doctor headshot checks (T30): Haar cascade face detection; pulls numpy
+opencv-python-headless==4.11.0.86

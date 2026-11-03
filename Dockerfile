@@ -15,6 +15,7 @@ RUN apt-get update \
         curl \
         poppler-utils \
         libreoffice \
+        ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Create and set working directory
