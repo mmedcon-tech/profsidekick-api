@@ -28,6 +28,7 @@ from app.database.models import (
     PatientContextEntry,
     SimulatedEscalation,
 )
+from app.services.care import guidance
 from app.services.fertility import doctor, knowledge, safety
 
 logger = logging.getLogger(__name__)
@@ -180,8 +181,8 @@ def _source_only_reply(chunks: List[Dict[str, Any]]) -> Optional[str]:
         return None
     top = answers[0]
     body = top["content"].split("\n", 1)[-1].strip()
-    return ("I can't reach the answer service right now. Here's the most relevant part of your clinic's guide: "
-            f"{body[:1200]} [1]\n\nFor anything about your own treatment, please check with your fertility team.")
+    return (f"{guidance.FALLBACK_LEAD} {body[:1200]} [1]\n\n"
+            "For anything about your own treatment, please check with your fertility team.")
 
 
 async def _refresh_summary(db: DBSession, c: Consultation) -> None:
@@ -223,6 +224,7 @@ async def send(db: DBSession, user_id, consultation_id, text: str, mode: str = "
     convo_text = _conversation_text(c, text)
     phase = knowledge.knowledge_phase()
     chunks = knowledge.retrieve(db, convo_text if len(text) < 40 else text, role=role, mode=mode, phase=phase)
+    chunks, policy_chunks = guidance.split(chunks)  # assistant instructions: policy only, never shown or quoted
     sources = [knowledge.source_citation(ch, i + 1) for i, ch in enumerate(chunks)]
     videos = knowledge.select_videos(db, chunks, convo_text)
 
@@ -249,6 +251,7 @@ async def send(db: DBSession, user_id, consultation_id, text: str, mode: str = "
             f"SAFETY CLASSIFICATION: {verdict.category}. {guard}", phase_rule,
             patient_context_block(db, user_id, membership) if membership else None,
             ("EARLIER CONVERSATION SUMMARY (AI-generated, unverified):\n" + c.summary) if c.summary else None,
+            guidance.guidance_block(policy_chunks) or None,
             "SOURCES:\n" + (source_block or "(no matching sources found — say when you are answering from general knowledge)"),
         ]))
         messages = [{"role": "system", "content": system}]
@@ -256,9 +259,11 @@ async def send(db: DBSession, user_id, consultation_id, text: str, mode: str = "
         messages.append({"role": "user", "content": text})
         try:
             reply = await _complete(messages)
+            sources = guidance.cited_only(reply, sources)
         except Exception as exc:  # noqa: BLE001
             logger.warning("fertility LLM call failed (%s); using source-only fallback", type(exc).__name__)
             reply = _source_only_reply(chunks)
+            sources = sources[:1]
             if reply is None:
                 raise HTTPException(status.HTTP_502_BAD_GATEWAY, "The AI service is unavailable. Please try again.")
 

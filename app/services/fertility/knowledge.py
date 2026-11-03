@@ -476,6 +476,10 @@ def source_citation(chunk: Dict[str, Any], n: int) -> Dict[str, Any]:
     m = chunk.get("meta") or {}
     return {
         "n": n,
+        "title": m.get("document_title") or m.get("citation_label") or m.get("section") or "Clinic guide",
+        "publisher": m.get("publisher") or m.get("source_name") or "Your clinic",
+        "status_label": {"approved": "Approved by clinic", "in_review": "In clinical review"}.get(
+            str(m.get("approval_status") or "").lower(), m.get("approval_status")),
         "label": m.get("citation_label") or m.get("section"),
         "document_title": m.get("document_title"),
         "section": m.get("section"),
