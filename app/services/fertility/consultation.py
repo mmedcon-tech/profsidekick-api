@@ -10,6 +10,7 @@ last few turns, and numbered SOURCES from backend-filtered retrieval.
 """
 
 from __future__ import annotations
+import asyncio
 
 import logging
 import uuid
@@ -34,6 +35,7 @@ from app.services.fertility import doctor, knowledge, safety
 logger = logging.getLogger(__name__)
 
 CHAT_MODEL = "gpt-4.1"
+LLM_TIMEOUT_S = float(__import__("os").getenv("CARE_LLM_TIMEOUT_S") or 5)
 RECENT_TURNS = 12          # messages sent verbatim
 SUMMARIZE_AFTER = 24       # older messages are folded into the summary
 
@@ -164,11 +166,22 @@ def patient_context_block(db: DBSession, user_id, membership: CareProgramMembers
 def _llm_client():
     from openai import AsyncOpenAI
 
-    return AsyncOpenAI(api_key=settings.openai_api_key)
+    return AsyncOpenAI(api_key=settings.openai_api_key, timeout=LLM_TIMEOUT_S, max_retries=0)
 
 
 async def _complete(messages: List[Dict[str, str]], temperature: float = 0.4) -> str:
-    resp = await _llm_client().chat.completions.create(model=CHAT_MODEL, messages=messages, temperature=temperature)
+    from app.services.care import health
+
+    if not health.openai_available():
+        raise RuntimeError("openai unavailable (billing/auth); knowledge-base fallback")
+    try:
+        resp = await asyncio.wait_for(
+            _llm_client().chat.completions.create(model=CHAT_MODEL, messages=messages, temperature=temperature),
+            timeout=LLM_TIMEOUT_S)
+    except Exception as exc:  # noqa: BLE001
+        if not isinstance(exc, asyncio.TimeoutError):
+            health.note_failure(exc)
+        raise
     return (resp.choices[0].message.content or "").strip()
 
 

@@ -116,3 +116,50 @@ def demo_environment() -> Dict[str, Any]:
     flag = (os.getenv("MYOS_ENVIRONMENT") or "demo").lower()
     return {"environment": flag, "is_demo": flag != "production",
             "notice": "Synthetic demo environment. Not for real patient data." if flag != "production" else None}
+
+
+# ───────────── non-retryable provider errors: circuit breaker ─────────────
+# Billing / quota / auth failures will not succeed on retry. After one, OpenAI calls (chat and embeddings)
+# are skipped for OPENAI_BLOCK_S so patients get the knowledge-base answer immediately.
+NON_RETRYABLE_CODES = {"insufficient_quota", "credit_balance_exhausted", "billing_hard_limit_reached",
+                       "billing_not_active", "account_deactivated", "invalid_api_key", "invalid_organization"}
+OPENAI_BLOCK_S = float(os.getenv("OPENAI_BLOCK_S") or 120)
+_blocked_until = 0.0
+_blocked_kind: Optional[str] = None
+
+
+def error_code(exc: BaseException) -> Optional[str]:
+    code = getattr(exc, "code", None)
+    body = getattr(exc, "body", None)
+    if not code and isinstance(body, dict):
+        err = body.get("error")
+        code = body.get("code") or (err.get("code") if isinstance(err, dict) else None)
+    return code if isinstance(code, str) else None
+
+
+def non_retryable(exc: BaseException) -> bool:
+    status_code = getattr(exc, "status_code", None)
+    return classify(exc) == "auth" or status_code == 402 or error_code(exc) in NON_RETRYABLE_CODES
+
+
+def note_failure(exc: BaseException) -> bool:
+    """Record a provider failure. Returns True (and opens the breaker) when retrying is pointless."""
+    global _blocked_until, _blocked_kind
+    if non_retryable(exc):
+        _blocked_until = time.monotonic() + OPENAI_BLOCK_S
+        _blocked_kind = "auth" if classify(exc) == "auth" else "quota"
+        return True
+    return False
+
+
+def openai_available() -> bool:
+    return time.monotonic() >= _blocked_until
+
+
+def blocked_kind() -> Optional[str]:
+    return None if openai_available() else _blocked_kind
+
+
+def reset_breaker() -> None:
+    global _blocked_until, _blocked_kind
+    _blocked_until, _blocked_kind = 0.0, None

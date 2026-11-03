@@ -244,11 +244,21 @@ def _try_embed(texts: List[str]) -> Optional[List[List[float]]]:
 
     if key_state(settings.openai_api_key, "sk-") != "present":
         return None  # no usable key configured: keyword retrieval, no wasted call
-    try:
-        from app.services.rag_service import _embed
+    from app.services.care import health
 
-        return _embed(texts)
+    if not health.openai_available():
+        return None  # billing/auth failure seen recently; rows stay embedding=NULL for the backfill
+    try:
+        from openai import OpenAI
+
+        client = OpenAI(api_key=settings.openai_api_key, timeout=3 if len(texts) <= 4 else 60, max_retries=0)
+        out: List[List[float]] = []
+        for i in range(0, len(texts), 256):
+            resp = client.embeddings.create(model="text-embedding-3-small", input=texts[i:i + 256])
+            out.extend(d.embedding for d in resp.data)
+        return out
     except Exception as exc:  # noqa: BLE001 — keyword retrieval still works
+        health.note_failure(exc)
         # provider messages can echo key fragments, so log the type and kind only
         logger.warning("fertility knowledge: embedding unavailable (%s, %s); keyword retrieval only",
                        type(exc).__name__, classify(exc))

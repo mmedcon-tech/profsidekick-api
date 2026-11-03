@@ -126,7 +126,7 @@ def _result_type(route) -> str:
 async def _complete(messages: List[Dict[str, str]]) -> str:
     from openai import AsyncOpenAI
 
-    resp = await AsyncOpenAI(api_key=settings.openai_api_key, timeout=40).chat.completions.create(
+    resp = await AsyncOpenAI(api_key=settings.openai_api_key, timeout=LLM_TIMEOUT_S, max_retries=0).chat.completions.create(
         model=CHAT_MODEL, messages=messages, temperature=0.3)
     return (resp.choices[0].message.content or "").strip()
 
@@ -208,6 +208,9 @@ async def send(db: DBSession, user: User, clinic: Clinic, access: ProgramAccess,
             prov = "ai_generated"
             if health.key_state(settings.openai_api_key, "sk-") != "present":
                 provider = {"llm": "error", "error_kind": "config", "request_id": request_id}
+            elif not health.openai_available():  # billing/auth failure seen recently: answer from the KB now
+                provider = {"llm": "error", "error_kind": health.blocked_kind() or "quota", "skipped": True,
+                            "request_id": request_id}
             else:
                 provider = {"llm": "error", "error_kind": "unknown", "request_id": request_id}
                 # One shared budget of LLM_TIMEOUT_S (default 5 s) for both attempts, so the patient sees
@@ -226,6 +229,9 @@ async def send(db: DBSession, user: User, clinic: Clinic, access: ProgramAccess,
                         logger.warning("care LLM call failed rid=%s attempt=%s kind=%s type=%s", request_id, attempt, kind,
                                        type(exc).__name__)
                         provider = {"llm": "error", "error_kind": kind, "error": type(exc).__name__, "request_id": request_id}
+                        if not isinstance(exc, asyncio.TimeoutError) and health.note_failure(exc):
+                            provider["error_kind"] = health.blocked_kind() or kind
+                            break  # credit/quota/auth errors never succeed on retry
             if provider["llm"] != "ok":
                 top = chunks[0]
                 reply = (f"{FALLBACK_INTRO}\n\n{top['content'][:1200]} [1]")
