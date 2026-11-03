@@ -25,6 +25,10 @@ _PERSONAL = (
     r"\bshould i (take|inject|use) (it|this|my|the)\b", r"\bwhen should i (inject|take|have my)\b", r"\b(what|which) (day|time) should i inject\b",
     r"\b(am i|would i be|is it right for me to be) (a )?(good |suitable |right )?(candidate|suitable|eligible)\b",
     r"\b(should|can) i (stop|start|switch|restart|come off|go on)\b",
+    r"\bshould (i|we) (transfer|freeze|thaw|do|try|use|choose|go with|have)\b.{0,40}\b(embryos?|eggs?|ivf|icsi|pgt|transfer|cycle|donor|protocol)",
+    r"\b(will|would|could|does|is) (ivf|icsi|this|treatment|it|the transfer|my cycle) (going to )?(work|succeed|be successful) for (me|us)\b",
+    r"\b(based on|with) my (amh|fsh|age|results?|levels?|scan|follicles?|embryos?)\b",
+    r"\bwhat are my (chances|odds)\b",
     r"\bis (it|this|the procedure|surgery) (safe|right|ok|okay) for me\b", r"\bshould i (have|get|do) (the|this|a)\b.{0,40}(surgery|procedure|filler|injection|treatment)",
 )
 

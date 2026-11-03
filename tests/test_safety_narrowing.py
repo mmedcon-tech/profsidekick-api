@@ -21,6 +21,9 @@ PERSONAL = [
     "Can I stop my injections and start smoking again?",
     "When should I inject my trigger?",
     "Should I increase my dose?",
+    "Should I transfer two embryos in my next cycle?",
+    "Based on my AMH of 0.8, will IVF work for me?",
+    "What are my chances of success?",
 ]
 
 
