@@ -134,6 +134,58 @@
           "When can I test?",
           "Do I keep taking progesterone?"
         ]
+      },
+      {
+        "key": "ivf-diet",
+        "title": "Eating well before and during IVF",
+        "kind": "faq",
+        "stage": "before-you-start",
+        "source": "nhs_trying",
+        "source_type": "public_guidance",
+        "body": "There is no special IVF diet. General NHS advice for anyone trying to get pregnant is to eat a healthy, balanced diet, aim for a healthy weight, and take a folic acid supplement and vitamin D. Being very underweight or overweight can make it harder to get pregnant. ReproductiveFacts.org notes there is no evidence that normal variations in diet affect fertility for people of a healthy weight with regular periods; the exception is a diet high in mercury (found in some seafood). There is no scientific evidence that supplements improve fertility. Ask your care team before starting any supplement or herbal remedy, and if you have a condition such as diabetes.",
+        "suggested_questions": [
+          "What should I eat during IVF?",
+          "Should I take supplements?"
+        ]
+      },
+      {
+        "key": "ivf-alcohol-smoking-caffeine",
+        "title": "Alcohol, smoking and caffeine during treatment",
+        "kind": "faq",
+        "stage": "before-you-start",
+        "source": "nice_factors",
+        "source_type": "public_guidance",
+        "body": "NICE advises that the safest approach when trying to get pregnant is not to drink alcohol. Smoking, including passive smoking, is likely to reduce fertility, and support to stop smoking is available. NICE says there is no consistent evidence linking caffeinated drinks (tea, coffee, energy drinks, colas) with fertility problems; ReproductiveFacts.org suggests avoiding heavy caffeine use. Recreational drugs should be avoided. Your clinic may give you its own advice for your treatment.",
+        "suggested_questions": [
+          "Can I drink coffee during IVF?",
+          "Does smoking affect IVF?"
+        ]
+      },
+      {
+        "key": "ivf-work",
+        "title": "Working during fertility treatment",
+        "kind": "faq",
+        "stage": "before-you-start",
+        "source": "tommys_work",
+        "source_type": "public_guidance",
+        "body": "IVF usually means several clinic appointments, some at short notice, and you may feel unable to work for a short time after egg collection. Tommy's suggests talking to your manager early about flexible working, working from home or using annual leave. Your employer should treat IVF appointments like other medical appointments, and sickness absence caused by treatment like other sick leave. Your clinic can tell you which days in your plan usually need time off.",
+        "suggested_questions": [
+          "Can I keep working during IVF?",
+          "Will I need time off after egg collection?"
+        ]
+      },
+      {
+        "key": "ivf-emotional-support",
+        "title": "Emotional support during treatment",
+        "kind": "faq",
+        "stage": "before-you-start",
+        "source": "hfea_support",
+        "source_type": "public_guidance",
+        "body": "Fertility treatment can be emotionally demanding. In the UK, every HFEA-licensed clinic must offer you the chance to speak to a counsellor before treatment. Support groups and talking to others who have been through treatment can help, and you can also ask your GP about NHS counselling or find an accredited infertility counsellor privately. If you ever feel unable to cope or unsafe, contact your GP, your clinic or emergency services.",
+        "suggested_questions": [
+          "Is there counselling during IVF?",
+          "How do I cope with the stress of IVF?"
+        ]
       }
     ],
     "status": "published",

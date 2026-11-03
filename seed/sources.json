@@ -33,5 +33,30 @@
     "title": "ReproductiveFacts.org: Assisted reproductive technologies booklet",
     "url": "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/assisted-reproductive-technologies-booklet/",
     "verified": "2026-11-02, curl HTTP 200 with matching page title"
+  },
+  "nhs_trying": {
+    "title": "NHS: Trying to get pregnant",
+    "url": "https://www.nhs.uk/pregnancy/trying-for-a-baby/trying-to-get-pregnant/",
+    "verified": "2026-11-03, curl HTTP 200 with matching page title"
+  },
+  "rf_natural": {
+    "title": "ReproductiveFacts.org: Optimizing natural fertility",
+    "url": "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/optimizing-natural-fertility/",
+    "verified": "2026-11-03, curl HTTP 200 with matching page title"
+  },
+  "nice_factors": {
+    "title": "NICE NG257: Advice about factors that can affect fertility",
+    "url": "https://www.nice.org.uk/guidance/ng257/chapter/Advice-about-factors-that-can-affect-fertility",
+    "verified": "2026-11-03, curl HTTP 200 with matching page title"
+  },
+  "hfea_support": {
+    "title": "HFEA: Getting emotional support",
+    "url": "https://www.hfea.gov.uk/treatments/explore-all-treatments/getting-emotional-support/",
+    "verified": "2026-11-03, curl HTTP 200 with matching page title"
+  },
+  "tommys_work": {
+    "title": "Tommy's: Fertility treatment and the workplace",
+    "url": "https://www.tommys.org/pregnancy-information/im-pregnant/pregnancy-work/fertility-treatment-work",
+    "verified": "2026-11-03, page content read via web search; direct curl blocked by Cloudflare (403)"
   }
 }
