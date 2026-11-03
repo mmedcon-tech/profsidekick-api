@@ -159,7 +159,7 @@ def _out(db, ctx: Ctx, p: CareCommunityPost, nick: Dict, mine: set, counts: Dict
         "id": str(p.id), "parent_id": str(p.parent_id) if p.parent_id else None,
         "author": nick.get(p.profile_id, "Member"), "badge": p.badge,
         "body": None if hidden and not ctx.can_moderate else p.body,
-        "hidden": hidden, "medical_flag": p.medical_flag, "fictional": p.is_fictional,
+        "hidden": hidden, "medical_flag": p.medical_flag, "example": p.is_fictional,
         "mine": p.author_user_id == ctx.user.id,
         "reactions": {k: counts.get((p.id, k), 0) for k in REACTIONS},
         "my_reactions": sorted(k for (pid, k) in mine if pid == p.id),
