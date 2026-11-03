@@ -135,9 +135,12 @@ def index_item(db: DBSession, item: CareContentItem) -> int:
         return 0
     parts = section_chunks(item.title, item.body)
     vecs = _try_embed(parts) or [None] * len(parts)
+    from app.services.ai import router as ai_router
+
+    em = ai_router.active_embedding_model()
     for i, (p, v) in enumerate(zip(parts, vecs)):
         db.add(CareContentChunk(id=uuid.uuid4(), item_id=item.id, position=i, content=p, embedding=v,
-                                item_sha256=item.approved_sha256))
+                                embedding_model=em if v is not None else None, item_sha256=item.approved_sha256))
     return len(parts)
 
 
@@ -150,6 +153,8 @@ def item_dict(i: CareContentItem) -> Dict[str, Any]:
         "approved_at": i.approved_at.isoformat() if i.approved_at else None,
         "content_sha256": i.content_sha256, "approved_sha256": i.approved_sha256,
         "expires_at": i.expires_at.isoformat() if i.expires_at else None, "is_demo": i.is_demo,
+        "effective_from": i.effective_from.isoformat() if i.effective_from else None,
+        "effective_to": i.effective_to.isoformat() if i.effective_to else None,
         "updated_at": i.updated_at.isoformat() if i.updated_at else None,
         "source_url": i.source_url, "source_type": i.source_type, "status_label": status_label(i),
         "edited_at": i.edited_at.isoformat() if i.edited_at else None,
@@ -253,6 +258,8 @@ def retrieve(db: DBSession, *, program_id, clinic_id, visible_course_ids: Set, a
                     CareContentItem.approved_sha256.isnot(None),
                     CareContentChunk.item_sha256 == CareContentItem.approved_sha256,
                     or_(CareContentItem.expires_at.is_(None), CareContentItem.expires_at > now),
+                    or_(CareContentItem.effective_from.is_(None), CareContentItem.effective_from <= now),
+                    or_(CareContentItem.effective_to.is_(None), CareContentItem.effective_to > now),
                     CareContentItem.audience.in_(aud),
                     or_(CareContentItem.course_id.is_(None),
                         CareContentItem.course_id.in_(list(visible_course_ids) or [uuid.uuid4()]))))
@@ -262,7 +269,11 @@ def retrieve(db: DBSession, *, program_id, clinic_id, visible_course_ids: Set, a
     vec = _embed_query(query)
     if vec:
         dist = CareContentChunk.embedding.cosine_distance(vec[0])
-        for ch, it, d in (base.add_columns(dist.label("d")).filter(CareContentChunk.embedding.isnot(None))
+        from app.services.ai import router as ai_router
+
+        # only vectors from the active embedding model are comparable with the query vector
+        for ch, it, d in (base.add_columns(dist.label("d")).filter(CareContentChunk.embedding.isnot(None),
+                                                                   CareContentChunk.embedding_model == ai_router.active_embedding_model())
                           .order_by(dist).limit(top_k * 4).all()):
             pool[ch.id] = (ch, it, 1.0 - float(d))
     # BM25 over every eligible passage in this program (programs hold hundreds of passages, not millions).

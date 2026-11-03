@@ -1251,6 +1251,8 @@ class CareContentItem(Base):
     approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     approved_at = Column(DateTime, nullable=True)
     expires_at = Column(DateTime, nullable=True)
+    effective_from = Column(DateTime, nullable=True)  # not served before this time
+    effective_to = Column(DateTime, nullable=True)  # not served from this time
     is_demo = Column(Boolean, nullable=False, default=False, server_default="false")
     video_id = Column(UUID(as_uuid=True), ForeignKey("instructional_videos.id", ondelete="CASCADE"), nullable=True)
     # SHA-256 of the canonical content (see services/care/integrity.py); approved_sha256 is pinned at approval.
@@ -1269,6 +1271,7 @@ class CareContentChunk(Base):
     content = Column(Text, nullable=False)
     embedding = Column(Vector(1536), nullable=True)
     item_sha256 = Column(String(64), nullable=True)  # hash of the item text this chunk was cut from
+    embedding_model = Column(String(120), nullable=True)  # "provider:model" that produced `embedding`
 
 
 class RedFlagRule(Base):

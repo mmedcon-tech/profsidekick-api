@@ -908,6 +908,8 @@ class ContentBody(BaseModel):
     source: Optional[str] = None
     source_url: Optional[str] = None
     expires_at: Optional[str] = None
+    effective_from: Optional[str] = None
+    effective_to: Optional[str] = None
     is_demo: Optional[bool] = None
 
 
@@ -936,6 +938,10 @@ def _content_changes(db, p: CareProgram, body: ContentBody) -> Dict[str, Any]:
         ch["course_id"] = cid
     if body.expires_at is not None:
         ch["expires_at"] = _date(body.expires_at)
+    if body.effective_from is not None:
+        ch["effective_from"] = _date(body.effective_from)
+    if body.effective_to is not None:
+        ch["effective_to"] = _date(body.effective_to)
     return ch
 
 
