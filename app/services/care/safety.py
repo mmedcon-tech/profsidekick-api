@@ -28,6 +28,19 @@ _PERSONAL = (
     r"\bis (it|this|the procedure|surgery) (safe|right|ok|okay) for me\b", r"\bshould i (have|get|do) (the|this|a)\b.{0,40}(surgery|procedure|filler|injection|treatment)",
 )
 
+# General lifestyle questions ("should I stop smoking before IVF?") are education, not a
+# personal treatment decision, unless they also mention medicine, doses or treatment.
+_LIFESTYLE = r"\b(should|can) i (stop|start|cut down|give up|quit|reduce|keep)\b.{0,20}\b(smok\w*|vap\w*|cigarettes?|drink\w*|alcohol|wine|beer|caffeine|coffee|tea|exercis\w*|running|gym|diet\w*|eating|sugar|sex)\b"
+_TREATMENT = r"\b(dose|doses|dosage|medication|medications|medicine|meds|pills?|tablets?|injections?|shots?|drugs?|hormones?|treatment|ivf|cycle|transfer|procedure|stims?|progesterone|estrogen|oestrogen)\b"
+
+
+def _lifestyle_only(t: str) -> bool:
+    if not re.search(_LIFESTYLE, t):
+        return False
+    rest = re.sub(_LIFESTYLE, " ", t)
+    rest = re.sub(r"\b(before|during|while|for|on|doing|having)\s+(ivf|treatment|a cycle|my cycle|the cycle)\b", " ", rest)
+    return not re.search(_TREATMENT, rest)
+
 
 @dataclass
 class Route:
@@ -110,6 +123,8 @@ def classify(db, clinic: Clinic, program: CareProgram, text: str, visible_course
             "emergency number now (112 in the EU, 911 in the US). Otherwise contact your clinic directly.\n\n"
             f"{_route_line(clinic, 'urgent')}\n\n{_expectation(clinic)}"))
     m = _hits(t, _PERSONAL)
+    if m and _lifestyle_only(t):
+        m = []
     if m:
         return Route(PERSONAL, m, "routine", handoff_offered=True, contact_route="routine", reply=(
             "That's a decision your care team needs to make with you. I can't work out doses, injection timing, "

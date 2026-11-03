@@ -88,9 +88,24 @@ _DEVICE = (r"\b(pen|pens|syringe|needle|vial|cartridge|injector|auto-?injector)\
            r"\b(inject\w*|injection)\b")
 
 
+# General information about injections ("what are the side effects of fertility injections?",
+# "why is trigger timing important?") is answered from approved guides. Anything about the
+# patient's own product, handling, dose or schedule still needs a clinic-verified device.
+_GENERAL_INFO = r"\b(side[- ]effects?|why|what (is|are|does|do)|purpose|important|how does|how do .{0,20} work|risks?|common)\b"
+_PERSONAL_CUE = r"\b(my|mine|i|i'm|i've|me|am i|should i|do i|can i)\b"
+_HANDLING = r"\b(how (do|to|should) (i|you) (inject|give|do|use|take)|where (do|should) i inject|how much|dose|doses|dosage|when (do|should) i)\b"
+
+
+def general_injection_info(text: str) -> bool:
+    t = (text or "").lower()
+    if any(re.search(p, t) for p in _DEVICE[:2]):
+        return False
+    return bool(re.search(_GENERAL_INFO, t)) and not re.search(_PERSONAL_CUE, t) and not re.search(_HANDLING, t)
+
+
 def device_question(text: str) -> bool:
     t = (text or "").lower()
-    return any(re.search(p, t) for p in _DEVICE)
+    return any(re.search(p, t) for p in _DEVICE) and not general_injection_info(t)
 
 
 def verified_device(db: DBSession, user: User, a: ProgramAccess) -> Optional[CareDeviceAssignment]:
