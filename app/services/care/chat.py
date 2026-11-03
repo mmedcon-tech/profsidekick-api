@@ -55,6 +55,22 @@ def contact_block(clinic: Clinic) -> str:
     return ("CLINIC CONTACT (published by the clinic):\n" + "\n".join(lines)) if lines else ""
 
 
+def _profile_block(db: DBSession, clinic: Clinic, user: User, persona) -> Optional[str]:
+    """Doctor Guidance Profile + the patient's saved preferences. Style tier only: below the
+    platform rules and the clinic's approved material."""
+    from app.services.care import agent_access
+
+    parts = []
+    g = agent_access.guidance_get(db, clinic.id, getattr(persona, "id", None)) or agent_access.guidance_get(db, clinic.id)
+    if g:
+        parts.append("Doctor's communication preferences (style only): " + g[:2000])
+    prefs = {r["key"]: r["value"] for r in agent_access.memory_list(db, user, clinic)
+             if r["key"] in ("preferred_name", "language", "reading_level", "communication_style", "accessibility")}
+    if prefs:
+        parts.append("Patient's saved preferences (style only): " + "; ".join(f"{k}={v}" for k, v in prefs.items()))
+    return "\n".join(parts) or None
+
+
 def patient_stage(db: DBSession, user: User, program: CareProgram) -> Optional[str]:
     from app.database.models import CareProgramMembership
 
@@ -261,7 +277,7 @@ async def send(db: DBSession, user: User, clinic: Clinic, access: ProgramAccess,
             block = source_block(chunks)
             recent = list(c.messages)[-RECENT_TURNS:]
             msgs = [{"role": "system", "content": "\n\n".join(filter(None, [
-                PLATFORM_RULES, style, f"Program: {program.name} at {clinic.name}.", dev,
+                PLATFORM_RULES, style, _profile_block(db, clinic, user, persona), f"Program: {program.name} at {clinic.name}.", dev,
                 f"Clinic response expectation: {safety._expectation(clinic)}",
                 contact_block(clinic) or None,
                 guidance.guidance_block(policy_chunks) or None,

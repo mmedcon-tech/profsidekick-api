@@ -1389,3 +1389,91 @@ class CareDeviceAssignment(Base):
     is_demo = Column(Boolean, nullable=False, default=False, server_default="false")
     revoked_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# ───────────── Part 3: clinician review of drafts and material ─────────────
+class CareReplyDraft(Base):
+    """A drafted reply to a patient's request. awaiting_review -> reviewed -> sent are separate
+    states; "reviewed" is bound to the exact body hash a clinician approved."""
+    __tablename__ = "care_reply_drafts"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    clinic_id = Column(UUID(as_uuid=True), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False, index=True)
+    handoff_id = Column(UUID(as_uuid=True), ForeignKey("care_handoffs.id", ondelete="CASCADE"), nullable=False, index=True)
+    body = Column(Text, nullable=False)
+    body_sha256 = Column(String(64), nullable=False)
+    state = Column(String(20), nullable=False, default="awaiting_review", server_default="awaiting_review")
+    author_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=True)
+    sent_at = Column(DateTime, nullable=True)
+    sent_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
+class CareClinicianApproval(Base):
+    """Who approved exactly which version (sha256) of a content item or reply draft, and when."""
+    __tablename__ = "care_clinician_approvals"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    clinic_id = Column(UUID(as_uuid=True), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False, index=True)
+    subject_type = Column(String(20), nullable=False)  # content_item | reply_draft
+    subject_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    sha256 = Column(String(64), nullable=False)
+    approver_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    approver_name = Column(String(255), nullable=False)
+    approved_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+# ───────────── Part 4: memory layers and scoped agent access ─────────────
+class CarePatientMemory(Base):
+    """Patient Care Memory: preferences the patient chose to save (never clinical decisions)."""
+    __tablename__ = "care_patient_memory"
+    __table_args__ = (UniqueConstraint("clinic_id", "user_id", "key", name="uq_care_patient_memory"),)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    clinic_id = Column(UUID(as_uuid=True), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    key = Column(String(60), nullable=False)
+    value = Column(String(500), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=True)
+
+
+class CareDoctorGuidance(Base):
+    """Doctor Guidance Profile: a clinician's standing communication preferences for the assistant.
+    Steers wording only; never overrides platform rules or approved clinic material."""
+    __tablename__ = "care_doctor_guidance"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    clinic_id = Column(UUID(as_uuid=True), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False, index=True)
+    persona_id = Column(UUID(as_uuid=True), nullable=True)
+    text = Column(Text, nullable=False)
+    status = Column(String(20), nullable=False, default="active", server_default="active")
+    updated_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class CareAgentGrant(Base):
+    """A patient's grant to an outside agent: read-only scopes, expiry, revocation. Only the
+    token's sha256 is stored."""
+    __tablename__ = "care_agent_grants"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    clinic_id = Column(UUID(as_uuid=True), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False, index=True)
+    patient_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    agent_label = Column(String(120), nullable=False)
+    scopes = Column(JSONB, nullable=False, default=list, server_default="[]")
+    token_sha256 = Column(String(64), nullable=False, unique=True)
+    expires_at = Column(DateTime, nullable=False)
+    revoked_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_used_at = Column(DateTime, nullable=True)
+
+
+class CareAgentAccessLog(Base):
+    """Patient-visible log of every agent call (allowed or denied). No content is stored."""
+    __tablename__ = "care_agent_access_log"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    grant_id = Column(UUID(as_uuid=True), ForeignKey("care_agent_grants.id", ondelete="CASCADE"), nullable=True, index=True)
+    patient_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    clinic_id = Column(UUID(as_uuid=True), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=True)
+    tool = Column(String(60), nullable=False)
+    outcome = Column(String(20), nullable=False)  # allowed | denied
+    reason = Column(String(60), nullable=True)
+    items = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)

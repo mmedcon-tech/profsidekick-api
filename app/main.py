@@ -246,6 +246,8 @@ app.include_router(voice_authorize_router)
 app.include_router(fertility_router)
 app.include_router(care_router)
 app.include_router(care_phase3_router)
+from app.api.care.review_agents import router as care_review_agents_router  # noqa: E402
+app.include_router(care_review_agents_router)
 
 # Add middleware for request logging (optional)
 @app.middleware("http")
