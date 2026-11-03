@@ -906,6 +906,7 @@ class ContentBody(BaseModel):
     audience: Optional[str] = None
     applicability: Optional[str] = None
     source: Optional[str] = None
+    source_url: Optional[str] = None
     expires_at: Optional[str] = None
     is_demo: Optional[bool] = None
 
@@ -915,6 +916,11 @@ def _content_changes(db, p: CareProgram, body: ContentBody) -> Dict[str, Any]:
     for k in ("title", "body", "language", "applicability", "source", "is_demo"):
         if getattr(body, k) is not None:
             ch[k] = getattr(body, k)
+    if body.source_url is not None:
+        u = body.source_url.strip()
+        if u and not u.startswith("https://"):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "source_url must be an https:// link")
+        ch["source_url"] = u[:500] or None
     if body.kind is not None:
         if body.kind not in content.KINDS:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"kind must be one of {content.KINDS}")

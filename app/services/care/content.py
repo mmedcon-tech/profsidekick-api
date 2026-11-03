@@ -34,7 +34,29 @@ TRANSITIONS = {
     "return_to_draft": ("in_review", "draft"),
     "approve": ("in_review", "approved"),
     "retire": ("approved", "retired"),
+    # Pilot workspaces only: show an in-review item, labelled "In clinical review", without clinical approval.
+    "pin_for_pilot": ("in_review", "in_review"),
 }
+
+
+def section_chunks(title: str, body: str, max_chars: int = 900) -> List[str]:
+    """Documents written with '## ' headings are chunked one section per chunk, each prefixed with the document
+    title and section heading, so a specific question (e.g. egg retrieval) matches the specific passage.
+    Anything else keeps the paragraph chunking."""
+    import re as _re
+
+    body = body or ""
+    if not _re.search(r"(?m)^## ", body):
+        return chunk_text(f"{title}\n\n{body}", max_chars)
+    out: List[str] = []
+    intro, *sections = _re.split(r"(?m)^## ", body)
+    if intro.strip():
+        out += chunk_text(f"{title}\n\n{intro.strip()}", max_chars)
+    for sec in sections:
+        head, _, text = sec.partition("\n")
+        prefix = f"{title}: {head.strip()}\n\n"
+        out += [prefix + c for c in chunk_text(text.strip(), max_chars - len(prefix))] or [prefix.strip()]
+    return out
 
 
 def chunk_text(text: str, max_chars: int = 900) -> List[str]:
@@ -102,7 +124,7 @@ def index_item(db: DBSession, item: CareContentItem) -> int:
     invalidate_item(db, item.id)
     if item.status not in PILOT_STATUSES or not item.approved_sha256:
         return 0
-    parts = chunk_text(f"{item.title}\n\n{item.body}")
+    parts = section_chunks(item.title, item.body)
     vecs = _try_embed(parts) or [None] * len(parts)
     for i, (p, v) in enumerate(zip(parts, vecs)):
         db.add(CareContentChunk(id=uuid.uuid4(), item_id=item.id, position=i, content=p, embedding=v,
@@ -150,6 +172,14 @@ def transition(db: DBSession, item: CareContentItem, action: str, actor: User, r
         item.content_sha256 = integrity.content_hash(item)
         item.approved_sha256 = item.content_sha256  # pin: what was reviewed is what gets retrieved
         item.status = to
+        index_item(db, item)
+    elif action == "pin_for_pilot":
+        from app.database.models import Clinic
+
+        clinic = db.query(Clinic).filter_by(id=item.clinic_id).first()
+        if not getattr(clinic, "is_pilot", False):
+            raise HTTPException(status.HTTP_409_CONFLICT, "In-review content can only be shown in a Pilot workspace")
+        item.content_sha256 = item.approved_sha256 = integrity.content_hash(item)  # pin exactly what is shown
         index_item(db, item)
     else:
         item.status = to
@@ -226,13 +256,21 @@ def retrieve(db: DBSession, *, program_id, clinic_id, visible_course_ids: Set, a
         for ch, it, d in (base.add_columns(dist.label("d")).filter(CareContentChunk.embedding.isnot(None))
                           .order_by(dist).limit(top_k * 4).all()):
             pool[ch.id] = (ch, it, 1.0 - float(d))
-    terms = _terms(query)
-    if terms:
-        for ch, it in base.filter(or_(*[CareContentChunk.content.ilike(f"%{t}%") for t in terms])).limit(100).all():
-            frac = sum(1 for t in terms if t in ch.content.lower()) / len(terms)
-            score = 0.25 + 0.5 * frac
-            if ch.id not in pool or pool[ch.id][2] < score:
-                pool[ch.id] = (ch, it, score)
+    # BM25 over every eligible passage in this program (programs hold hundreds of passages, not millions).
+    from app.services.care import lexical
+
+    cands = base.limit(5000).all()
+    lex = lexical.bm25(query, [ch.content for ch, _ in cands])
+    top = max(lex) if lex else 0.0
+    for (ch, it), s in zip(cands, lex):
+        if s <= 0:
+            continue
+        cov = lexical.coverage(query, ch.content)
+        score = 0.25 + 0.5 * (0.5 * (s / top) + 0.5 * cov)
+        if ch.id in pool:  # hybrid: semantic match confirmed by keywords ranks highest
+            vec_s = pool[ch.id][2]
+            score = max(vec_s, score) + 0.1 * min(vec_s, score)
+        pool[ch.id] = (ch, it, score)
     ranked = []
     for r in sorted(pool.values(), key=lambda x: x[2], reverse=True):
         if r[2] < 0.3:
