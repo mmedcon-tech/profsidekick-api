@@ -111,6 +111,23 @@ def pin_seeded(item: CareContentItem) -> None:
 PILOT_STATUSES = ("approved", "in_review")
 
 
+def item_stages(item) -> Optional[Set[str]]:
+    """Stage-specific items carry "stages: a, b" in applicability. None = applies at every stage."""
+    for line in (getattr(item, "applicability", None) or "").splitlines():
+        k, _, v = line.partition(":")
+        if k.strip().lower() == "stages":
+            vals = {s.strip().lower() for s in v.split(",") if s.strip()}
+            return vals or None
+    return None
+
+
+def stage_applies(item, stage: Optional[str]) -> bool:
+    """A stage-tagged item is served only to patients whose recorded treatment stage is listed.
+    An unknown stage sees only untagged (general) items."""
+    stages = item_stages(item)
+    return stages is None or (stage is not None and stage.strip().lower() in stages)
+
+
 def visible_statuses(clinic) -> tuple:
     """Approved content everywhere; "in clinical review" content only in Pilot workspaces (labelled
     "In clinical review"). Recorded in docs/care/HIPAA_BLOCKERS.md and STATUS_MATRIX.md."""
@@ -243,7 +260,7 @@ def _terms(q: str) -> List[str]:
 
 
 def retrieve(db: DBSession, *, program_id, clinic_id, visible_course_ids: Set, audience: str, query: str,
-             top_k: int = 4, lineage_ids: Optional[List] = None) -> List[Dict[str, Any]]:
+             top_k: int = 4, lineage_ids: Optional[List] = None, stage: Optional[str] = None) -> List[Dict[str, Any]]:
     if not (query or "").strip():
         return []
     now = datetime.utcnow()
@@ -295,6 +312,8 @@ def retrieve(db: DBSession, *, program_id, clinic_id, visible_course_ids: Set, a
     for r in sorted(pool.values(), key=lambda x: x[2], reverse=True):
         if r[2] < 0.3:
             break
+        if not stage_applies(r[1], stage):
+            continue
         if not integrity.verify(r[1]):  # row changed outside the workflow: never serve it
             logger.warning("care_content.hash_mismatch item=%s v%s - excluded from retrieval", r[1].id, r[1].version)
             continue
