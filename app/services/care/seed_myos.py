@@ -93,10 +93,11 @@ def seed(db: DBSession, now: datetime | None = None) -> dict:
         db.flush()
         clinics[ws["slug"]] = c
     for s in _load("accounts.json"):
-        for wslug in s.get("staff_of", []) + (list(clinics) if s["key"] == "publisher" else []):
+        for wslug in s.get("staff_of", []) + (list(clinics) if s["key"] in ("publisher", "myos_publisher") else []):
             if not db.query(ClinicStaff).filter_by(clinic_id=clinics[wslug].id, user_id=users[s["key"]].id).first():
                 db.add(ClinicStaff(id=uuid.uuid4(), clinic_id=clinics[wslug].id, user_id=users[s["key"]].id, can_manage=True,
                                    can_publish=True, can_approve=True, can_view_clinical=True, created_at=now))
+                db.flush()
 
     personas = {}
     for t in _load("twins.json"):
@@ -237,6 +238,13 @@ def seed(db: DBSession, now: datetime | None = None) -> dict:
     # Earlier seed versions wrote these; drop them unless the person edited one (edited_at set).
     for old in LEGACY_MEMORY_TEXTS:
         for row in db.query(UserMemory).filter_by(content=old).all():
+            if row.edited_at:
+                stats["kept_edited"] += 1
+            else:
+                db.delete(row)
+    # Studio memories used to sit on the real publisher login; they now belong to publisher@myos.test.
+    if "publisher" in users and "myos_publisher" in users and users["publisher"].id != users["myos_publisher"].id:
+        for row in db.query(UserMemory).filter_by(user_id=users["publisher"].id, topic="studio").all():
             if row.edited_at:
                 stats["kept_edited"] += 1
             else:

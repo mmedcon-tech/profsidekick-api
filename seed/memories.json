@@ -144,7 +144,7 @@
     "days_ago": 4
   },
   {
-    "user": "publisher",
+    "user": "myos_publisher",
     "twin": null,
     "category": "workspace",
     "category_label": "Workspace",
@@ -153,7 +153,7 @@
     "days_ago": 30
   },
   {
-    "user": "publisher",
+    "user": "myos_publisher",
     "twin": null,
     "category": "house_style",
     "category_label": "House style",
@@ -162,7 +162,7 @@
     "days_ago": 7
   },
   {
-    "user": "publisher",
+    "user": "myos_publisher",
     "twin": null,
     "category": "review",
     "category_label": "Review",
@@ -171,7 +171,7 @@
     "days_ago": 14
   },
   {
-    "user": "publisher",
+    "user": "myos_publisher",
     "twin": null,
     "category": "pipeline",
     "category_label": "Pipeline",
@@ -180,7 +180,7 @@
     "days_ago": 3
   },
   {
-    "user": "publisher",
+    "user": "myos_publisher",
     "twin": null,
     "category": "burjeel",
     "category_label": "Burjeel",
@@ -189,7 +189,7 @@
     "days_ago": 7
   },
   {
-    "user": "publisher",
+    "user": "myos_publisher",
     "twin": null,
     "category": "preferences",
     "category_label": "Preferences",

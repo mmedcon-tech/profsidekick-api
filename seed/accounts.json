@@ -9,6 +9,14 @@
     "role": "publisher"
   },
   {
+    "key": "myos_publisher",
+    "email": "publisher@myos.test",
+    "username": "myos_publisher",
+    "first": "Terezia",
+    "last": "Juras",
+    "role": "publisher"
+  },
+  {
     "key": "sofia",
     "env": "SEED_SUBSCRIBER_EMAIL",
     "email": "sofia@myos.test",

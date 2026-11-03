@@ -186,3 +186,15 @@ def test_seed_memories_exact_text_and_edits_survive(myos):
     db.refresh(clinic)
     assert clinic.name == "Renamed by staff" and out["kept_edited"] >= 1
     assert db.query(UserMemory).filter_by(id=first.id).one().content == "I'm 34."
+
+
+def test_publisher_test_account_owns_studio_memories(myos):
+    from app.database.models import ClinicStaff, UserMemory
+    db = myos["db"]
+    pub = db.query(User).filter_by(email="publisher@myos.test").one()
+    texts = [m.content for m in db.query(UserMemory).filter_by(user_id=pub.id, topic="studio")]
+    assert "Your main workspace is MYOS Fertility Clinic." in texts and len(texts) == 6
+    assert db.query(ClinicStaff).filter_by(user_id=pub.id).count() >= 2
+    other = myos["u"]["publisher"]
+    if other.id != pub.id:
+        assert db.query(UserMemory).filter_by(user_id=other.id, topic="studio").count() == 0
