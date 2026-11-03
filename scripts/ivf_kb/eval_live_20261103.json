@@ -1,0 +1,1300 @@
+{
+ "summary": {
+  "retrieval_top3_hit": "60/60",
+  "grounded": "56/60",
+  "care_routed": "4/4",
+  "latency_p50": 2.2,
+  "latency_p95": 4.16,
+  "latency_max": 5.87,
+  "over_5s": 1,
+  "eval_started_utc": "2026-11-03T09:29:17.935455"
+ },
+ "rows": [
+  {
+   "q": "What is IVF?",
+   "exp": [
+    "what-is-ivf"
+   ],
+   "top3": [
+    "What IVF is and the main steps",
+    "What IVF is and the main steps",
+    "What IVF is and the main steps"
+   ],
+   "retrieval_hit": true,
+   "latency": 3.09,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "What IVF is and the main steps"
+   ],
+   "text": "IVF (in vitro fertilisation) is a process where eggs are collected from the ovaries and fertilised with sperm in a laboratory. An embryo is then placed into the womb (uterus). IVF may be suggested for reasons like blocked fallopian tubes, ovulation problems, endometriosis, low sperm quality, or unex",
+   "grounded": true
+  },
+  {
+   "q": "What are the steps of an IVF cycle?",
+   "exp": [
+    "what-is-ivf"
+   ],
+   "top3": [
+    "What happens in an IVF cycle",
+    "What IVF is and the main steps",
+    "What IVF is and the main steps"
+   ],
+   "retrieval_hit": true,
+   "latency": 2.64,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "What IVF is and the main steps"
+   ],
+   "text": "The main steps of an IVF cycle are:\n\n1. Stimulating the ovaries so several eggs mature.\n2. Egg retrieval (egg collection).\n3. Fertilising the eggs in the laboratory.\n4. Transferring an embryo into the uterus.\n\nThere are also monitoring scans and blood tests, a trigger injection before egg collection",
+   "grounded": true
+  },
+  {
+   "q": "How long does one IVF cycle take?",
+   "exp": [
+    "what-is-ivf"
+   ],
+   "top3": [
+    "What IVF is and the main steps",
+    "What happens in an IVF cycle",
+    "What IVF is and the main steps"
+   ],
+   "retrieval_hit": true,
+   "latency": 1.89,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "What IVF is and the main steps"
+   ],
+   "text": "One IVF cycle usually takes several weeks. Stimulation lasts about 1 to 2 weeks, embryos develop in the lab for 2 to 6 days, and the pregnancy test is done roughly two weeks after embryo transfer. Your clinic will give you a personalised calendar for your cycle [1].",
+   "grounded": true
+  },
+  {
+   "q": "What does an AMH test measure?",
+   "exp": [
+    "before-ivf-tests",
+    "ovarian-reserve-age"
+   ],
+   "top3": [
+    "Tests before IVF: AMH, AFC, FSH, semen analysis and HSG",
+    "Monitoring scans and blood tests during stimulation",
+    "Tests before IVF: AMH, AFC, FSH, semen analysis and HSG"
+   ],
+   "retrieval_hit": true,
+   "latency": 2.47,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Tests before IVF: AMH, AFC, FSH, semen analysis and HSG"
+   ],
+   "text": "An AMH (anti-M\u00fcllerian hormone) test measures the level of a hormone made by the follicles in your ovaries. It relates to the number of eggs remaining (your ovarian reserve) and helps estimate how your ovaries may respond to stimulation. It does not, on its own, predict if you can get pregnant. Norm",
+   "grounded": true
+  },
+  {
+   "q": "What is an antral follicle count?",
+   "exp": [
+    "before-ivf-tests"
+   ],
+   "top3": [
+    "Tests before IVF: AMH, AFC, FSH, semen analysis and HSG",
+    "IVF glossary of common terms",
+    "Egg retrieval (egg collection): what happens"
+   ],
+   "retrieval_hit": true,
+   "latency": 2.6,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Tests before IVF: AMH, AFC, FSH, semen analysis and HSG",
+    "IVF glossary of common terms"
+   ],
+   "text": "An antral follicle count (AFC) is an ultrasound scan that counts the small follicles in your ovaries. Along with the AMH test, it helps predict whether you may have a low or high response to ovarian stimulation for IVF [1][2].",
+   "grounded": true
+  },
+  {
+   "q": "Why is FSH tested on day 3?",
+   "exp": [
+    "before-ivf-tests",
+    "ovarian-reserve-age"
+   ],
+   "top3": [
+    "Tests before IVF: AMH, AFC, FSH, semen analysis and HSG",
+    "IVF glossary of common terms",
+    "Tests before IVF: AMH, AFC, FSH, semen analysis and HSG"
+   ],
+   "retrieval_hit": true,
+   "latency": 3.85,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Tests before IVF: AMH, AFC, FSH, semen analysis and HSG"
+   ],
+   "text": "FSH (follicle-stimulating hormone) is tested on day 3 of your cycle because its level at this time can give information about your ovarian reserve. High day-3 FSH may suggest lower ovarian reserve, but a normal result does not rule out issues with ovarian reserve [1].",
+   "grounded": true
+  },
+  {
+   "q": "What does a semen analysis check?",
+   "exp": [
+    "before-ivf-tests",
+    "male-factor"
+   ],
+   "top3": [
+    "Tests before IVF: AMH, AFC, FSH, semen analysis and HSG",
+    "Tests before IVF: AMH, AFC, FSH, semen analysis and HSG",
+    "Tests before IVF: AMH, AFC, FSH, semen analysis and HSG"
+   ],
+   "retrieval_hit": true,
+   "latency": 2.2,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Tests before IVF: AMH, AFC, FSH, semen analysis and HSG"
+   ],
+   "text": "A semen analysis checks the amount of sperm, how they move (motility), and their shape (morphology). Men may also have hormone blood tests as part of this evaluation [1].",
+   "grounded": true
+  },
+  {
+   "q": "What is an HSG test?",
+   "exp": [
+    "before-ivf-tests"
+   ],
+   "top3": [
+    "Tests before IVF: AMH, AFC, FSH, semen analysis and HSG",
+    "Tests before IVF: AMH, AFC, FSH, semen analysis and HSG",
+    "Tests before IVF: AMH, AFC, FSH, semen analysis and HSG"
+   ],
+   "retrieval_hit": true,
+   "latency": 4.05,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Tests before IVF: AMH, AFC, FSH, semen analysis and HSG"
+   ],
+   "text": "An HSG (hysterosalpingogram) is an X-ray test where fluid is placed into the uterus to show its shape and check if the fallopian tubes are open. It helps assess the womb and tubes before IVF. Alternatives include special ultrasound scans, hysteroscopy, or laparoscopy [1].",
+   "grounded": true
+  },
+  {
+   "q": "What is ovarian reserve?",
+   "exp": [
+    "ovarian-reserve-age"
+   ],
+   "top3": [
+    "Ovarian reserve and age",
+    "Ovarian reserve and age",
+    "Ovarian reserve and age"
+   ],
+   "retrieval_hit": true,
+   "latency": 2.79,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Ovarian reserve and age"
+   ],
+   "text": "Ovarian reserve describes the number (and broadly the quality) of eggs remaining in your ovaries. People are born with all their eggs, and the number declines over time\u2014gradually until the early 30s, then faster after the mid-30s [1].",
+   "grounded": true
+  },
+  {
+   "q": "How does age affect fertility?",
+   "exp": [
+    "ovarian-reserve-age",
+    "success-rates"
+   ],
+   "top3": [
+    "Ovarian reserve and age",
+    "Ovarian reserve and age",
+    "Egg freezing (oocyte cryopreservation)"
+   ],
+   "retrieval_hit": true,
+   "latency": 1.93,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Ovarian reserve and age"
+   ],
+   "text": "Fertility declines with age. For healthy couples in their 20s or early 30s, the chance of pregnancy is about 25\u201330% per cycle. This chance drops in the early 30s and declines faster after age 37. By age 40, it is less than 10% per cycle. The risk of miscarriage and chromosome differences also increa",
+   "grounded": true
+  },
+  {
+   "q": "What is the difference between a long protocol and an antagonist protocol?",
+   "exp": [
+    "protocols"
+   ],
+   "top3": [
+    "IVF stimulation protocols (long, short, antagonist)",
+    "IVF stimulation protocols (long, short, antagonist)",
+    "IVF stimulation protocols (long, short, antagonist)"
+   ],
+   "retrieval_hit": true,
+   "latency": 2.35,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "IVF stimulation protocols (long, short, antagonist)",
+    "IVF stimulation protocols (long, short, antagonist)"
+   ],
+   "text": "A long protocol starts with suppression medicine before stimulation to quieten your natural hormone signals. In an antagonist protocol, stimulation injections begin first, and then an antagonist medicine is added for a few days to prevent early ovulation. Both are different ways to achieve the same ",
+   "grounded": true
+  },
+  {
+   "q": "What is pituitary suppression?",
+   "exp": [
+    "protocols"
+   ],
+   "top3": [
+    "IVF stimulation protocols (long, short, antagonist)",
+    "IVF stimulation protocols (long, short, antagonist)",
+    "OHSS (ovarian hyperstimulation syndrome): symptoms, warning signs and prevention"
+   ],
+   "retrieval_hit": true,
+   "latency": 1.78,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "IVF stimulation protocols (long, short, antagonist)"
+   ],
+   "text": "Pituitary suppression is when medicines are used to temporarily quieten your natural hormone signals from the pituitary gland. This lets your care team control when your eggs mature during IVF treatment [1].",
+   "grounded": true
+  },
+  {
+   "q": "What medicines are used during IVF?",
+   "exp": [
+    "medications"
+   ],
+   "top3": [
+    "IVF medications and common side effects",
+    "Lifestyle before and during IVF: weight, smoking, alcohol, caffeine",
+    "IVF medications and common side effects"
+   ],
+   "retrieval_hit": true,
+   "latency": 2.44,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "IVF medications and common side effects"
+   ],
+   "text": "During IVF, common medicines include:\n\n- Gonadotropin injections (FSH, sometimes with LH) to help grow multiple follicles.\n- GnRH agonists or antagonists to prevent early ovulation.\n- A trigger injection (hCG or a GnRH agonist) to finish egg maturation before collection.\n- Progesterone (injection, v",
+   "grounded": true
+  },
+  {
+   "q": "What are the side effects of fertility injections?",
+   "exp": [
+    "medications"
+   ],
+   "top3": [
+    "IVF medications and common side effects",
+    "IVF medications and common side effects",
+    "IVF medications and common side effects"
+   ],
+   "retrieval_hit": true,
+   "latency": 0.16,
+   "type": "needs_clinician",
+   "prov": "clinic_configured",
+   "cited": [],
+   "text": "Your clinic hasn't confirmed which medication or device you were given, so I won't guess. Instructions differ between products. Please check the medication sheet from your clinic, or use \u201cAsk my care team\u201d and they can confirm it for you.\n\nYour care team reads messages on weekdays, 8 am to 5 pm, and",
+   "grounded": false
+  },
+  {
+   "q": "Why do I need so many monitoring scans?",
+   "exp": [
+    "monitoring"
+   ],
+   "top3": [
+    "Monitoring scans and blood tests during stimulation",
+    "Monitoring scans and blood tests during stimulation",
+    "Monitoring scans and blood tests"
+   ],
+   "retrieval_hit": true,
+   "latency": 1.86,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Monitoring scans and blood tests during stimulation",
+    "Monitoring scans and blood tests"
+   ],
+   "text": "During stimulation, you need several monitoring scans and blood tests so your care team can check how your follicles are growing and how your body is responding. This helps them adjust your medication if needed, make sure eggs grow at the right speed, and reduce risks like OHSS (ovarian hyperstimula",
+   "grounded": true
+  },
+  {
+   "q": "How big do follicles need to be before the trigger?",
+   "exp": [
+    "monitoring",
+    "trigger"
+   ],
+   "top3": [
+    "Monitoring scans and blood tests during stimulation",
+    "Trigger injection and egg collection",
+    "The trigger injection"
+   ],
+   "retrieval_hit": true,
+   "latency": 1.72,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Monitoring scans and blood tests during stimulation"
+   ],
+   "text": "Follicles are usually ready for the trigger injection when they are about 18\u201320 mm in size. Your care team will decide the exact timing based on your scans and blood tests [1].",
+   "grounded": true
+  },
+  {
+   "q": "What does the trigger shot do?",
+   "exp": [
+    "trigger"
+   ],
+   "top3": [
+    "The trigger injection",
+    "The trigger injection",
+    "Trigger injection and egg collection"
+   ],
+   "retrieval_hit": true,
+   "latency": 2.03,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "The trigger injection",
+    "Trigger injection and egg collection"
+   ],
+   "text": "The trigger shot helps your eggs finish maturing so they can be collected. It is timed carefully\u2014egg collection happens about 36 hours after the trigger, so the exact timing is important for the best chance of retrieving mature eggs [2][3].",
+   "grounded": true
+  },
+  {
+   "q": "Why is the timing of the trigger injection so important?",
+   "exp": [
+    "trigger"
+   ],
+   "top3": [
+    "The trigger injection",
+    "Trigger injection and egg collection",
+    "The trigger injection"
+   ],
+   "retrieval_hit": true,
+   "latency": 0.02,
+   "type": "needs_clinician",
+   "prov": "clinic_configured",
+   "cited": [],
+   "text": "Your clinic hasn't confirmed which medication or device you were given, so I won't guess. Instructions differ between products. Please check the medication sheet from your clinic, or use \u201cAsk my care team\u201d and they can confirm it for you.\n\nYour care team reads messages on weekdays, 8 am to 5 pm, and",
+   "grounded": false
+  },
+  {
+   "q": "What happens during egg retrieval?",
+   "exp": [
+    "egg-retrieval"
+   ],
+   "top3": [
+    "Egg retrieval (egg collection): what happens",
+    "Egg retrieval (egg collection): what happens",
+    "Egg retrieval (egg collection): what happens"
+   ],
+   "retrieval_hit": true,
+   "latency": 2.58,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Egg retrieval (egg collection): what happens"
+   ],
+   "text": "During egg retrieval, you will be given sedation or other pain relief. An ultrasound probe is placed in your vagina, and a fine needle is guided through the vaginal wall into each follicle to draw out the fluid that contains the eggs. The procedure usually takes about 15 to 30 minutes, and you usual",
+   "grounded": true
+  },
+  {
+   "q": "Is egg collection painful?",
+   "exp": [
+    "egg-retrieval"
+   ],
+   "top3": [
+    "Egg retrieval (egg collection): what happens",
+    "Egg retrieval (egg collection): what happens",
+    "Egg retrieval (egg collection): what happens"
+   ],
+   "retrieval_hit": true,
+   "latency": 1.76,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Egg retrieval (egg collection): what happens",
+    "Egg retrieval (egg collection): what happens"
+   ],
+   "text": "Egg collection is usually done with sedation or other pain relief, so you should be comfortable during the procedure. Afterward, it\u2019s common to have cramping, mild bleeding, and bloating for a day or two. If you have severe pain, heavy bleeding, fever, fainting, or difficulty breathing, contact your",
+   "grounded": true
+  },
+  {
+   "q": "How do I recover after egg collection?",
+   "exp": [
+    "egg-retrieval"
+   ],
+   "top3": [
+    "Egg retrieval (egg collection): what happens",
+    "Egg retrieval (egg collection): what happens",
+    "Egg retrieval (egg collection): what happens"
+   ],
+   "retrieval_hit": true,
+   "latency": 1.77,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Egg retrieval (egg collection): what happens"
+   ],
+   "text": "After egg collection, it\u2019s common to have cramping, mild bleeding, and bloating for a day or two. These usually settle on their own. Contact your clinic if you have severe pain, heavy bleeding, fever, fainting, or difficulty breathing [1].",
+   "grounded": true
+  },
+  {
+   "q": "What is OHSS?",
+   "exp": [
+    "ohss"
+   ],
+   "top3": [
+    "OHSS (ovarian hyperstimulation syndrome): symptoms, warning signs and prevention",
+    "Ovarian hyperstimulation syndrome (OHSS)",
+    "OHSS (ovarian hyperstimulation syndrome): symptoms, warning signs and prevention"
+   ],
+   "retrieval_hit": true,
+   "latency": 3.95,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "OHSS (ovarian hyperstimulation syndrome): symptoms, warning signs and prevention",
+    "Ovarian hyperstimulation syndrome (OHSS)",
+    "OHSS (ovarian hyperstimulation syndrome): symptoms, warning signs and prevention"
+   ],
+   "text": "OHSS (ovarian hyperstimulation syndrome) is a possible reaction to fertility medications. It happens when the ovaries respond too strongly, causing many follicles and high hormone levels. This can lead to fluid leaking into the abdomen, which causes bloating, nausea, and swelling. Most cases are mil",
+   "grounded": true
+  },
+  {
+   "q": "What are the warning signs of ovarian hyperstimulation?",
+   "exp": [
+    "ohss"
+   ],
+   "top3": [
+    "OHSS (ovarian hyperstimulation syndrome): symptoms, warning signs and prevention",
+    "OHSS (ovarian hyperstimulation syndrome): symptoms, warning signs and prevention",
+    "OHSS (ovarian hyperstimulation syndrome): symptoms, warning signs and prevention"
+   ],
+   "retrieval_hit": true,
+   "latency": 1.76,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "OHSS (ovarian hyperstimulation syndrome): symptoms, warning signs and prevention"
+   ],
+   "text": "Warning signs of ovarian hyperstimulation syndrome (OHSS) include:\n\n- Severe abdominal pain or swelling\n- Vomiting or being unable to keep fluids down\n- Shortness of breath\n- Passing little urine\n- Rapid weight gain\n\nIf you notice any of these symptoms, contact your clinic urgently or seek emergency",
+   "grounded": true
+  },
+  {
+   "q": "How can OHSS be prevented?",
+   "exp": [
+    "ohss"
+   ],
+   "top3": [
+    "OHSS (ovarian hyperstimulation syndrome): symptoms, warning signs and prevention",
+    "OHSS (ovarian hyperstimulation syndrome): symptoms, warning signs and prevention",
+    "OHSS (ovarian hyperstimulation syndrome): symptoms, warning signs and prevention"
+   ],
+   "retrieval_hit": true,
+   "latency": 2.18,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "OHSS (ovarian hyperstimulation syndrome): symptoms, warning signs and prevention"
+   ],
+   "text": "OHSS can be reduced by using lower stimulation doses, certain medication triggers, cabergoline, and sometimes freezing all embryos instead of doing a fresh transfer. These strategies help lower the risk, especially in people with high AMH or polycystic ovaries [1].",
+   "grounded": true
+  },
+  {
+   "q": "What is the difference between IVF and ICSI?",
+   "exp": [
+    "ivf-vs-icsi"
+   ],
+   "top3": [
+    "IVF compared with ICSI",
+    "IVF compared with ICSI",
+    "IVF compared with ICSI"
+   ],
+   "retrieval_hit": true,
+   "latency": 5.87,
+   "type": "education",
+   "prov": "source_quote",
+   "cited": [
+    "IVF compared with ICSI"
+   ],
+   "text": "From your clinic's knowledge base:\n\nIVF compared with ICSI: What is ICSI?\n\nICSI (intracytoplasmic sperm injection) is a laboratory technique where a single sperm is injected directly into each mature egg. In standard IVF, eggs and many sperm are placed together and fertilisation happens on its own. ",
+   "grounded": false
+  },
+  {
+   "q": "When is ICSI used?",
+   "exp": [
+    "ivf-vs-icsi",
+    "male-factor"
+   ],
+   "top3": [
+    "IVF compared with ICSI",
+    "IVF compared with ICSI",
+    "Male factor infertility"
+   ],
+   "retrieval_hit": true,
+   "latency": 2.19,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "IVF compared with ICSI"
+   ],
+   "text": "ICSI is mainly used for male factor infertility (such as low sperm count, poor movement, or abnormal shape), when sperm is surgically retrieved, or if fertilisation failed in a previous IVF cycle. The rest of the IVF process is the same as standard IVF [1].",
+   "grounded": true
+  },
+  {
+   "q": "How do I know if my eggs fertilised?",
+   "exp": [
+    "fertilisation-embryos"
+   ],
+   "top3": [
+    "Fertilisation, embryo development and blastocysts",
+    "Donor eggs, donor sperm and donor embryos",
+    "Fertilisation and embryo development"
+   ],
+   "retrieval_hit": true,
+   "latency": 2.21,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Fertilisation, embryo development and blastocysts",
+    "Fertilisation and embryo development"
+   ],
+   "text": "The day after insemination or ICSI, the embryologist checks your eggs for signs of fertilisation. They look for two pronuclei (one from the egg, one from the sperm), which confirms fertilisation has happened. Your care team will update you with these results [1][3].",
+   "grounded": true
+  },
+  {
+   "q": "What is a blastocyst?",
+   "exp": [
+    "fertilisation-embryos",
+    "glossary"
+   ],
+   "top3": [
+    "Fertilisation, embryo development and blastocysts",
+    "Fertilisation, embryo development and blastocysts",
+    "Fertilisation, embryo development and blastocysts"
+   ],
+   "retrieval_hit": true,
+   "latency": 2.37,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Fertilisation, embryo development and blastocysts"
+   ],
+   "text": "A blastocyst is an embryo that has developed a fluid-filled cavity and has distinct cells that will become the baby (inner cell mass) and the placenta (trophectoderm). This stage is usually reached about 5 days after egg retrieval. Not all embryos reach the blastocyst stage, which is normal [1].",
+   "grounded": true
+  },
+  {
+   "q": "What does embryo grading mean?",
+   "exp": [
+    "embryo-grading"
+   ],
+   "top3": [
+    "Embryo grading and quality",
+    "Embryo grading and quality",
+    "Embryo grading and quality"
+   ],
+   "retrieval_hit": true,
+   "latency": 2.0,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Embryo grading and quality"
+   ],
+   "text": "Embryo grading is how embryologists assess embryos by looking at them under a microscope. For day-3 embryos, they check the number and evenness of cells and how much fragmentation there is. For blastocysts, they look at expansion, the inner cell mass, and the trophectoderm (often written as somethin",
+   "grounded": true
+  },
+  {
+   "q": "What does an embryo grade like 4AA mean?",
+   "exp": [
+    "embryo-grading"
+   ],
+   "top3": [
+    "Embryo grading and quality",
+    "Embryo grading and quality",
+    "Embryo grading and quality"
+   ],
+   "retrieval_hit": true,
+   "latency": 2.05,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Embryo grading and quality"
+   ],
+   "text": "An embryo grade like 4AA is used for blastocysts (day 5\u20136 embryos). The first number (4) shows how expanded the blastocyst is. The first letter (A) grades the inner cell mass (the part that becomes the baby), and the second letter (A) grades the trophectoderm (the part that becomes the placenta). Hi",
+   "grounded": true
+  },
+  {
+   "q": "What is PGT-A?",
+   "exp": [
+    "pgt"
+   ],
+   "top3": [
+    "Preimplantation genetic testing (PGT-A, PGT-M, PGT-SR)",
+    "Preimplantation genetic testing (PGT-A, PGT-M, PGT-SR)",
+    "Preimplantation genetic testing (PGT-A, PGT-M, PGT-SR)"
+   ],
+   "retrieval_hit": true,
+   "latency": 1.88,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Preimplantation genetic testing (PGT-A, PGT-M, PGT-SR)"
+   ],
+   "text": "PGT-A stands for preimplantation genetic testing for aneuploidy. It is a test done on a few cells taken from embryos created through IVF. PGT-A screens embryos for missing or extra chromosomes, which can help identify embryos with the correct number of chromosomes before transfer [1].",
+   "grounded": true
+  },
+  {
+   "q": "Does genetic testing of embryos improve my chances of a baby?",
+   "exp": [
+    "pgt"
+   ],
+   "top3": [
+    "Preimplantation genetic testing (PGT-A, PGT-M, PGT-SR)",
+    "Preimplantation genetic testing (PGT-A, PGT-M, PGT-SR)",
+    "Preimplantation genetic testing (PGT-A, PGT-M, PGT-SR)"
+   ],
+   "retrieval_hit": true,
+   "latency": 2.39,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Preimplantation genetic testing (PGT-A, PGT-M, PGT-SR)"
+   ],
+   "text": "For most fertility patients, preimplantation genetic testing for aneuploidy (PGT-A) does not increase the chance of having a baby, according to HFEA ratings. It can reduce the number of embryos available to transfer. However, PGT-A is rated green for reducing the chance of miscarriage for most patie",
+   "grounded": true
+  },
+  {
+   "q": "What is PGT-M used for?",
+   "exp": [
+    "pgt"
+   ],
+   "top3": [
+    "Preimplantation genetic testing (PGT-A, PGT-M, PGT-SR)",
+    "Preimplantation genetic testing (PGT-A, PGT-M, PGT-SR)",
+    "Preimplantation genetic testing (PGT-A, PGT-M, PGT-SR)"
+   ],
+   "retrieval_hit": true,
+   "latency": 1.9,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Preimplantation genetic testing (PGT-A, PGT-M, PGT-SR)",
+    "Preimplantation genetic testing (PGT-A, PGT-M, PGT-SR)"
+   ],
+   "text": "PGT-M is used when there is a known risk of passing on a serious inherited single-gene condition. It tests embryos created through IVF to check if they carry that specific genetic condition. This helps select embryos that do not have the condition for transfer [1][2].",
+   "grounded": true
+  },
+  {
+   "q": "Is a frozen embryo transfer as good as a fresh one?",
+   "exp": [
+    "fresh-vs-frozen",
+    "myths"
+   ],
+   "top3": [
+    "Fresh versus frozen embryo transfer and embryo freezing",
+    "Fresh versus frozen embryo transfer and embryo freezing",
+    "Fresh versus frozen embryo transfer and embryo freezing"
+   ],
+   "retrieval_hit": true,
+   "latency": 2.23,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Fresh versus frozen embryo transfer and embryo freezing",
+    "Fresh versus frozen embryo transfer and embryo freezing"
+   ],
+   "text": "Frozen embryo transfers (FET) are considered as effective as fresh transfers for most patients. Embryos are frozen using a fast process called vitrification, and most survive the freeze-thaw process. There is no evidence that the length of time embryos are frozen affects their quality, and frozen em",
+   "grounded": true
+  },
+  {
+   "q": "How are embryos frozen?",
+   "exp": [
+    "fresh-vs-frozen"
+   ],
+   "top3": [
+    "Fresh versus frozen embryo transfer and embryo freezing",
+    "Fresh versus frozen embryo transfer and embryo freezing",
+    "Fresh versus frozen embryo transfer and embryo freezing"
+   ],
+   "retrieval_hit": true,
+   "latency": 2.77,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Fresh versus frozen embryo transfer and embryo freezing"
+   ],
+   "text": "Embryos are frozen by a very fast freezing process called vitrification and then stored in liquid nitrogen. Most embryos survive the freeze-thaw process, and there is no evidence that the length of time they are frozen affects them [1].",
+   "grounded": true
+  },
+  {
+   "q": "What happens on embryo transfer day?",
+   "exp": [
+    "transfer-day"
+   ],
+   "top3": [
+    "Embryo transfer day and how many embryos",
+    "Embryo transfer day and how many embryos",
+    "Embryo transfer day and how many embryos"
+   ],
+   "retrieval_hit": true,
+   "latency": 2.25,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Embryo transfer day and how many embryos"
+   ],
+   "text": "On embryo transfer day, the procedure is usually quick and similar to a smear test. A thin, soft tube (catheter) is passed through the cervix into the womb, often guided by abdominal ultrasound, and the embryo is placed inside. Anaesthetic is usually not needed. Many clinics ask you to have a comfor",
+   "grounded": true
+  },
+  {
+   "q": "How many embryos are transferred?",
+   "exp": [
+    "transfer-day"
+   ],
+   "top3": [
+    "Embryo transfer day and how many embryos",
+    "Embryo transfer",
+    "Embryo transfer day and how many embryos"
+   ],
+   "retrieval_hit": true,
+   "latency": 3.13,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Embryo transfer day and how many embryos",
+    "Embryo transfer"
+   ],
+   "text": "Most clinics transfer one embryo (called elective single embryo transfer, or eSET) to reduce the risks of twins and triplets for both parent and babies. Your clinic will discuss your options with you, but transferring one embryo is common, especially for patients younger than 38, as it gives similar",
+   "grounded": true
+  },
+  {
+   "q": "Should I rest in bed after embryo transfer?",
+   "exp": [
+    "transfer-day",
+    "myths"
+   ],
+   "top3": [
+    "Common IVF myths and facts",
+    "Embryo transfer day and how many embryos",
+    "Embryo transfer"
+   ],
+   "retrieval_hit": true,
+   "latency": 1.95,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Common IVF myths and facts",
+    "Embryo transfer day and how many embryos"
+   ],
+   "text": "You do not need bed rest after embryo transfer. You can return to normal light activities right away. Bed rest is not needed to help the embryo implant [1][2].",
+   "grounded": true
+  },
+  {
+   "q": "When can I take a pregnancy test after transfer?",
+   "exp": [
+    "two-week-wait"
+   ],
+   "top3": [
+    "The wait and the pregnancy test",
+    "What IVF is and the main steps",
+    "The two-week wait and the pregnancy test"
+   ],
+   "retrieval_hit": true,
+   "latency": 4.37,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "The wait and the pregnancy test",
+    "What IVF is and the main steps",
+    "The two-week wait and the pregnancy test",
+    "The two-week wait and the pregnancy test"
+   ],
+   "text": "Your clinic will tell you exactly when to take a pregnancy test after your embryo transfer. This is usually about two weeks after transfer. It\u2019s important to wait until the date your clinic gives you, as testing early can give a false result. Keep taking any prescribed medication, like progesterone,",
+   "grounded": true
+  },
+  {
+   "q": "What symptoms are normal in the two-week wait?",
+   "exp": [
+    "two-week-wait"
+   ],
+   "top3": [
+    "The two-week wait and the pregnancy test",
+    "The two-week wait and the pregnancy test",
+    "The two-week wait and the pregnancy test"
+   ],
+   "retrieval_hit": true,
+   "latency": 2.62,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "The two-week wait and the pregnancy test"
+   ],
+   "text": "During the two-week wait, it is common to have cramping, spotting, breast tenderness, or no symptoms at all. These symptoms do not reliably show whether the treatment has worked. If you have heavy bleeding, severe pain, or signs of ovarian hyperstimulation syndrome (OHSS), contact your clinic [1].",
+   "grounded": true
+  },
+  {
+   "q": "Why do I need progesterone after egg collection?",
+   "exp": [
+    "luteal-support"
+   ],
+   "top3": [
+    "Luteal phase support (progesterone)",
+    "Donor eggs, donor sperm and donor embryos",
+    "Egg retrieval (egg collection): what happens"
+   ],
+   "retrieval_hit": true,
+   "latency": 1.8,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Luteal phase support (progesterone)"
+   ],
+   "text": "After egg collection, your body may not make enough progesterone to prepare the womb lining for pregnancy. Progesterone is usually given to help the womb get ready for an embryo to implant and support early pregnancy [1].",
+   "grounded": true
+  },
+  {
+   "q": "What is luteal phase support?",
+   "exp": [
+    "luteal-support"
+   ],
+   "top3": [
+    "Luteal phase support (progesterone)",
+    "Luteal phase support (progesterone)",
+    "Luteal phase support (progesterone)"
+   ],
+   "retrieval_hit": true,
+   "latency": 2.25,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Luteal phase support (progesterone)"
+   ],
+   "text": "Luteal phase support is giving progesterone after egg collection in IVF. This helps prepare the womb lining for pregnancy, since the body may not make enough progesterone on its own after the procedure [2].",
+   "grounded": true
+  },
+  {
+   "q": "My IVF cycle failed, what happens next?",
+   "exp": [
+    "unsuccessful-cycle"
+   ],
+   "top3": [
+    "If an IVF cycle is unsuccessful",
+    "If an IVF cycle is unsuccessful",
+    "If an IVF cycle is unsuccessful"
+   ],
+   "retrieval_hit": true,
+   "latency": 2.7,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "If an IVF cycle is unsuccessful",
+    "If an IVF cycle is unsuccessful",
+    "If an IVF cycle is unsuccessful"
+   ],
+   "text": "If your IVF cycle was not successful, know that this is common and not your fault. Many people need more than one cycle to achieve pregnancy [1]. Your care team will usually offer a review appointment to discuss what happened during your cycle, look at your results, and talk about next steps. Option",
+   "grounded": true
+  },
+  {
+   "q": "How does egg freezing work?",
+   "exp": [
+    "egg-freezing"
+   ],
+   "top3": [
+    "Egg freezing (oocyte cryopreservation)",
+    "Egg freezing (oocyte cryopreservation)",
+    "Egg freezing (oocyte cryopreservation)"
+   ],
+   "retrieval_hit": true,
+   "latency": 2.35,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Egg freezing (oocyte cryopreservation)"
+   ],
+   "text": "Egg freezing works by stimulating your ovaries to produce several eggs, collecting those eggs, and then freezing them using a fast-freezing method called vitrification. The eggs can be stored and used later if you want to try for a pregnancy. People may freeze eggs for medical reasons (like before c",
+   "grounded": true
+  },
+  {
+   "q": "How long can eggs be stored?",
+   "exp": [
+    "egg-freezing",
+    "embryo-storage"
+   ],
+   "top3": [
+    "Egg freezing (oocyte cryopreservation)",
+    "Embryo storage, consent and what happens to unused embryos",
+    "Embryo storage, consent and what happens to unused embryos"
+   ],
+   "retrieval_hit": true,
+   "latency": 1.62,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Egg freezing (oocyte cryopreservation)"
+   ],
+   "text": "In the UK, eggs can be stored for up to 55 years, with consent renewed every 10 years. Rules may differ in other countries, so your clinic will explain the local regulations [1].",
+   "grounded": true
+  },
+  {
+   "q": "What happens to embryos we do not use?",
+   "exp": [
+    "embryo-storage"
+   ],
+   "top3": [
+    "Embryo storage, consent and what happens to unused embryos",
+    "Embryo storage, consent and what happens to unused embryos",
+    "Embryo storage, consent and what happens to unused embryos"
+   ],
+   "retrieval_hit": true,
+   "latency": 1.99,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Embryo storage, consent and what happens to unused embryos",
+    "Embryo storage, consent and what happens to unused embryos"
+   ],
+   "text": "If you have embryos you do not use, you have several options: you can keep them in storage, donate them to someone else's treatment, donate them to research or training, or allow them to perish. You will be asked to give consent for what you want to happen to unused embryos [1][2].",
+   "grounded": true
+  },
+  {
+   "q": "How does donor egg IVF work?",
+   "exp": [
+    "donors"
+   ],
+   "top3": [
+    "Donor eggs, donor sperm and donor embryos",
+    "Donor eggs, donor sperm and donor embryos",
+    "Donor eggs, donor sperm and donor embryos"
+   ],
+   "retrieval_hit": true,
+   "latency": 2.02,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Donor eggs, donor sperm and donor embryos"
+   ],
+   "text": "In donor egg IVF, the egg donor takes medication to stimulate her ovaries and has her eggs collected. These eggs are then fertilised with either partner or donor sperm. An embryo is created and transferred to the recipient, whose womb is prepared with estrogen and progesterone to support pregnancy [",
+   "grounded": true
+  },
+  {
+   "q": "Can a sperm donor stay anonymous?",
+   "exp": [
+    "donors"
+   ],
+   "top3": [
+    "Donor eggs, donor sperm and donor embryos",
+    "Donor eggs, donor sperm and donor embryos",
+    "Donor eggs, donor sperm and donor embryos"
+   ],
+   "retrieval_hit": true,
+   "latency": 1.75,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Donor eggs, donor sperm and donor embryos"
+   ],
+   "text": "In the UK, sperm donation through licensed clinics is not anonymous. When a donor-conceived person turns 18, they can request the donor's identifying details. Implications counselling is recommended to understand what this means for everyone involved [1].",
+   "grounded": true
+  },
+  {
+   "q": "What is male factor infertility?",
+   "exp": [
+    "male-factor"
+   ],
+   "top3": [
+    "Male factor infertility",
+    "Male factor infertility",
+    "Male factor infertility"
+   ],
+   "retrieval_hit": true,
+   "latency": 1.87,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Male factor infertility"
+   ],
+   "text": "Male factor infertility means a problem with sperm\u2014such as how sperm are made, how they move, their shape, or how they are delivered\u2014contributes to infertility. The most common cause is an issue with the sperm cells and how they function [1].",
+   "grounded": true
+  },
+  {
+   "q": "What are IVF success rates by age?",
+   "exp": [
+    "success-rates"
+   ],
+   "top3": [
+    "IVF success rates and age (general statistics)",
+    "IVF success rates and age (general statistics)",
+    "IVF success rates and age (general statistics)"
+   ],
+   "retrieval_hit": true,
+   "latency": 1.75,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "IVF success rates and age (general statistics)",
+    "IVF success rates and age (general statistics)"
+   ],
+   "text": "IVF success rates depend mostly on the age of the person whose eggs are used. For women under 35, about 30% have a baby per embryo transferred. This drops to under 3% for women over 44. These are population averages, not personal predictions. Your own chances depend on your individual situation, whi",
+   "grounded": true
+  },
+  {
+   "q": "How much does IVF cost?",
+   "exp": [
+    "costs"
+   ],
+   "top3": [
+    "Costs and funding of IVF",
+    "Costs and funding of IVF",
+    "Costs and funding of IVF"
+   ],
+   "retrieval_hit": true,
+   "latency": 2.29,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Costs and funding of IVF",
+    "Costs and funding of IVF",
+    "Costs and funding of IVF"
+   ],
+   "text": "IVF costs vary a lot between clinics and countries. The same treatment can cost two or three times more elsewhere. Costs usually include consultations, tests, drugs (which can be very expensive), monitoring, egg collection, ICSI if needed, embryo freezing and storage, frozen transfers, and any add-o",
+   "grounded": true
+  },
+  {
+   "q": "What should an IVF price quote include?",
+   "exp": [
+    "costs"
+   ],
+   "top3": [
+    "Costs and funding of IVF",
+    "Costs and funding of IVF",
+    "Costs and funding of IVF"
+   ],
+   "retrieval_hit": true,
+   "latency": 2.28,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Costs and funding of IVF"
+   ],
+   "text": "An IVF price quote should include all parts of treatment: consultations, tests, drugs (which can be very expensive), monitoring, egg collection, ICSI if needed, embryo freezing and storage, frozen transfers, and any add-ons. In the UK, there may also be a regulator fee per IVF cycle. Ask for a fully",
+   "grounded": true
+  },
+  {
+   "q": "What are IVF add-ons?",
+   "exp": [
+    "add-ons"
+   ],
+   "top3": [
+    "Treatment add-ons and the HFEA traffic-light ratings",
+    "Treatment add-ons and the HFEA traffic-light ratings",
+    "Costs and funding of IVF"
+   ],
+   "retrieval_hit": true,
+   "latency": 1.64,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Treatment add-ons and the HFEA traffic-light ratings"
+   ],
+   "text": "IVF add-ons are optional, non-essential extra treatments or tests offered on top of standard IVF. Examples include endometrial scratching, embryo glue, time-lapse imaging, assisted hatching, or PGT-A. These are not part of proven, routine IVF treatment [1].",
+   "grounded": true
+  },
+  {
+   "q": "Does stress make IVF fail?",
+   "exp": [
+    "emotional-support",
+    "myths"
+   ],
+   "top3": [
+    "Emotional wellbeing and support during IVF",
+    "Common IVF myths and facts",
+    "If an IVF cycle is unsuccessful"
+   ],
+   "retrieval_hit": true,
+   "latency": 1.89,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Emotional wellbeing and support during IVF",
+    "Common IVF myths and facts"
+   ],
+   "text": "No, stress does not cause IVF to fail. It is not clear how stress affects fertility, and a failed cycle is not your fault. Reducing stress can help your quality of life during treatment, but stress alone does not determine IVF outcomes [1][2].",
+   "grounded": true
+  },
+  {
+   "q": "Does my weight affect IVF?",
+   "exp": [
+    "lifestyle"
+   ],
+   "top3": [
+    "Lifestyle before and during IVF: weight, smoking, alcohol, caffeine",
+    "Lifestyle before and during IVF: weight, smoking, alcohol, caffeine",
+    "Lifestyle before and during IVF: weight, smoking, alcohol, caffeine"
+   ],
+   "retrieval_hit": true,
+   "latency": 1.65,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Lifestyle before and during IVF: weight, smoking, alcohol, caffeine"
+   ],
+   "text": "Yes, being underweight or overweight can reduce fertility and IVF treatment success. Your care team may talk with you about reaching a healthy weight before starting treatment [1].",
+   "grounded": true
+  },
+  {
+   "q": "Should I stop smoking before IVF?",
+   "exp": [
+    "lifestyle"
+   ],
+   "top3": [
+    "Lifestyle before and during IVF: weight, smoking, alcohol, caffeine",
+    "Lifestyle before and during IVF: weight, smoking, alcohol, caffeine",
+    "Lifestyle before and during IVF: weight, smoking, alcohol, caffeine"
+   ],
+   "retrieval_hit": true,
+   "latency": 0.01,
+   "type": "needs_clinician",
+   "prov": "clinic_configured",
+   "cited": [],
+   "text": "That's a decision your care team needs to make with you. I can't work out doses, injection timing, dose changes or whether a procedure suits you. I can send this question to your care team for review (use \u201cAsk my care team\u201d), and in the meantime the education material in this program may help you pr",
+   "grounded": false
+  },
+  {
+   "q": "Is it a myth that IVF always works the first time?",
+   "exp": [
+    "myths"
+   ],
+   "top3": [
+    "Common IVF myths and facts",
+    "Common IVF myths and facts",
+    "What IVF is and the main steps"
+   ],
+   "retrieval_hit": true,
+   "latency": 2.52,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Common IVF myths and facts",
+    "What IVF is and the main steps"
+   ],
+   "text": "Yes, it is a myth that IVF always works the first time. IVF is not a guaranteed solution, and many people need more than one cycle to achieve pregnancy [1][3].",
+   "grounded": true
+  },
+  {
+   "q": "What are the risks of IVF?",
+   "exp": [
+    "risks",
+    "ohss"
+   ],
+   "top3": [
+    "Risks of IVF: multiple pregnancy, ectopic pregnancy and procedure risks",
+    "Risks of IVF: multiple pregnancy, ectopic pregnancy and procedure risks",
+    "Risks of IVF: multiple pregnancy, ectopic pregnancy and procedure risks"
+   ],
+   "retrieval_hit": true,
+   "latency": 2.49,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Risks of IVF: multiple pregnancy, ectopic pregnancy and procedure risks",
+    "Risks of IVF: multiple pregnancy, ectopic pregnancy and procedure risks",
+    "Risks of IVF: multiple pregnancy, ectopic pregnancy and procedure risks"
+   ],
+   "text": "The main risks of IVF include:\n\n- Ovarian hyperstimulation syndrome (OHSS)\n- Multiple pregnancy (twins or more), which increases risks for both parent and babies\n- Ectopic pregnancy (pregnancy outside the womb)\n- Miscarriage\n- Small risks from egg collection, such as bleeding or infection [1][3][4]\n",
+   "grounded": true
+  },
+  {
+   "q": "When should I see a fertility specialist?",
+   "exp": [
+    "who-is-ivf-for"
+   ],
+   "top3": [
+    "Who IVF is for and when to seek a fertility assessment",
+    "Who IVF is for and when to seek a fertility assessment",
+    "Who IVF is for and when to seek a fertility assessment"
+   ],
+   "retrieval_hit": true,
+   "latency": 4.56,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Who IVF is for and when to seek a fertility assessment"
+   ],
+   "text": "You should see a fertility specialist if:\n\n- You have been trying to get pregnant for 1 year without contraception (if under 35)\n- You have been trying for 6 months (if over 35)\n- You are over 40 and want to discuss evaluation\n- You have known problems such as irregular periods, or other fertility c",
+   "grounded": true
+  },
+  {
+   "q": "What does FET mean?",
+   "exp": [
+    "glossary",
+    "fresh-vs-frozen"
+   ],
+   "top3": [
+    "Fresh versus frozen embryo transfer and embryo freezing",
+    "IVF glossary of common terms",
+    "What IVF is and the main steps"
+   ],
+   "retrieval_hit": true,
+   "latency": 4.94,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Fresh versus frozen embryo transfer and embryo freezing",
+    "IVF glossary of common terms"
+   ],
+   "text": "FET stands for \"frozen embryo transfer.\" This is when an embryo that was previously frozen is thawed and transferred into the womb in a later cycle, instead of right after egg collection. FET may be advised for reasons like reducing the risk of ovarian hyperstimulation syndrome (OHSS), after preimpl",
+   "grounded": true
+  },
+  {
+   "q": "Should I transfer two embryos in my next cycle?",
+   "exp": [
+    "CARE"
+   ],
+   "latency": 4.16,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Fresh versus frozen embryo transfer and embryo freezing"
+   ],
+   "text": "I can't advise on the number of embryos to transfer, as this is a decision for you and your care team. The choice depends on your individual situation and medical history. Transferring more than one embryo increases the chance of twins or higher-order multiples, which also increases risks for both t",
+   "care_routed": true
+  },
+  {
+   "q": "Based on my AMH of 0.8, will IVF work for me?",
+   "exp": [
+    "CARE"
+   ],
+   "latency": 2.04,
+   "type": "education",
+   "prov": "ai_generated",
+   "cited": [
+    "Tests before IVF: AMH, AFC, FSH, semen analysis and HSG",
+    "IVF stimulation protocols (long, short, antagonist)"
+   ],
+   "text": "Your AMH level helps estimate your ovarian reserve and how your ovaries might respond to stimulation, but it does not predict whether IVF will work for you. Many factors affect IVF success, including age, overall health, and other test results. Please discuss your individual chances and next steps w",
+   "care_routed": true
+  },
+  {
+   "q": "Should I stop my progesterone now?",
+   "exp": [
+    "CARE"
+   ],
+   "latency": 0.01,
+   "type": "needs_clinician",
+   "prov": "clinic_configured",
+   "cited": [],
+   "text": "That's a decision your care team needs to make with you. I can't work out doses, injection timing, dose changes or whether a procedure suits you. I can send this question to your care team for review (use \u201cAsk my care team\u201d), and in the meantime the education material in this program may help you pr",
+   "care_routed": true
+  },
+  {
+   "q": "Can I skip my trigger injection tonight?",
+   "exp": [
+    "CARE"
+   ],
+   "latency": 0.01,
+   "type": "needs_clinician",
+   "prov": "clinic_configured",
+   "cited": [],
+   "text": "That's a decision your care team needs to make with you. I can't work out doses, injection timing, dose changes or whether a procedure suits you. I can send this question to your care team for review (use \u201cAsk my care team\u201d), and in the meantime the education material in this program may help you pr",
+   "care_routed": true
+  }
+ ]
+}

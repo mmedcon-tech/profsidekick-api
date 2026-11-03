@@ -1,0 +1,276 @@
+[
+ {
+  "key": "what-is-ivf",
+  "sources": [
+   "https://www.hfea.gov.uk/treatments/explore-all-treatments/in-vitro-fertilisation-ivf/",
+   "https://www.eshre.eu/-/media/sitecore-files/SIGs/GSCA/IRHEC/Leaflets/ESHRE--In-Vitro-Fertilization-IVF.pdf",
+   "https://www.eshre.eu/-/media/sitecore-files/Guidelines/COS/2025/OS-guideline-update-2025_patient-leaflet.pdf"
+  ],
+  "facts_verified": 3
+ },
+ {
+  "key": "before-ivf-tests",
+  "sources": [
+   "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/ovarian-reserve-predicting-fertility-potential-in-women/",
+   "https://www.acog.org/womens-health/faqs/evaluating-infertility",
+   "https://www.nhs.uk/conditions/infertility/diagnosis/",
+   "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/hysterosalpingogram-hsg/",
+   "https://www.eshre.eu/-/media/sitecore-files/Guidelines/COS/2025/OS-guideline-update-2025_patient-leaflet.pdf"
+  ],
+  "facts_verified": 5
+ },
+ {
+  "key": "ovarian-reserve-age",
+  "sources": [
+   "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/ovarian-reserve-predicting-fertility-potential-in-women/",
+   "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/does-my-age-affect-my-fertility/",
+   "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/age-and-fertility-booklet/",
+   "https://www.acog.org/womens-health/faqs/evaluating-infertility"
+  ],
+  "facts_verified": 3
+ },
+ {
+  "key": "protocols",
+  "sources": [
+   "https://www.eshre.eu/-/media/sitecore-files/Guidelines/COS/2025/OS-guideline-update-2025_patient-leaflet.pdf",
+   "https://www.hfea.gov.uk/treatments/explore-all-treatments/in-vitro-fertilisation-ivf/"
+  ],
+  "facts_verified": 3
+ },
+ {
+  "key": "medications",
+  "sources": [
+   "https://www.hfea.gov.uk/treatments/explore-all-treatments/fertility-drugs/",
+   "https://www.eshre.eu/-/media/sitecore-files/Guidelines/COS/2025/OS-guideline-update-2025_patient-leaflet.pdf",
+   "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/ovarian-hyperstimulation-syndrome-ohss/",
+   "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/third-party-reproduction-booklet/"
+  ],
+  "facts_verified": 4
+ },
+ {
+  "key": "monitoring",
+  "sources": [
+   "https://www.hfea.gov.uk/treatments/explore-all-treatments/in-vitro-fertilisation-ivf/",
+   "https://www.eshre.eu/-/media/sitecore-files/Guidelines/COS/2025/OS-guideline-update-2025_patient-leaflet.pdf"
+  ],
+  "facts_verified": 2
+ },
+ {
+  "key": "trigger",
+  "sources": [
+   "https://www.eshre.eu/-/media/sitecore-files/SIGs/GSCA/IRHEC/Leaflets/ESHRE--In-Vitro-Fertilization-IVF.pdf",
+   "https://www.eshre.eu/-/media/sitecore-files/Guidelines/COS/2025/OS-guideline-update-2025_patient-leaflet.pdf",
+   "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/ovarian-hyperstimulation-syndrome-ohss/"
+  ],
+  "facts_verified": 3
+ },
+ {
+  "key": "egg-retrieval",
+  "sources": [
+   "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/assisted-reproductive-technologies-booklet/",
+   "https://www.nhs.uk/conditions/ivf/",
+   "https://www.eshre.eu/-/media/sitecore-files/Guidelines/COS/2025/OS-guideline-update-2025_patient-leaflet.pdf"
+  ],
+  "facts_verified": 3
+ },
+ {
+  "key": "ohss",
+  "sources": [
+   "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/ovarian-hyperstimulation-syndrome-ohss/",
+   "https://www.hfea.gov.uk/treatments/explore-all-treatments/risks-of-fertility-treatment/"
+  ],
+  "facts_verified": 4
+ },
+ {
+  "key": "ivf-vs-icsi",
+  "sources": [
+   "https://www.hfea.gov.uk/treatments/explore-all-treatments/intracytoplasmic-sperm-injection-icsi/",
+   "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/assisted-reproductive-technologies-booklet/"
+  ],
+  "facts_verified": 2
+ },
+ {
+  "key": "fertilisation-embryos",
+  "sources": [
+   "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/assisted-reproductive-technologies-booklet/",
+   "https://www.hfea.gov.uk/treatments/explore-all-treatments/in-vitro-fertilisation-ivf/",
+   "https://www.eshre.eu/-/media/sitecore-files/Guidelines/Embryo-transfer/3--ESHRE-ET-Guideline---Patient-leaflet.pdf"
+  ],
+  "facts_verified": 3
+ },
+ {
+  "key": "embryo-grading",
+  "sources": [
+   "https://www.eshre.eu/-/media/sitecore-files/Guidelines/Embryo-transfer/3--ESHRE-ET-Guideline---Patient-leaflet.pdf",
+   "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/assisted-reproductive-technologies-booklet/"
+  ],
+  "facts_verified": 2
+ },
+ {
+  "key": "pgt",
+  "sources": [
+   "https://www.hfea.gov.uk/treatments/embryo-testing-and-treatments-for-disease/pre-implantation-genetic-testing-for-monogenic-disorders-pgt-m-and-pre-implantation-genetic-testing-for-chromosomal-structural-rearrangements-pgt-sr/",
+   "https://www.hfea.gov.uk/treatments/treatment-add-ons/pre-implantation-genetic-testing-for-aneuploidy-pgt-a/"
+  ],
+  "facts_verified": 4
+ },
+ {
+  "key": "fresh-vs-frozen",
+  "sources": [
+   "https://www.hfea.gov.uk/treatments/fertility-preservation/embryo-freezing/",
+   "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/assisted-reproductive-technologies-booklet/",
+   "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/ovarian-hyperstimulation-syndrome-ohss/"
+  ],
+  "facts_verified": 3
+ },
+ {
+  "key": "transfer-day",
+  "sources": [
+   "https://www.nhs.uk/conditions/ivf/",
+   "https://www.eshre.eu/-/media/sitecore-files/Guidelines/Embryo-transfer/3--ESHRE-ET-Guideline---Patient-leaflet.pdf",
+   "https://www.hfea.gov.uk/treatments/fertility-preservation/embryo-freezing/"
+  ],
+  "facts_verified": 3
+ },
+ {
+  "key": "two-week-wait",
+  "sources": [
+   "https://www.nhs.uk/conditions/ivf/",
+   "https://www.hfea.gov.uk/treatments/explore-all-treatments/in-vitro-fertilisation-ivf/",
+   "https://www.eshre.eu/-/media/sitecore-files/SIGs/GSCA/IRHEC/Leaflets/ESHRE--In-Vitro-Fertilization-IVF.pdf"
+  ],
+  "facts_verified": 2
+ },
+ {
+  "key": "luteal-support",
+  "sources": [
+   "https://www.eshre.eu/-/media/sitecore-files/SIGs/GSCA/IRHEC/Leaflets/ESHRE--In-Vitro-Fertilization-IVF.pdf",
+   "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/third-party-reproduction-booklet/"
+  ],
+  "facts_verified": 2
+ },
+ {
+  "key": "unsuccessful-cycle",
+  "sources": [
+   "https://www.eshre.eu/-/media/sitecore-files/SIGs/GSCA/IRHEC/Leaflets/ESHRE--In-Vitro-Fertilization-IVF.pdf",
+   "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/stress-and-infertility/",
+   "https://www.hfea.gov.uk/treatments/explore-all-treatments/in-vitro-fertilisation-ivf/"
+  ],
+  "facts_verified": 2
+ },
+ {
+  "key": "egg-freezing",
+  "sources": [
+   "https://www.hfea.gov.uk/treatments/fertility-preservation/egg-freezing/",
+   "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/can-i-freeze-my-eggs-to-use-later-if-im-not-sick/",
+   "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/assisted-reproductive-technologies-booklet/"
+  ],
+  "facts_verified": 3
+ },
+ {
+  "key": "embryo-storage",
+  "sources": [
+   "https://www.hfea.gov.uk/treatments/fertility-preservation/embryo-freezing/",
+   "https://www.hfea.gov.uk/donation/donors/"
+  ],
+  "facts_verified": 3
+ },
+ {
+  "key": "donors",
+  "sources": [
+   "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/third-party-reproduction-booklet/",
+   "https://www.hfea.gov.uk/donation/donors/",
+   "https://www.hfea.gov.uk/donation/"
+  ],
+  "facts_verified": 3
+ },
+ {
+  "key": "male-factor",
+  "sources": [
+   "https://www.acog.org/womens-health/faqs/evaluating-infertility",
+   "https://www.nhs.uk/conditions/infertility/causes/",
+   "https://www.hfea.gov.uk/treatments/explore-all-treatments/intracytoplasmic-sperm-injection-icsi/",
+   "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/assisted-reproductive-technologies-booklet/"
+  ],
+  "facts_verified": 3
+ },
+ {
+  "key": "success-rates",
+  "sources": [
+   "https://www.eshre.eu/-/media/sitecore-files/SIGs/GSCA/IRHEC/Leaflets/ESHRE--In-Vitro-Fertilization-IVF.pdf",
+   "https://www.acog.org/womens-health/faqs/evaluating-infertility",
+   "https://www.eshre.eu/-/media/sitecore-files/Guidelines/Embryo-transfer/3--ESHRE-ET-Guideline---Patient-leaflet.pdf"
+  ],
+  "facts_verified": 2
+ },
+ {
+  "key": "costs",
+  "sources": [
+   "https://www.hfea.gov.uk/treatments/explore-all-treatments/costs-and-funding",
+   "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/assisted-reproductive-technologies-booklet/"
+  ],
+  "facts_verified": 3
+ },
+ {
+  "key": "add-ons",
+  "sources": [
+   "https://www.hfea.gov.uk/treatments/treatment-add-ons/",
+   "https://www.hfea.gov.uk/treatments/treatment-add-ons/pre-implantation-genetic-testing-for-aneuploidy-pgt-a/"
+  ],
+  "facts_verified": 3
+ },
+ {
+  "key": "emotional-support",
+  "sources": [
+   "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/stress-and-infertility/",
+   "https://www.eshre.eu/-/media/sitecore-files/Guidelines/Embryo-transfer/3--ESHRE-ET-Guideline---Patient-leaflet.pdf"
+  ],
+  "facts_verified": 2
+ },
+ {
+  "key": "lifestyle",
+  "sources": [
+   "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/weight-and-fertility/",
+   "https://www.acog.org/womens-health/faqs/evaluating-infertility",
+   "https://www.acog.org/womens-health/faqs/good-health-before-pregnancy-prepregnancy-care"
+  ],
+  "facts_verified": 3
+ },
+ {
+  "key": "myths",
+  "sources": [
+   "https://www.eshre.eu/-/media/sitecore-files/SIGs/GSCA/IRHEC/Leaflets/ESHRE--In-Vitro-Fertilization-IVF.pdf",
+   "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/stress-and-infertility/",
+   "https://www.nhs.uk/conditions/ivf/",
+   "https://www.hfea.gov.uk/treatments/fertility-preservation/embryo-freezing/",
+   "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/assisted-reproductive-technologies-booklet/"
+  ],
+  "facts_verified": 2
+ },
+ {
+  "key": "risks",
+  "sources": [
+   "https://www.hfea.gov.uk/treatments/explore-all-treatments/risks-of-fertility-treatment/",
+   "https://www.nhs.uk/conditions/ivf/"
+  ],
+  "facts_verified": 2
+ },
+ {
+  "key": "glossary",
+  "sources": [
+   "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/assisted-reproductive-technologies-booklet/",
+   "https://www.acog.org/womens-health/faqs/evaluating-infertility"
+  ],
+  "facts_verified": 3
+ },
+ {
+  "key": "who-is-ivf-for",
+  "sources": [
+   "https://www.acog.org/womens-health/faqs/evaluating-infertility",
+   "https://www.nhs.uk/conditions/ivf/",
+   "https://www.eshre.eu/-/media/sitecore-files/Guidelines/COS/2025/OS-guideline-update-2025_patient-leaflet.pdf",
+   "https://www.eshre.eu/-/media/sitecore-files/SIGs/GSCA/IRHEC/Leaflets/ESHRE--In-Vitro-Fertilization-IVF.pdf"
+  ],
+  "facts_verified": 3
+ }
+]
