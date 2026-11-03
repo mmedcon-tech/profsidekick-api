@@ -8,7 +8,8 @@ from typing import Any, Dict
 
 logger = logging.getLogger("myos.model_ops")
 ALLOWED = {"request_id", "clinic", "task", "data_class", "provider", "model", "outcome", "error_kind",
-           "fallback_from", "fallback_reason", "skipped", "latency_ms", "attempt", "tokens_in", "tokens_out"}
+           "fallback_from", "fallback_reason", "skipped", "latency_ms", "attempt", "tokens_in", "tokens_out",
+           "provider_request_id"}
 
 
 def record(**fields: Any) -> Dict[str, Any]:

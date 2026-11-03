@@ -12,9 +12,24 @@ from app.services.ai.base import Generation, parse_structured
 _NON_RETRYABLE = {"insufficient_quota", "credit_balance_exhausted", "billing_hard_limit_reached",
                   "billing_not_active", "account_deactivated"}
 _AUTH = {"invalid_api_key", "invalid_organization"}
+_ACCESS = {"model_not_found", "unsupported_country_region_territory", "project_not_found"}
+
+
+def _request_id(exc_or_resp) -> str | None:
+    rid = getattr(exc_or_resp, "request_id", None) or getattr(exc_or_resp, "_request_id", None)
+    if not rid:
+        headers = getattr(getattr(exc_or_resp, "response", None), "headers", None)
+        rid = headers.get("x-request-id") if headers is not None else None
+    return rid if isinstance(rid, str) and len(rid) < 128 else None
 
 
 def map_error(exc: BaseException) -> errors.ModelError:
+    err = _map(exc)
+    err.provider_request_id = err.provider_request_id or _request_id(exc)
+    return err
+
+
+def _map(exc: BaseException) -> errors.ModelError:
     if isinstance(exc, errors.ModelError):
         return exc
     if isinstance(exc, asyncio.TimeoutError):
@@ -27,8 +42,10 @@ def map_error(exc: BaseException) -> errors.ModelError:
     status = getattr(exc, "status_code", None)
     if code in _NON_RETRYABLE or status == 402:
         return errors.Quota(code or "quota")
-    if code in _AUTH or name in ("AuthenticationError", "PermissionDeniedError") or status in (401, 403):
+    if code in _AUTH or name == "AuthenticationError" or status == 401:
         return errors.Auth(code or "auth")
+    if code in _ACCESS or name in ("PermissionDeniedError", "NotFoundError") or status in (403, 404):
+        return errors.Access(code or "access")
     if name == "RateLimitError" or status == 429:
         return errors.RateLimited("rate_limited")
     if name in ("APITimeoutError",):
@@ -60,10 +77,23 @@ class OpenAIAdapter:
                     model=model, messages=messages, temperature=temperature, **kw), timeout=timeout)
         except Exception as exc:  # noqa: BLE001
             raise map_error(exc) from None
-        text = (resp.choices[0].message.content or "").strip()
+        rid = _request_id(resp)
+        try:
+            text = (resp.choices[0].message.content or "").strip()
+            if not text:
+                raise errors.InvalidOutput("empty")
+            parsed = parse_structured(text, schema)
+        except errors.ModelError as e:
+            e.provider_request_id = rid
+            raise
+        except Exception:  # noqa: BLE001 - malformed response object
+            e = errors.InvalidOutput("malformed")
+            e.provider_request_id = rid
+            raise e from None
         u = getattr(resp, "usage", None)
-        return Generation(text, self.id, model, parse_structured(text, schema),
-                          {"in": getattr(u, "prompt_tokens", 0), "out": getattr(u, "completion_tokens", 0)} if u else {})
+        return Generation(text, self.id, model, parsed,
+                          {"in": getattr(u, "prompt_tokens", 0), "out": getattr(u, "completion_tokens", 0)} if u else {},
+                          rid)
 
     async def stream(self, messages, *, model: str, timeout: float, temperature: float = 0.3) -> AsyncIterator[str]:
         self._check()

@@ -14,6 +14,7 @@ class Generation:
     model: str
     parsed: Optional[Dict[str, Any]] = None
     usage: Dict[str, int] = field(default_factory=dict)
+    provider_request_id: Optional[str] = None
 
 
 class ModelProvider(Protocol):

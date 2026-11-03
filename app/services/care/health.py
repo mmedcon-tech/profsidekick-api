@@ -147,7 +147,7 @@ def non_retryable(exc: BaseException) -> bool:
     if isinstance(exc, ai_errors.ModelError):
         return not exc.retryable
     status_code = getattr(exc, "status_code", None)
-    return classify(exc) == "auth" or status_code == 402 or error_code(exc) in NON_RETRYABLE_CODES
+    return classify(exc) in ("auth", "access") or status_code == 402 or error_code(exc) in NON_RETRYABLE_CODES
 
 
 def note_failure(exc: BaseException) -> bool:
@@ -156,7 +156,7 @@ def note_failure(exc: BaseException) -> bool:
     if non_retryable(exc):
         _blocked_until = time.monotonic() + OPENAI_BLOCK_S
         k = classify(exc)
-        _blocked_kind = k if k in ("auth", "config", "not_eligible") else "quota"
+        _blocked_kind = k if k in ("auth", "access", "config", "not_eligible") else "quota"
         return True
     return False
 

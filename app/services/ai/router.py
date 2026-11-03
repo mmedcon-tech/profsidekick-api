@@ -107,13 +107,17 @@ async def generate(messages: List[Dict[str, str]], *, clinic, task: str = "gener
                 errors.Timeout("timeout") if isinstance(exc, asyncio.TimeoutError) else errors.ModelError(type(exc).__name__))
             note(choice.provider, err)
             trail["attempts"].append(oplog.record(**base, outcome="error", error_kind=err.kind,
+                                                  provider_request_id=err.provider_request_id,
                                                   latency_ms=int((time.monotonic() - t0) * 1000)))
             trail["error_kind"] = err.kind
+            trail["provider_request_id"] = err.provider_request_id
             prev = choice.provider
             continue
         trail["attempts"].append(oplog.record(**base, outcome="ok", latency_ms=int((time.monotonic() - t0) * 1000),
-                                              tokens_in=g.usage.get("in"), tokens_out=g.usage.get("out")))
+                                              tokens_in=g.usage.get("in"), tokens_out=g.usage.get("out"),
+                                              provider_request_id=g.provider_request_id))
         trail.update(llm="ok", provider=g.provider, model=g.model, error_kind=None,
+                     provider_request_id=g.provider_request_id,
                      fallback_reason=trail["attempts"][0].get("error_kind") or trail["attempts"][0].get("skipped")
                      if len(trail["attempts"]) > 1 else None)
         return g, trail

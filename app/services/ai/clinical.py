@@ -52,8 +52,11 @@ async def complete(messages: List[Dict[str, str]], *, temperature: float = 0.3, 
         kind = trail.get("error_kind") or "unknown"
         cls = {"quota": errors.Quota, "auth": errors.Auth, "config": errors.Config, "timeout": errors.Timeout,
                "rate_limited": errors.RateLimited, "unavailable": errors.Unavailable,
-               "not_eligible": errors.NotEligible, "invalid_output": errors.InvalidOutput}.get(kind, errors.ModelError)
-        raise cls(kind)
+               "not_eligible": errors.NotEligible, "parsing": errors.InvalidOutput,
+               "access": errors.Access}.get(kind, errors.ModelError)
+        err = cls(kind)
+        err.provider_request_id = trail.get("provider_request_id")
+        raise err
     return g.text.strip()
 
 

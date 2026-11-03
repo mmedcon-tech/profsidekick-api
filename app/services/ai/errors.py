@@ -4,6 +4,8 @@
 class ModelError(Exception):
     kind = "unknown"
     retryable = True
+    # Provider's own request id (e.g. OpenAI x-request-id); safe to log, contains no text.
+    provider_request_id = None
 
 
 class Unavailable(ModelError):
@@ -28,13 +30,20 @@ class Auth(ModelError):
     retryable = False
 
 
+class Access(ModelError):
+    """Key is valid but the project/org cannot use this model (403 permission, 404 model_not_found)."""
+    kind = "access"
+    retryable = False
+
+
 class Config(ModelError):
     kind = "config"
     retryable = False
 
 
 class InvalidOutput(ModelError):
-    kind = "invalid_output"
+    """The provider answered but the response could not be parsed (empty, malformed, schema mismatch)."""
+    kind = "parsing"
 
 
 class NotEligible(ModelError):

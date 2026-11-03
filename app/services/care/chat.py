@@ -266,13 +266,16 @@ async def send(db: DBSession, user: User, clinic: Clinic, access: ProgramAccess,
                         provider = {k: v for k, v in {
                             "llm": "ok", "provider": tr.get("provider"), "model": tr.get("model"),
                             "fallback_reason": tr.get("fallback_reason"), "data_class": tr.get("data_class"),
-                            "request_id": request_id, "attempts": attempt}.items() if v is not None}
+                            "request_id": request_id, "provider_request_id": tr.get("provider_request_id"),
+                            "attempts": attempt}.items() if v is not None}
                         break
                     except Exception as exc:  # noqa: BLE001
                         kind = "timeout" if isinstance(exc, asyncio.TimeoutError) else health.classify(exc)
-                        logger.warning("care LLM call failed rid=%s attempt=%s kind=%s type=%s", request_id, attempt, kind,
-                                       type(exc).__name__)
-                        provider = {"llm": "error", "error_kind": kind, "error": type(exc).__name__, "request_id": request_id}
+                        prid = getattr(exc, "provider_request_id", None)
+                        logger.warning("care LLM call failed rid=%s attempt=%s category=%s provider_request_id=%s",
+                                       request_id, attempt, kind, prid)
+                        provider = {"llm": "error", "error_kind": kind, "error": type(exc).__name__, "request_id": request_id,
+                                    "provider_request_id": prid}
                         if not isinstance(exc, asyncio.TimeoutError) and health.note_failure(exc):
                             provider["error_kind"] = health.blocked_kind() or kind
                             break  # credit/quota/auth errors never succeed on retry
@@ -293,6 +296,7 @@ async def send(db: DBSession, user: User, clinic: Clinic, access: ProgramAccess,
                 reply, invented = guidance.resolve_citations(reply, len(sources))
                 if invented:
                     provider["invented_citations"] = len(invented)
+                reply, sources = guidance.dedupe_sources(reply, sources)
                 sources = guidance.cited_only(reply, sources)
             if prov is None:
                 result = {"type": "source_unavailable", "text": reply, "provenance": "clinic_configured",
