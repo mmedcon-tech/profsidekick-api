@@ -3,56 +3,198 @@
     "user": "sofia",
     "twin": "dr-avery",
     "category": "about_you",
-    "text": "Sofia is 33 and in her first IVF cycle.",
-    "source": "Conversation with Dr. Avery",
-    "days_ago": 6
+    "category_label": "About you",
+    "text": "You're 33 and in your first IVF cycle at MYOS Fertility Clinic.",
+    "source": "You told us during setup",
+    "days_ago": 5
   },
   {
     "user": "sofia",
     "twin": "dr-avery",
     "category": "treatment",
-    "text": "Monitoring scan booked for Thursday morning.",
-    "source": "Conversation with Dr. Avery",
+    "category_label": "Your treatment, as you described it",
+    "text": "Stimulation started 3 days ago; today is day 3.",
+    "source": "From your conversation, 2 days ago",
     "days_ago": 2
   },
   {
     "user": "sofia",
-    "twin": "nurse-jordan",
+    "twin": "dr-avery",
+    "category": "treatment",
+    "category_label": "Your treatment, as you described it",
+    "text": "Your next monitoring scan is Thursday at 8:30 am.",
+    "source": "From your conversation, yesterday",
+    "days_ago": 1
+  },
+  {
+    "user": "sofia",
+    "twin": "dr-avery",
     "category": "preferences",
-    "text": "Prefers step by step instructions with short sentences.",
-    "source": "Conversation with Nurse Jordan",
+    "category_label": "Preferences",
+    "text": "You like short, step-by-step answers, not long explanations.",
+    "source": "From your conversation, 2 days ago",
+    "days_ago": 2
+  },
+  {
+    "user": "sofia",
+    "twin": "dr-avery",
+    "category": "people",
+    "category_label": "People",
+    "text": "Your sister is thinking about egg freezing; you saved \"Is egg freezing right for me?\" for her.",
+    "source": "From your conversation, yesterday",
+    "days_ago": 1
+  },
+  {
+    "user": "sofia",
+    "twin": "nurse-jordan",
+    "category": "treatment",
+    "category_label": "Your treatment, as you described it",
+    "text": "Your plan includes an FSH pen, a medicine you mix before injecting, and from about day 6 a medicine that prevents early ovulation. Your clinic's written plan is the reference.",
+    "source": "You told us during setup",
     "days_ago": 5
   },
   {
     "user": "sofia",
     "twin": "nurse-jordan",
-    "category": "follow_up",
-    "text": "Asked how to travel with fridge medication next month.",
-    "source": "Conversation with Nurse Jordan",
-    "days_ago": 1
+    "category": "preferences",
+    "category_label": "Preferences",
+    "text": "Your evening injections are around 8 pm; reminders at 7:45 pm.",
+    "source": "You told us during setup",
+    "days_ago": 5
+  },
+  {
+    "user": "sofia",
+    "twin": "nurse-jordan",
+    "category": "about_you",
+    "category_label": "About you",
+    "text": "You feel nervous about injections; seeing the steps once before starting helps.",
+    "source": "From your conversation, 2 days ago",
+    "days_ago": 2
+  },
+  {
+    "user": "sofia",
+    "twin": "nurse-jordan",
+    "category": "people",
+    "category_label": "People",
+    "text": "Daniel, your husband, does the mixing step. You shared Medication guides with him.",
+    "source": "From Sharing, 3 days ago",
+    "days_ago": 3
+  },
+  {
+    "user": "sofia",
+    "twin": "nurse-jordan",
+    "category": "treatment",
+    "category_label": "Your treatment, as you described it",
+    "text": "Your clinic's nurse line is open weekdays 8 am–5 pm.",
+    "source": "You told us during setup",
+    "days_ago": 5
+  },
+  {
+    "user": "sofia",
+    "twin": "nurse-jordan",
+    "category": "preferences",
+    "category_label": "Preferences",
+    "text": "Remind you to check the trigger time with your clinic once they set it.",
+    "source": "From your conversation, today",
+    "days_ago": 0
   },
   {
     "user": "ahmed",
     "twin": "dr-maryam",
     "category": "about_you",
-    "text": "Ahmed plays football and wants to return to the game.",
-    "source": "Conversation with Dr. Maryam",
-    "days_ago": 10
+    "category_label": "About you",
+    "text": "You're 28 and play five-a-side football as a midfielder. Your goal is to play again.",
+    "source": "You told us during setup",
+    "days_ago": 5
+  },
+  {
+    "user": "ahmed",
+    "twin": "dr-maryam",
+    "category": "treatment",
+    "category_label": "Your treatment, as you described it",
+    "text": "Your ACL reconstruction was 3 weeks ago; you're in the Weeks 2–6 phase.",
+    "source": "You told us during setup",
+    "days_ago": 5
+  },
+  {
+    "user": "ahmed",
+    "twin": "dr-maryam",
+    "category": "treatment",
+    "category_label": "Your treatment, as you described it",
+    "text": "Physiotherapy is on Mondays and Thursdays.",
+    "source": "From your conversation, last week",
+    "days_ago": 7
   },
   {
     "user": "ahmed",
     "twin": "dr-maryam",
     "category": "preferences",
-    "text": "Prefers Arabic for voice.",
-    "source": "Conversation with Dr. Maryam",
+    "category_label": "Preferences",
+    "text": "Arabic for videos, English for text.",
+    "source": "You told us during setup",
+    "days_ago": 5
+  },
+  {
+    "user": "ahmed",
+    "twin": "dr-maryam",
+    "category": "about_you",
+    "category_label": "About you",
+    "text": "You worry about injuring the knee again; you asked to see the return-to-sport criteria.",
+    "source": "From your conversation, 4 days ago",
     "days_ago": 4
   },
   {
     "user": "publisher",
-    "twin": "dr-avery",
-    "category": "preferences",
-    "text": "Reviews new content on Monday mornings.",
-    "source": "Studio",
+    "twin": null,
+    "category": "workspace",
+    "category_label": "Workspace",
+    "text": "Your main workspace is MYOS Fertility Clinic.",
+    "source": "Studio setup",
+    "days_ago": 30
+  },
+  {
+    "user": "publisher",
+    "twin": null,
+    "category": "house_style",
+    "category_label": "House style",
+    "text": "Warm, plain language. American spelling in US workspaces, British spelling for Burjeel.",
+    "source": "Assistant conversation, last week",
     "days_ago": 7
+  },
+  {
+    "user": "publisher",
+    "twin": null,
+    "category": "review",
+    "category_label": "Review",
+    "text": "Default review cycle is 90 days; remind you weekly while no clinical reviewer is assigned.",
+    "source": "Studio settings",
+    "days_ago": 14
+  },
+  {
+    "user": "publisher",
+    "twin": null,
+    "category": "pipeline",
+    "category_label": "Pipeline",
+    "text": "You're preparing clinic conversations for November 2026.",
+    "source": "Assistant conversation, 3 days ago",
+    "days_ago": 3
+  },
+  {
+    "user": "publisher",
+    "twin": null,
+    "category": "burjeel",
+    "category_label": "Burjeel",
+    "text": "Burjeel materials live in assets/burjeel/; the hospital's name needs written approval before going live.",
+    "source": "Assistant conversation, last week",
+    "days_ago": 7
+  },
+  {
+    "user": "publisher",
+    "twin": null,
+    "category": "preferences",
+    "category_label": "Preferences",
+    "text": "Show \"Needs your attention\" first on the dashboard.",
+    "source": "Studio settings",
+    "days_ago": 14
   }
 ]

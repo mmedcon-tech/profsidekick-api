@@ -473,6 +473,8 @@ def update_clinic(clinic_id: uuid.UUID, body: ClinicBody, db: Session = Depends(
     if body.contact_routes is not None:
         c.contact_routes = _clean_routes(body.contact_routes)
     c.updated_at = datetime.utcnow()
+    if body.name is not None or body.description is not None:
+        c.edited_at = c.updated_at
     record_audit_event(db, action="care.clinic_updated", entity_type="clinic", entity_id=c.id, actor_user_id=user.id,
                        data={"fields": sorted(k for k, v in body.model_dump().items() if v is not None)})
     db.commit()

@@ -349,6 +349,7 @@ def change_item(
     else:
         if content is not None:
             item.content = content
+            item.edited_at = datetime.utcnow()
             item.evidence_quote = None  # A user correction is not a transcript quote.
             item.confidence = 1.0
         if status:

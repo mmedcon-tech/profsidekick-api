@@ -81,10 +81,14 @@ def seed(db: DBSession, now: datetime | None = None) -> dict:
             c = Clinic(id=uuid.uuid4(), slug=ws["slug"], created_at=now)
             db.add(c)
             stats["created"] += 1
-        c.name = workspace_name(ws)
+        if not c.edited_at:  # staff renamed it: keep theirs
+            c.name = workspace_name(ws)
+        else:
+            stats["kept_edited"] += 1
         c.is_pilot, c.languages, c.is_demo, c.status = ws["is_pilot"], ws["languages"], False, "active"
         c.branding, c.contact_routes, c.response_expectation = ws["branding"], ws["contact_routes"], ws["response_expectation"]
-        c.description = None
+        if not c.edited_at:
+            c.description = None
         c.updated_at = now
         db.flush()
         clinics[ws["slug"]] = c
@@ -230,11 +234,19 @@ def seed(db: DBSession, now: datetime | None = None) -> dict:
             db.add(CareHandoffEvent(id=uuid.uuid4(), handoff_id=h.id, actor_user_id=staff.id, kind="reply",
                                     body=r["reply"]["body"], created_at=at + timedelta(hours=2)))
 
+    # Earlier seed versions wrote these; drop them unless the person edited one (edited_at set).
+    for old in LEGACY_MEMORY_TEXTS:
+        for row in db.query(UserMemory).filter_by(content=old).all():
+            if row.edited_at:
+                stats["kept_edited"] += 1
+            else:
+                db.delete(row)
     for m in _load("memories.json"):
         u = users[m["user"]]
-        topic = f"twin:{m['twin']}"
+        topic = f"twin:{m['twin']}" if m["twin"] else "studio"
         if db.query(UserMemory).filter_by(user_id=u.id, topic=topic, content=m["text"]).first():
             continue
+        # Relative dates count back from the seed date; a memory expires 12 months after its last use.
         at = now - timedelta(days=m["days_ago"])
         db.add(UserMemory(id=uuid.uuid4(), user_id=u.id, content=m["text"], importance=1.0, kind=m["category"], topic=topic,
                           evidence_quote=m["source"], status="active", visibility=["learner"], consent_basis="patient_consent",
@@ -243,6 +255,12 @@ def seed(db: DBSession, now: datetime | None = None) -> dict:
     db.commit()
     return {"users": {k: v.email for k, v in users.items()}, "workspaces": list(clinics), **stats}
 
+
+LEGACY_MEMORY_TEXTS = (
+    "Sofia is 33 and in her first IVF cycle.", "Monitoring scan booked for Thursday morning.",
+    "Prefers step by step instructions with short sentences.", "Asked how to travel with fridge medication next month.",
+    "Ahmed plays football and wants to return to the game.", "Prefers Arabic for voice.", "Reviews new content on Monday mornings.",
+)
 
 LEGACY_CLINICS = ("demo-clinic-a", "demo-clinic-b", "harbor-fertility-demo")
 

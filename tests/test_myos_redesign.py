@@ -166,3 +166,23 @@ def test_patient_can_change_own_stage_supporter_cannot(myos):
     assert c.put(f"{FERT}/ivf-care/stage", json={"stage": "nope"}).status_code == 422
     _as(myos["u"]["daniel"])
     assert c.put(f"{FERT}/ivf-medication-preparation/stage", json={"stage": "guides"}).status_code == 403
+
+
+def test_seed_memories_exact_text_and_edits_survive(myos):
+    from datetime import datetime
+    from app.database.models import Clinic, UserMemory
+    db, sofia = myos["db"], myos["u"]["sofia"]
+    first = (db.query(UserMemory).filter_by(user_id=sofia.id, topic="twin:dr-avery", kind="about_you").one())
+    assert first.content == "You're 33 and in your first IVF cycle at MYOS Fertility Clinic."
+    assert first.evidence_quote == "You told us during setup"
+    assert (first.expires_at - first.last_confirmed_at).days == 365
+    assert db.query(UserMemory).filter_by(user_id=sofia.id).count() == 11
+    # A corrected memory and a renamed clinic are kept by later seeds.
+    first.content, first.edited_at = "I'm 34.", datetime.utcnow()
+    clinic = db.query(Clinic).filter_by(slug="myos-fertility-sf").one()
+    clinic.name, clinic.edited_at = "Renamed by staff", datetime.utcnow()
+    db.commit()
+    out = seed_myos.seed(db)
+    db.refresh(clinic)
+    assert clinic.name == "Renamed by staff" and out["kept_edited"] >= 1
+    assert db.query(UserMemory).filter_by(id=first.id).one().content == "I'm 34."

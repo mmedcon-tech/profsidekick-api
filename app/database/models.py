@@ -736,6 +736,7 @@ class UserMemory(Base):
     expires_at = Column(DateTime, nullable=True, index=True)
     # Stable hash of kind + topic, used for merging and content-free suppression.
     memory_key = Column(String(64), nullable=True)
+    edited_at = Column(DateTime, nullable=True)  # set when the user corrects it; seeding never overwrites
 
     user = relationship("User", foreign_keys=[user_id])
     avatar = relationship("Avatar", foreign_keys=[avatar_id])
@@ -1129,6 +1130,7 @@ class Clinic(Base):
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
+    edited_at = Column(DateTime, nullable=True)  # set when staff edit name/description; seeding keeps those
 
 
 class ClinicStaff(Base):
