@@ -247,7 +247,9 @@ def test_health_is_sanitized_and_typed(demo, monkeypatch):
     _as(demo["emily"])
     d = demo["c"].post(f"{P}/messages", json={"content": "How do I prepare my pen?"},
                        headers={"X-Request-ID": "test-rid-67890"}).json()
-    assert d["result"]["provenance"] == "source_quote" and d["route"]["provider"]["error_kind"] == "config"
+    from tests.fallback_assert import assert_labelled_fallback
+    assert_labelled_fallback(d["result"]) and d["route"]["provider"]["error_kind"] == "config"
+    assert d["route"]["provider"]["error_kind"] == "config"
     assert d["route"]["provider"]["request_id"] == "test-rid-67890"
 
 

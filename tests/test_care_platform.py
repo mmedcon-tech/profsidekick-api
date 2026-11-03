@@ -278,7 +278,8 @@ def test_llm_failure_is_labeled_not_disguised(world, monkeypatch):
     _enroll(c, "demo-clinic-a", "a-weight-management")
     r = c.post("/api/care/p/demo-clinic-a/a-weight-management/messages", json={"content": "How do GLP-1 medicines work?"}).json()
     assert r["route"]["provider"]["llm"] == "error"
-    assert r["reply"]["provenance"] == "source_quote" and r["reply"]["content"].startswith(chat.FALLBACK_INTRO)
+    from tests.fallback_assert import assert_labelled_fallback
+    assert_labelled_fallback(r["result"], r["reply"]["content"])
 
 
 def test_public_preview_and_unpublish(world):

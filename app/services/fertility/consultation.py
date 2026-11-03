@@ -182,6 +182,9 @@ async def _complete(messages: List[Dict[str, str]], temperature: float = 0.4) ->
         raise
 
 
+KB_LEAD = "From your clinic's knowledge base:"
+
+
 def _source_only_reply(chunks: List[Dict[str, Any]]) -> Optional[str]:
     """When the language model is unreachable, answer by quoting the best
     retrieved source instead of failing. Clearly labelled; no generated text."""
@@ -191,7 +194,7 @@ def _source_only_reply(chunks: List[Dict[str, Any]]) -> Optional[str]:
         return None
     top = answers[0]
     body = top["content"].split("\n", 1)[-1].strip()
-    return (f"{guidance.FALLBACK_LEAD} {body[:1200]} [1]\n\n"
+    return (f"{KB_LEAD} {body[:1200]} [1]\n\n"
             "For anything about your own treatment, please check with your fertility team.")
 
 

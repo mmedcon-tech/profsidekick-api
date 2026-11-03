@@ -62,7 +62,7 @@ def test_care_chat_quota_error_one_attempt_then_kb_under_budget(world, stub_ai, 
     assert time.monotonic() - t < 5
     assert len(calls) == 1  # no retry on a billing error
     assert r["type"] == "education" and r["provenance"] == "source_quote"
-    assert r["text"].startswith("From your clinic's knowledge base:") and "model" not in r["text"].lower()
+    assert r["text"].startswith("From your clinic's FAQ:") and "model" not in r["text"].lower()  # clear FAQ match
     # the next request does not call the provider at all while the breaker is open
     c.post(f"{WM}/messages", json={"content": "egg collection sedation"})
     assert len(calls) == 1

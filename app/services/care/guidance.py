@@ -8,7 +8,9 @@ import re
 from typing import Iterable, List, Tuple
 from urllib.parse import urlparse
 
-FALLBACK_LEAD = "From your clinic's knowledge base:"
+FALLBACK_LEAD = "From your clinic's FAQ:"
+MODEL_DOWN_REPLY = ("I can't answer that fully right now. Your care team can help: use \u201cAsk my care team\u201d "
+                    "and they'll reply.")
 
 _GUIDANCE = re.compile(
     r"\b(the|this|our)\s+(ai|assistant|model|bot|twin|avatar|chatbot)\s+(should|must|will|may|can|cannot|can't|"

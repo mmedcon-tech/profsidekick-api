@@ -23,7 +23,7 @@ from app.config import settings
 from app.database.models import (CareDeviceAssignment, CareHandoff, CareProgram, Clinic, Consultation,
                                  ConsultationMessage, DoctorPersona, User)
 from app.services.audit_service import record_audit_event
-from app.services.care import content, health, results, safety
+from app.services.care import content, health, intent, results, safety
 from app.services.care.access import ProgramAccess
 from app.services.ai import clinical as ai
 
@@ -143,6 +143,20 @@ async def _complete(messages: List[Dict[str, str]]) -> str:
     return await ai.complete(messages, temperature=0.3, timeout=LLM_TIMEOUT_S)
 
 
+FAQ_KINDS = ("faq", "patient_instruction")
+FAQ_MIN_COVERAGE = 0.6
+
+
+def _faq_match(question: str, chunks: List[Dict[str, Any]]):
+    """A clear match against an approved patient FAQ: most of the patient's own terms appear in it."""
+    from app.services.care import lexical
+
+    for i, ch in enumerate(chunks):
+        if ch.get("kind") in FAQ_KINDS and lexical.coverage(question, ch.get("content") or "") >= FAQ_MIN_COVERAGE:
+            return i, ch
+    return None
+
+
 def _context(clinic: Clinic, program: CareProgram, c: Consultation) -> Dict[str, str]:
     return {"clinic": clinic.slug, "program": program.slug, "consultation_id": str(c.id)}
 
@@ -159,12 +173,24 @@ async def send(db: DBSession, user: User, clinic: Clinic, access: ProgramAccess,
     ai.bind(clinic, request_id)  # model routing + data class for this request (no clinical text logged)
     c = get_or_create(db, user, access)
     courses = content.visible_course_ids(db, access)
-    route = safety.classify(db, clinic, program, text, courses)
+    intent_kind = intent.classify(text)
+    route = safety.Route(safety.EDUCATION) if intent_kind else safety.classify(db, clinic, program, text, courses)
     provider: Dict[str, Any] = {"llm": "not_called"}
     sources: List[Dict[str, Any]] = []
     result: Dict[str, Any]
     device = None
-    if route.kind != safety.EDUCATION:
+    if intent_kind:
+        persona = db.query(DoctorPersona).filter_by(id=program.persona_id).first() if program.persona_id else None
+        if intent_kind == intent.MODEL_STATUS:
+            ok = ai.ready() is None and health.openai_available()
+            reply = intent.status_reply(ok)
+            provider = {"llm": "not_called", "status_check": "ready" if ok else (ai.ready() or health.blocked_kind() or "unavailable")}
+        else:
+            reply = intent.welcome(persona, clinic, getattr(user, "first_name", None),
+                                   thanks=bool(intent._THANKS.match(text)))
+        result = {"type": "assistant_info", "text": reply, "provenance": "clinic_configured",
+                  "handoff_offered": False, "reason": intent_kind}
+    elif route.kind != safety.EDUCATION:
         rtype = _result_type(route)
         reply = route.reply or ""
         result = {"type": rtype, "text": reply, "provenance": "clinic_configured", "handoff_offered": route.handoff_offered,
@@ -251,17 +277,29 @@ async def send(db: DBSession, user: User, clinic: Clinic, access: ProgramAccess,
                             provider["error_kind"] = health.blocked_kind() or kind
                             break  # credit/quota/auth errors never succeed on retry
             if provider["llm"] != "ok":
-                top = chunks[0]
-                reply = (f"{FALLBACK_INTRO}\n\n{top['content'][:1200]} [1]")
-                sources = sources[:1]
-                prov = "source_quote"
+                logger.info("care fallback rid=%s category=%s provider_request_id=%s", request_id,
+                            provider.get("error_kind"), provider.get("provider_request_id"))
+                faq = _faq_match(text, chunks)
+                if faq is not None:
+                    i, top = faq
+                    body = (top["content"] or "").split("\n", 1)[-1].strip() if (top["content"] or "").startswith(top["title"]) else top["content"]
+                    reply = f"{FALLBACK_INTRO}\n\n{(body or '')[:1200]} [1]"
+                    sources = [{**sources[i], "n": 1}]
+                    prov = "source_quote"
+                else:
+                    reply = guidance.MODEL_DOWN_REPLY
+                    prov = None
             else:
                 reply, invented = guidance.resolve_citations(reply, len(sources))
                 if invented:
                     provider["invented_citations"] = len(invented)
                 sources = guidance.cited_only(reply, sources)
-            result = {"type": "education", "text": reply, "provenance": prov, "sources": sources,
-                      "handoff_offered": route.handoff_offered}
+            if prov is None:
+                result = {"type": "source_unavailable", "text": reply, "provenance": "clinic_configured",
+                          "handoff_offered": True, "reason": "model_unavailable"}
+            else:
+                result = {"type": "education", "text": reply, "provenance": prov, "sources": sources,
+                          "handoff_offered": route.handoff_offered}
     result = results.build(result)
     reply = result["text"]
     sources = result["sources"]

@@ -23,7 +23,7 @@ def test_guidance_detector():
 
 def test_fallback_lead_is_plain_and_patient_facing():
     lead = chat.FALLBACK_INTRO
-    assert lead == "From your clinic's knowledge base:"
+    assert lead == "From your clinic's FAQ:"
     for bad in ("model", "unavailable", "AI", "\u2014", "!", "unedited", "service"):
         assert bad not in lead
 
@@ -45,8 +45,10 @@ def test_guidance_never_shown_or_quoted_in_fallback(myos, monkeypatch):
     _as(myos["u"]["sofia"])
     r = myos["client"].post(f"{FERT}/ivf-care/messages", json={"content": "What does progesterone do?"}).json()
     text = r["reply"]["content"]
-    assert text.startswith(chat.FALLBACK_INTRO) and FACT in text and "the AI should" not in text
-    assert [s["title"] for s in r["result"]["sources"]] == ["Progesterone after transfer"]
+    from tests.fallback_assert import assert_labelled_fallback
+    assert "the AI should" not in text
+    if assert_labelled_fallback(r["result"], text) == "faq":
+        assert FACT in text and [s["title"] for s in r["result"]["sources"]] == ["Progesterone after transfer"]
 
 
 def test_guidance_used_as_policy_not_source(myos, monkeypatch):

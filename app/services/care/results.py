@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
 logger = logging.getLogger(__name__)
-ResultType = Literal["education", "needs_clinician", "source_unavailable", "urgent_contact_path"]
+ResultType = Literal["education", "needs_clinician", "source_unavailable", "urgent_contact_path", "assistant_info"]
 
 
 class SourceCard(BaseModel):
@@ -56,6 +56,8 @@ class ChatResult(BaseModel):
             raise ValueError("education results must cite at least one approved source")
         if self.type != "education" and self.provenance != "clinic_configured":
             raise ValueError("only education results may be AI-generated or quoted")
+        if self.type == "assistant_info" and self.sources:
+            raise ValueError("greetings and status replies carry no sources")
         if self.type == "urgent_contact_path" and self.sources:
             raise ValueError("urgent results carry the clinic route, not sources")
         return self

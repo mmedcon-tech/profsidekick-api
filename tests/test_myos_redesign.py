@@ -82,8 +82,8 @@ def test_model_failure_retries_once_then_friendly_fallback(myos, monkeypatch):
     _as(myos["u"]["sofia"])
     r = c.post(f"{FERT}/ivf-care/messages", json={"content": "What happens during stimulation?"}).json()
     assert len(calls) == 2
-    assert r["reply"]["content"].startswith(chat.FALLBACK_INTRO)
-    assert r["result"]["sources"]
+    from tests.fallback_assert import assert_labelled_fallback
+    assert_labelled_fallback(r["result"], r["reply"]["content"])
 
 
 def test_first_run_guide_shows_once_and_can_be_reopened(myos):
@@ -152,7 +152,8 @@ def test_hanging_model_falls_back_within_one_shared_budget(myos, monkeypatch):
     t0 = _t.monotonic()
     r = myos["client"].post(f"{FERT}/ivf-care/messages", json={"content": "What happens during stimulation?"}).json()
     assert _t.monotonic() - t0 < 2.5
-    assert r["reply"]["content"].startswith(chat.FALLBACK_INTRO)
+    from tests.fallback_assert import assert_labelled_fallback
+    assert_labelled_fallback(r["result"], r["reply"]["content"])
 
 
 def test_patient_can_change_own_stage_supporter_cannot(myos):
