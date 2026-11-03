@@ -34,7 +34,6 @@ from app.services.fertility import doctor, knowledge, safety
 
 logger = logging.getLogger(__name__)
 
-CHAT_MODEL = "gpt-4.1"
 LLM_TIMEOUT_S = float(__import__("os").getenv("CARE_LLM_TIMEOUT_S") or 5)
 RECENT_TURNS = 12          # messages sent verbatim
 SUMMARIZE_AFTER = 24       # older messages are folded into the summary
@@ -164,25 +163,23 @@ def patient_context_block(db: DBSession, user_id, membership: CareProgramMembers
 
 
 def _llm_client():
-    from openai import AsyncOpenAI
+    """The model-agnostic completion entry point (kept as a seam for tests)."""
+    from app.services.ai import clinical as ai
 
-    return AsyncOpenAI(api_key=settings.openai_api_key, timeout=LLM_TIMEOUT_S, max_retries=0)
+    return ai
 
 
 async def _complete(messages: List[Dict[str, str]], temperature: float = 0.4) -> str:
     from app.services.care import health
 
     if not health.openai_available():
-        raise RuntimeError("openai unavailable (billing/auth); knowledge-base fallback")
+        raise RuntimeError("model provider unavailable (billing/auth); knowledge-base fallback")
     try:
-        resp = await asyncio.wait_for(
-            _llm_client().chat.completions.create(model=CHAT_MODEL, messages=messages, temperature=temperature),
-            timeout=LLM_TIMEOUT_S)
+        return await _llm_client().complete(messages, temperature=temperature, timeout=LLM_TIMEOUT_S)
     except Exception as exc:  # noqa: BLE001
         if not isinstance(exc, asyncio.TimeoutError):
             health.note_failure(exc)
         raise
-    return (resp.choices[0].message.content or "").strip()
 
 
 def _source_only_reply(chunks: List[Dict[str, Any]]) -> Optional[str]:
@@ -230,6 +227,9 @@ async def send(db: DBSession, user_id, consultation_id, text: str, mode: str = "
     mode = mode if mode in doctor.MODES else "text"
     c = own_consultation(db, user_id, consultation_id)
     program = db.query(CareProgram).filter_by(id=c.program_id).first()
+    from app.database.models import Clinic
+    from app.services.ai import clinical as ai
+    ai.bind(db.query(Clinic).filter_by(id=program.clinic_ref_id).first() if program and program.clinic_ref_id else None)
     membership = get_membership(db, user_id, program)
     role = membership.care_role if membership else c.care_role
 

@@ -236,33 +236,40 @@ def parse_kb(text: str) -> List[KBChunk]:
     return chunks
 
 
-def _try_embed(texts: List[str]) -> Optional[List[List[float]]]:
+def _embed_impl(texts: List[str], query: bool = False) -> Optional[List[List[float]]]:
+    """Embeddings via the model-agnostic router. Approved content is public_content; a query
+    carries patient text, so it uses the clinic's data class from the request context (PHI by
+    default) and is only embedded by a provider eligible for that class."""
     if not texts:
         return []
-    from app.config import settings
-    from app.services.care.health import classify, key_state
-
-    if key_state(settings.openai_api_key, "sk-") != "present":
-        return None  # no usable key configured: keyword retrieval, no wasted call
+    from app.services.ai import clinical as ai
+    from app.services.ai import registry
     from app.services.care import health
 
     if not health.openai_available():
         return None  # billing/auth failure seen recently; rows stay embedding=NULL for the backfill
-    try:
-        from openai import OpenAI
+    dc = "public_content"
+    if query:
+        ctx = ai._ctx.get()
+        dc = ctx.get("data_class") or registry.clinic_data_class(registry.load(), ctx.get("clinic"))
+    if ai.ready("embeddings", dc):
+        return None  # no eligible/configured provider for this data class: keyword retrieval only
+    vecs, _model = ai.embed(texts, data_class=dc, timeout=3 if len(texts) <= 4 else 60)
+    if vecs is None:
+        logger.warning("fertility knowledge: embedding unavailable; keyword retrieval only")
+    return vecs
 
-        client = OpenAI(api_key=settings.openai_api_key, timeout=3 if len(texts) <= 4 else 60, max_retries=0)
-        out: List[List[float]] = []
-        for i in range(0, len(texts), 256):
-            resp = client.embeddings.create(model="text-embedding-3-small", input=texts[i:i + 256])
-            out.extend(d.embedding for d in resp.data)
-        return out
-    except Exception as exc:  # noqa: BLE001 — keyword retrieval still works
-        health.note_failure(exc)
-        # provider messages can echo key fragments, so log the type and kind only
-        logger.warning("fertility knowledge: embedding unavailable (%s, %s); keyword retrieval only",
-                       type(exc).__name__, classify(exc))
+
+def _try_embed(texts: List[str]) -> Optional[List[List[float]]]:
+    """Approved content (public_content)."""
+    return _embed_impl(texts)
+
+
+def _embed_query(query: str) -> Optional[List[List[float]]]:
+    """Patient text: only a provider eligible for the clinic's data class embeds it."""
+    if _try_embed([]) is None:  # embeddings disabled (tests stub _try_embed)
         return None
+    return _embed_impl([query], query=True)
 
 
 def ingest_kb(db: DBSession, text: Optional[str] = None, *, embed: bool = True) -> Dict[str, Any]:
@@ -444,7 +451,7 @@ def retrieve(
     statuses = allowed_approval_statuses(phase)
     pool: Dict[Any, tuple] = {}
 
-    vec = _try_embed([query])
+    vec = _embed_query(query)
     if vec:
         dist = FertilityKnowledgeChunk.embedding.cosine_distance(vec[0])
         rows = (db.query(FertilityKnowledgeChunk, dist.label("d"))

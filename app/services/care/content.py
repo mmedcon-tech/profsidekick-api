@@ -83,6 +83,15 @@ def _try_embed(texts: List[str]):
     return embed(texts)
 
 
+def _embed_query(query: str):
+    """Patient text: embedded only by a provider eligible for the clinic's data class."""
+    if _try_embed([]) is None:  # tests stub _try_embed to disable embeddings entirely
+        return None
+    from app.services.fertility.knowledge import _embed_impl
+
+    return _embed_impl([query], query=True)
+
+
 def invalidate_item(db: DBSession, item_id) -> int:
     """Drop every retrieval artefact of one item version: chunks (keyword
     index) and their embeddings (vector index). There is no other cache of
@@ -250,7 +259,7 @@ def retrieve(db: DBSession, *, program_id, clinic_id, visible_course_ids: Set, a
     if lineage_ids:
         base = base.filter(CareContentItem.lineage_id.in_(lineage_ids))
     pool: Dict[Any, tuple] = {}
-    vec = _try_embed([query])
+    vec = _embed_query(query)
     if vec:
         dist = CareContentChunk.embedding.cosine_distance(vec[0])
         for ch, it, d in (base.add_columns(dist.label("d")).filter(CareContentChunk.embedding.isnot(None))

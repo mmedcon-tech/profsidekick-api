@@ -25,9 +25,9 @@ from app.database.models import (CareDeviceAssignment, CareHandoff, CareProgram,
 from app.services.audit_service import record_audit_event
 from app.services.care import content, health, results, safety
 from app.services.care.access import ProgramAccess
+from app.services.ai import clinical as ai
 
 logger = logging.getLogger(__name__)
-CHAT_MODEL = "gpt-4.1"
 RECENT_TURNS = 10
 
 PLATFORM_RULES = """You are a clinic-approved education assistant inside a care program.
@@ -139,11 +139,8 @@ def _result_type(route) -> str:
 
 
 async def _complete(messages: List[Dict[str, str]]) -> str:
-    from openai import AsyncOpenAI
-
-    resp = await AsyncOpenAI(api_key=settings.openai_api_key, timeout=LLM_TIMEOUT_S, max_retries=0).chat.completions.create(
-        model=CHAT_MODEL, messages=messages, temperature=0.3)
-    return (resp.choices[0].message.content or "").strip()
+    """Model-agnostic: the router picks an eligible provider for this clinic, task and data class."""
+    return await ai.complete(messages, temperature=0.3, timeout=LLM_TIMEOUT_S)
 
 
 def _context(clinic: Clinic, program: CareProgram, c: Consultation) -> Dict[str, str]:
@@ -159,6 +156,7 @@ async def send(db: DBSession, user: User, clinic: Clinic, access: ProgramAccess,
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Message is too long")
     access.require("education")
     program = access.program
+    ai.bind(clinic, request_id)  # model routing + data class for this request (no clinical text logged)
     c = get_or_create(db, user, access)
     courses = content.visible_course_ids(db, access)
     route = safety.classify(db, clinic, program, text, courses)
@@ -221,8 +219,9 @@ async def send(db: DBSession, user: User, clinic: Clinic, access: ProgramAccess,
             msgs += [{"role": "assistant" if m.sender == "assistant" else "user", "content": m.content} for m in recent]
             msgs.append({"role": "user", "content": text})
             prov = "ai_generated"
-            if health.key_state(settings.openai_api_key, "sk-") != "present":
-                provider = {"llm": "error", "error_kind": "config", "request_id": request_id}
+            not_ready = ai.ready()
+            if not_ready:
+                provider = {"llm": "error", "error_kind": not_ready, "request_id": request_id}
             elif not health.openai_available():  # billing/auth failure seen recently: answer from the KB now
                 provider = {"llm": "error", "error_kind": health.blocked_kind() or "quota", "skipped": True,
                             "request_id": request_id}
@@ -237,7 +236,11 @@ async def send(db: DBSession, user: User, clinic: Clinic, access: ProgramAccess,
                         break
                     try:
                         reply = await asyncio.wait_for(_complete(msgs), timeout=left)
-                        provider = {"llm": "ok", "model": CHAT_MODEL, "request_id": request_id, "attempts": attempt}
+                        tr = ai.last_trail() or {}
+                        provider = {k: v for k, v in {
+                            "llm": "ok", "provider": tr.get("provider"), "model": tr.get("model"),
+                            "fallback_reason": tr.get("fallback_reason"), "data_class": tr.get("data_class"),
+                            "request_id": request_id, "attempts": attempt}.items() if v is not None}
                         break
                     except Exception as exc:  # noqa: BLE001
                         kind = "timeout" if isinstance(exc, asyncio.TimeoutError) else health.classify(exc)
@@ -253,6 +256,9 @@ async def send(db: DBSession, user: User, clinic: Clinic, access: ProgramAccess,
                 sources = sources[:1]
                 prov = "source_quote"
             else:
+                reply, invented = guidance.resolve_citations(reply, len(sources))
+                if invented:
+                    provider["invented_citations"] = len(invented)
                 sources = guidance.cited_only(reply, sources)
             result = {"type": "education", "text": reply, "provenance": prov, "sources": sources,
                       "handoff_offered": route.handoff_offered}

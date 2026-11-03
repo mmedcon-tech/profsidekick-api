@@ -63,3 +63,12 @@ def cited_only(reply: str, sources: List[dict]) -> List[dict]:
     """Keep only the source cards the answer actually cites ([n]); if it cites none, show none."""
     used = {int(n) for n in _CITE.findall(reply or "")}
     return [s for s in sources if s.get("n") in used]
+
+
+def resolve_citations(reply: str, n_sources: int):
+    """Citations must point at a source actually supplied for this answer. Invented ones
+    ([n] beyond the supplied sources) are removed from the text and reported (count only)."""
+    invented = sorted({int(n) for n in _CITE.findall(reply or "") if not 1 <= int(n) <= n_sources})
+    if invented:
+        reply = _CITE.sub(lambda m: m.group(0) if 1 <= int(m.group(1)) <= n_sources else "", reply)
+    return reply, invented

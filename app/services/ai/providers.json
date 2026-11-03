@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "updated": "2026-11-03",
+  "_note": "Versioned provider registry. No secrets here: keys stay in .env and are referenced by env var name only. Agreement statuses are recorded honestly; 'unknown' means MYOS has no evidence of a signed BAA/DPA.",
+  "providers": {
+    "openai": {
+      "adapter": "openai",
+      "account_label": "MYOS OpenAI project (profsidekick-api .env OPENAI_API_KEY)",
+      "key_env": "OPENAI_API_KEY",
+      "endpoint": "https://api.openai.com/v1",
+      "region": "us",
+      "enabled": true,
+      "agreements": {"baa": "unknown", "dpa": "unknown"},
+      "retention": "provider default (not verified; zero-data-retention not confirmed)",
+      "review": {"last_reviewed": "2026-11-03", "next_review": "2027-02-03"},
+      "capabilities": {
+        "generation": {"enabled": true, "models": ["gpt-4.1"], "data_classes": ["public_content", "synthetic"]},
+        "embeddings": {"enabled": true, "models": ["text-embedding-3-small"], "data_classes": ["public_content", "synthetic"]},
+        "reranking": {"enabled": false, "data_classes": []},
+        "transcription": {"enabled": false, "data_classes": []},
+        "vendor_hosted_tools": {"enabled": false, "data_classes": []}
+      }
+    },
+    "local": {
+      "adapter": "local",
+      "account_label": "MYOS deterministic local adapter (in-process, no network)",
+      "key_env": null,
+      "endpoint": "in-process",
+      "region": "local",
+      "enabled": true,
+      "agreements": {"baa": "not_applicable", "dpa": "not_applicable"},
+      "retention": "none (nothing leaves the process)",
+      "review": {"last_reviewed": "2026-11-03", "next_review": "2027-02-03"},
+      "capabilities": {
+        "generation": {"enabled": true, "models": ["local-extractive-v1"], "data_classes": ["public_content", "synthetic", "deidentified", "phi"]},
+        "embeddings": {"enabled": true, "models": ["local-hash-1536"], "data_classes": ["public_content", "synthetic", "deidentified", "phi"]}
+      }
+    },
+    "elevenlabs": {
+      "adapter": null,
+      "account_label": "MYOS ElevenLabs workspace (.env ELEVENLABS_API_KEY)",
+      "key_env": "ELEVENLABS_API_KEY",
+      "endpoint": "https://api.elevenlabs.io",
+      "region": "us",
+      "enabled": true,
+      "agreements": {"baa": "unknown", "dpa": "unknown"},
+      "retention": "provider default (not verified)",
+      "review": {"last_reviewed": "2026-11-03", "next_review": "2027-02-03"},
+      "capabilities": {
+        "voice": {"enabled": true, "data_classes": ["public_content", "synthetic"]},
+        "transcription": {"enabled": false, "data_classes": []}
+      }
+    },
+    "liveavatar": {
+      "adapter": null,
+      "account_label": "MYOS LiveAvatar/HeyGen account (.env LIVEAVATAR_API_KEY)",
+      "key_env": "LIVEAVATAR_API_KEY",
+      "endpoint": "https://api.liveavatar.com",
+      "region": "us",
+      "enabled": true,
+      "agreements": {"baa": "unknown", "dpa": "unknown"},
+      "retention": "provider default (not verified); LIVEAVATAR_PATIENT_DATA_APPROVED=false",
+      "review": {"last_reviewed": "2026-11-03", "next_review": "2027-02-03"},
+      "capabilities": {
+        "voice": {"enabled": true, "data_classes": ["public_content", "synthetic"]},
+        "vendor_hosted_tools": {"enabled": false, "data_classes": []}
+      }
+    }
+  },
+  "routing": {
+    "default": {
+      "generation": ["openai:gpt-4.1"],
+      "embeddings": ["openai:text-embedding-3-small"]
+    },
+    "clinics": {}
+  },
+  "_routing_note": "Per clinic and per task: an ordered list of provider:model. Later entries are fallbacks and are used only if independently eligible. TTS voice ids stay in clinic/persona settings and are checked against the 'voice' capability.",
+  "clinic_data_class": {
+    "_default": "phi",
+    "myos-fertility-sf": "synthetic"
+  },
+  "_clinic_data_class_note": "Patient Care Context is treated as PHI unless a clinic is declared synthetic here. myos-fertility-sf is declared synthetic because every account in it is a seeded test account; change it to phi before any real patient uses it. Demo clinics (is_demo) are always synthetic."
+}

@@ -28,6 +28,10 @@ def key_state(value: Optional[str], prefix: Optional[str] = None) -> str:
 
 
 def classify(exc: BaseException) -> str:
+    from app.services.ai import errors as ai_errors
+
+    if isinstance(exc, ai_errors.ModelError):
+        return {"rate_limited": "rate_limit", "unavailable": "upstream", "quota": "quota"}.get(exc.kind, exc.kind)
     name = type(exc).__name__
     code = getattr(exc, "status_code", None) or getattr(getattr(exc, "response", None), "status_code", None)
     if code in (401, 403) or "Authentication" in name or "PermissionDenied" in name:
@@ -138,6 +142,10 @@ def error_code(exc: BaseException) -> Optional[str]:
 
 
 def non_retryable(exc: BaseException) -> bool:
+    from app.services.ai import errors as ai_errors
+
+    if isinstance(exc, ai_errors.ModelError):
+        return not exc.retryable
     status_code = getattr(exc, "status_code", None)
     return classify(exc) == "auth" or status_code == 402 or error_code(exc) in NON_RETRYABLE_CODES
 
@@ -147,7 +155,8 @@ def note_failure(exc: BaseException) -> bool:
     global _blocked_until, _blocked_kind
     if non_retryable(exc):
         _blocked_until = time.monotonic() + OPENAI_BLOCK_S
-        _blocked_kind = "auth" if classify(exc) == "auth" else "quota"
+        k = classify(exc)
+        _blocked_kind = k if k in ("auth", "config", "not_eligible") else "quota"
         return True
     return False
 
