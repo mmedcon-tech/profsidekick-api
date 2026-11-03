@@ -169,3 +169,19 @@ def test_scope_expiry_and_enrolment_checked_per_call(myos):
     assert {"scope_not_granted", "expired", "not_enrolled"} <= set(reasons)
     assert c.post(f"{API}/c/myos-fertility-sf/agent-grants",
                   json={"agent_label": "x", "scopes": ["write_everything"], "ttl_days": 7}).status_code in (404, 422)
+
+
+def test_deleting_a_request_removes_its_drafts_and_their_approvals(myos):
+    from app.database.models import CareClinicianApproval, CareHandoff, CareReplyDraft
+    db, c = myos["db"], myos["client"]
+    doctor = _staff(db, _clinic(db), True)
+    rid = _request(c, myos["u"]["sofia"])
+    _as(doctor)
+    d = c.post(f"{API}/review/requests/{rid}/drafts", json={"body": "Draft."}).json()
+    c.post(f"{API}/review/drafts/{d['id']}/approve", json={"sha256": d["sha256"]})
+    assert db.query(CareClinicianApproval).filter_by(subject_id=d["id"]).count() == 1
+    db.query(CareHandoff).filter_by(id=rid).delete(synchronize_session=False)  # bulk SQL delete, no ORM cascade
+    db.commit()
+    db.expire_all()
+    assert db.query(CareReplyDraft).filter_by(id=d["id"]).count() == 0
+    assert db.query(CareClinicianApproval).filter_by(subject_id=d["id"]).count() == 0

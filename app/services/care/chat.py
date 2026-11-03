@@ -263,8 +263,7 @@ async def send(db: DBSession, user: User, clinic: Clinic, access: ProgramAccess,
                     "status_label": ch.get("status_label"),
                     "publisher": guidance.publisher(ch.get("source_url"))} for i, ch in enumerate(chunks)]
         if not chunks:
-            reply = ("Your clinic hasn't provided approved information on that in this program, so I can't answer it "
-                     "reliably. Use “Ask my care team” and I'll pass the question on.")
+            reply = NO_SOURCE_REPLY
             route.handoff_offered = True
             result = {"type": "source_unavailable", "text": reply, "provenance": "clinic_configured",
                       "handoff_offered": True, "reason": "no_approved_source"}
@@ -341,6 +340,9 @@ async def send(db: DBSession, user: User, clinic: Clinic, access: ProgramAccess,
             if prov is None:
                 result = {"type": "source_unavailable", "text": reply, "provenance": "clinic_configured",
                           "handoff_offered": True, "reason": "model_unavailable"}
+            elif not sources:  # the model answered without citing approved material: nothing to stand on
+                result = {"type": "source_unavailable", "text": NO_SOURCE_REPLY, "provenance": "clinic_configured",
+                          "handoff_offered": True, "reason": "no_approved_source"}
             else:
                 result = {"type": "education", "text": reply, "provenance": prov, "sources": sources,
                           "handoff_offered": route.handoff_offered}
@@ -364,6 +366,8 @@ async def send(db: DBSession, user: User, clinic: Clinic, access: ProgramAccess,
             "route": sd, "result": result, "device": device_dict(device), "review_request": review_request}
 
 
+NO_SOURCE_REPLY = ("Your clinic hasn't added guidance on this yet. Your care team can help: use “Ask my care team” "
+                   "and they'll reply.")
 AUTO_REVIEW = {"source_unavailable": "no_approved_source", "needs_clinician": "personal_judgment"}
 
 

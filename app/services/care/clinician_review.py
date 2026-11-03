@@ -37,7 +37,7 @@ def _clinician_name(db, user: User, clinic_id) -> str:
 
 def _record(db, clinic_id, subject_type, subject_id, digest, user: User) -> CareClinicianApproval:
     a = CareClinicianApproval(id=uuid.uuid4(), clinic_id=clinic_id, subject_type=subject_type, subject_id=subject_id,
-                              sha256=digest, approver_user_id=user.id,
+                              draft_id=subject_id if subject_type == "reply_draft" else None, sha256=digest, approver_user_id=user.id,
                               approver_name=_clinician_name(db, user, clinic_id), approved_at=datetime.utcnow())
     db.add(a)
     return a

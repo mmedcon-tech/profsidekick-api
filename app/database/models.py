@@ -1416,6 +1416,8 @@ class CareClinicianApproval(Base):
     clinic_id = Column(UUID(as_uuid=True), ForeignKey("clinics.id", ondelete="CASCADE"), nullable=False, index=True)
     subject_type = Column(String(20), nullable=False)  # content_item | reply_draft
     subject_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    # Set for reply_draft approvals so the approval is deleted with its draft (and the draft with its request).
+    draft_id = Column(UUID(as_uuid=True), ForeignKey("care_reply_drafts.id", ondelete="CASCADE"), nullable=True, index=True)
     sha256 = Column(String(64), nullable=False)
     approver_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     approver_name = Column(String(255), nullable=False)

@@ -262,3 +262,19 @@ def test_client_telemetry_rejects_free_text(demo):
     _as(_user(demo["db"], "admin"))
     st = c.get("/api/care/admin/status").json()
     assert st["client_events"].get("playback_ok", 0) >= 1 and "text" not in str(st["client_events"])
+
+
+def test_no_source_wording_is_plain_and_offers_handoff(demo, monkeypatch):
+    c = demo["c"]
+    _as(demo["emily"])
+    plain = "Your clinic hasn't added guidance on this yet. Your care team can help"
+    r = _ask(c, "What is the capital of Peru?")["result"]  # nothing retrieved
+    assert r["type"] == "source_unavailable" and r["text"].startswith(plain) and r["handoff_offered"]
+    assert "decision your care team" not in r["text"]
+
+    async def uncited(messages):
+        return "Eat a balanced diet."  # retrieved material exists, but the model cites none of it
+    monkeypatch.setattr(chat, "_complete", uncited)
+    r = _ask(c, "How do I prepare my pen?")["result"]
+    assert r["type"] == "source_unavailable" and r["text"].startswith(plain) and r["handoff_offered"]
+    assert r["reason"] == "no_approved_source" and not r["sources"]
