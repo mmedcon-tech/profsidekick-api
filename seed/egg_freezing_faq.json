@@ -1,0 +1,1108 @@
+[
+ {
+  "key": "faq-02",
+  "pdf_number": 2,
+  "question": "How is egg freezing different from IVF?",
+  "answer": "Both usually involve ovarian stimulation, monitoring and egg retrieval. In egg freezing, suitable mature eggs are frozen unfertilised. In IVF, eggs are fertilised with the aim of creating embryos.",
+  "stage": "explore",
+  "topic": "basics",
+  "content_class": "education",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "HFEA: Egg freezing, use and storage",
+  "source_url": "https://www.hfea.gov.uk/treatments/fertility-preservation/egg-freezing/",
+  "section_refs": "[1] · [2] · [3] · [4]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-06",
+  "pdf_number": 6,
+  "question": "What tests might I need before starting?",
+  "answer": "The team may review menstrual and medical history, order blood tests or ultrasound, and assess the uterus, tubes or sperm as relevant. Infectious disease screening and consent requirements depend on the treatment and location.",
+  "stage": "assessment",
+  "topic": "tests",
+  "content_class": "education",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "ASRM: Fertility evaluation committee opinion",
+  "source_url": "https://www.asrm.org/practice-guidance/practice-committee-documents/fertility-evaluation-of-infertile-women-a-committee-opinion-2026",
+  "section_refs": "[1] · [2] · [3] · [4]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-07",
+  "pdf_number": 7,
+  "question": "What do AMH and antral follicle count tell me?",
+  "answer": "They help estimate how your ovaries may respond to stimulation. They cannot by themselves tell you egg quality, whether you can conceive naturally, or whether treatment will result in a baby.",
+  "stage": "assessment",
+  "topic": "ovarian reserve",
+  "content_class": "education",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "ASRM: Evidence on planned oocyte cryopreservation",
+  "source_url": "https://www.asrm.org/practice-guidance/practice-committee-documents/evidence-based-outcomes-after-oocyte-cryopreservation-for-donor-oocyte-in-vitro-fertilization-and-planned-oocyte-cryopreservation-a-guideline-2021/",
+  "section_refs": "[1] · [2] · [3] · [4]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-09",
+  "pdf_number": 9,
+  "question": "How long will the process take?",
+  "answer": "Allow time for consultations, tests, medication delivery and scheduling. Stimulation and retrieval take place over a much shorter period than the whole IVF journey, which can include later transfer cycles. Ask for dates that are firm and dates that may move.",
+  "stage": "find-clinic",
+  "topic": "timing",
+  "content_class": "education",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "NHS: IVF overview and complications",
+  "source_url": "https://www.nhs.uk/tests-and-treatments/ivf/",
+  "section_refs": "[1] · [2] · [3] · [5]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-10",
+  "pdf_number": 10,
+  "question": "What should I do before starting treatment?",
+  "answer": "Complete the clinic checklist, review your medical history and medicines, confirm your pharmacy, and save the clinic's daytime and after-hours numbers. Tell the team about allergies, previous anaesthesia issues and relevant health conditions.",
+  "stage": "assessment",
+  "topic": "preparation",
+  "content_class": "clinic_specific",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "NHS: IVF overview and complications",
+  "source_url": "https://www.nhs.uk/tests-and-treatments/ivf/",
+  "section_refs": "[1] · [2] · [3] · [5]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-11",
+  "pdf_number": 11,
+  "question": "Do I need to change medicines or supplements?",
+  "answer": "Give your clinic a list of prescriptions, over-the-counter medicines and supplements. The clinic and prescribing clinician can advise on what to continue or change and discuss preconception supplements if pregnancy is planned.",
+  "stage": "assessment",
+  "topic": "medicines",
+  "content_class": "clinic_specific",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "NHS: IVF overview and complications",
+  "source_url": "https://www.nhs.uk/tests-and-treatments/ivf/",
+  "section_refs": "[1] · [2] · [3] · [5]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-12",
+  "pdf_number": 12,
+  "question": "What about food, alcohol, smoking and exercise?",
+  "answer": "Ask for guidance for your treatment stage. Discuss smoking, alcohol, cannabis and other substances with the clinic, and check whether any exercise limits apply during stimulation or recovery.",
+  "stage": "stimulation",
+  "topic": "lifestyle",
+  "content_class": "education",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "NHS: IVF overview and complications",
+  "source_url": "https://www.nhs.uk/tests-and-treatments/ivf/",
+  "section_refs": "[1] · [2] · [3] · [5]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-13",
+  "pdf_number": 13,
+  "question": "How can I plan work, travel or childcare?",
+  "answer": "Keep room for monitoring and a retrieval date that can move. Ask which visits can be remote, how early you will know the procedure date, and what help or transport you should arrange.",
+  "stage": "stimulation",
+  "topic": "work and travel",
+  "content_class": "education",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "HHS Telehealth: Patient guide to hybrid care",
+  "source_url": "https://telehealth.hhs.gov/patients/how-can-i-use-hybrid-care",
+  "section_refs": "[1] · [2] · [3] · [5]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-14",
+  "pdf_number": 14,
+  "question": "What if my period starts or I am ill before starting?",
+  "answer": "Use the clinic's instructions for reporting cycle day one or illness. Ask the team to confirm when you should start your treatment if the situation differs from the plan.",
+  "stage": "stimulation",
+  "topic": "timing",
+  "content_class": "clinic_specific",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "NHS: IVF overview and complications",
+  "source_url": "https://www.nhs.uk/tests-and-treatments/ivf/",
+  "section_refs": "[1] · [2] · [3] · [5]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-15",
+  "pdf_number": 15,
+  "question": "Can monitoring be done closer to home?",
+  "answer": "Some clinics may accept outside scans or blood tests if they can receive and review them on time. Confirm who orders the tests, sends the results and communicates any changes.",
+  "stage": "stimulation",
+  "topic": "monitoring",
+  "content_class": "clinic_specific",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "HHS Telehealth: Patient guide to hybrid care",
+  "source_url": "https://telehealth.hhs.gov/patients/how-can-i-use-hybrid-care",
+  "section_refs": "[1] · [2] · [3] · [5]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-16",
+  "pdf_number": 16,
+  "question": "What should I ask at my first visit?",
+  "answer": "Ask why the proposed plan fits, what alternatives you have, what the quoted price includes, which decisions are time-sensitive, and who to contact when the clinic is closed.",
+  "stage": "find-clinic",
+  "topic": "consultation",
+  "content_class": "education",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "HHS Telehealth: Patient guide to hybrid care",
+  "source_url": "https://telehealth.hhs.gov/patients/how-can-i-use-hybrid-care",
+  "section_refs": "[1] · [2] · [3] · [5]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-17",
+  "pdf_number": 17,
+  "question": "Why do I need fertility injections?",
+  "answer": "Stimulation medicines help several follicles develop. Other medicines may help prevent premature ovulation or trigger final egg maturation. Your clinic specifies which medicines to take and when.",
+  "stage": "stimulation",
+  "topic": "medication",
+  "content_class": "education",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "NHS: IVF overview and complications",
+  "source_url": "https://www.nhs.uk/tests-and-treatments/ivf/",
+  "section_refs": "[1] · [2] · [5] · [6]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-18",
+  "pdf_number": 18,
+  "question": "I'm nervous about my first injection. Can someone show me?",
+  "answer": "Ask for the clinic's video for the exact pen or syringe you were given. It is understandable to feel nervous. You can pause or replay the demonstration and ask a nurse to walk through unclear steps.",
+  "stage": "first-injection",
+  "topic": "injections",
+  "content_class": "clinic_specific",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "HFEA: Egg freezing, use and storage",
+  "source_url": "https://www.hfea.gov.uk/treatments/fertility-preservation/egg-freezing/",
+  "section_refs": "[1] · [2] · [5] · [6]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-19",
+  "pdf_number": 19,
+  "question": "Where should I store my medication and supplies?",
+  "answer": "Check the instructions for the exact product and ask your pharmacy about storage, travel, expiry and sharps disposal. Ask the pharmacist about a cold-storage problem before using the medicine.",
+  "stage": "first-injection",
+  "topic": "storage of medicines",
+  "content_class": "clinic_specific",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "HFEA: Egg freezing, use and storage",
+  "source_url": "https://www.hfea.gov.uk/treatments/fertility-preservation/egg-freezing/",
+  "section_refs": "[1] · [2] · [5] · [6]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-20",
+  "pdf_number": 20,
+  "question": "Why do I need scans and blood tests during stimulation?",
+  "answer": "The team follows follicle development and, when indicated, hormone levels. These findings can change your medication plan, procedure timing or whether the cycle should continue.",
+  "stage": "stimulation",
+  "topic": "monitoring",
+  "content_class": "education",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "NHS: IVF overview and complications",
+  "source_url": "https://www.nhs.uk/tests-and-treatments/ivf/",
+  "section_refs": "[1] · [2] · [5] · [6]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-21",
+  "pdf_number": 21,
+  "question": "What if I miss, spill or give the wrong dose?",
+  "answer": "Contact the clinic promptly and report the medication, amount and time. For a late or missed trigger, call the clinic's time-sensitive number immediately. The team should confirm next steps before you repeat or adjust a dose.",
+  "stage": "first-injection",
+  "topic": "dose problems",
+  "content_class": "individual",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "NHS: IVF overview and complications",
+  "source_url": "https://www.nhs.uk/tests-and-treatments/ivf/",
+  "section_refs": "[1] · [2] · [5] · [6]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-22",
+  "pdf_number": 22,
+  "question": "What if two instructions show different doses?",
+  "answer": "Ask your care team to confirm the current order before the dose is due. Show both instructions and when you received them. If it is time-sensitive or outside office hours, use the clinic's designated phone route.",
+  "stage": "first-injection",
+  "topic": "conflicting instructions",
+  "content_class": "individual",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "NHS: IVF overview and complications",
+  "source_url": "https://www.nhs.uk/tests-and-treatments/ivf/",
+  "section_refs": "[1] · [2] · [5] · [6]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-23",
+  "pdf_number": 23,
+  "question": "What if I will run out of medication?",
+  "answer": "Contact your pharmacy and clinic early. Tell them what remains and when the next dose is due. Any substitution or change should be confirmed by the care team.",
+  "stage": "stimulation",
+  "topic": "medication",
+  "content_class": "clinic_specific",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "NHS: IVF overview and complications",
+  "source_url": "https://www.nhs.uk/tests-and-treatments/ivf/",
+  "section_refs": "[1] · [2] · [5] · [6]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-24",
+  "pdf_number": 24,
+  "question": "What side effects might I notice during stimulation?",
+  "answer": "Bloating, pelvic discomfort, headache, mood changes or soreness at injection sites can occur. Contact your clinic promptly for worsening symptoms, especially increasing abdominal swelling, pain or vomiting. See the urgent symptoms page.",
+  "stage": "stimulation",
+  "topic": "side effects",
+  "content_class": "education",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "HFEA: Risks of fertility treatment",
+  "source_url": "https://www.hfea.gov.uk/treatments/explore-all-treatments/risks-of-fertility-treatment",
+  "section_refs": "[1] · [2] · [5] · [6]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-25",
+  "pdf_number": 25,
+  "question": "Can a cycle be delayed or cancelled?",
+  "answer": "Yes. Response to medicines, safety concerns or other clinical factors can change the plan. Ask the clinician what happened, what options remain and which costs apply.",
+  "stage": "stimulation",
+  "topic": "cycle changes",
+  "content_class": "individual",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "NHS: IVF overview and complications",
+  "source_url": "https://www.nhs.uk/tests-and-treatments/ivf/",
+  "section_refs": "[1] · [2] · [5] · [6]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-26",
+  "pdf_number": 26,
+  "question": "What happens at retrieval?",
+  "answer": "A clinician usually uses ultrasound to guide a needle through the vaginal wall to collect fluid from follicles. The lab looks for eggs in that fluid. The clinic will explain sedation or anaesthesia and what you may feel afterward.",
+  "stage": "retrieval",
+  "topic": "procedure",
+  "content_class": "education",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "Guy's and St Thomas' NHS FT: Egg collection and preparation",
+  "source_url": "https://www.guysandstthomas.nhs.uk/health-information/ivf-treatment/step-2-egg-collection",
+  "section_refs": "[1] · [2] · [5] · [6]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-27",
+  "pdf_number": 27,
+  "question": "Do I need to fast or stop medicines before retrieval?",
+  "answer": "Ask for written fasting, medication and arrival instructions from your clinic or anaesthesia team. If you ate, drank or took something outside those instructions, tell them before the procedure.",
+  "stage": "retrieval",
+  "topic": "preparation",
+  "content_class": "clinic_specific",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "Guy's and St Thomas' NHS FT: Egg collection and preparation",
+  "source_url": "https://www.guysandstthomas.nhs.uk/health-information/ivf-treatment/step-2-egg-collection",
+  "section_refs": "[1] · [2] · [5] · [6]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-28",
+  "pdf_number": 28,
+  "question": "Do I need someone to take me home?",
+  "answer": "Confirm the clinic's escort rules in advance. If you receive sedation or anaesthesia, arrange a ride and follow the team's instructions on driving, work and supervision afterward.",
+  "stage": "retrieval",
+  "topic": "transport",
+  "content_class": "clinic_specific",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "Guy's and St Thomas' NHS FT: Egg collection and preparation",
+  "source_url": "https://www.guysandstthomas.nhs.uk/health-information/ivf-treatment/step-2-egg-collection",
+  "section_refs": "[1] · [2] · [5] · [6]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-29",
+  "pdf_number": 29,
+  "question": "Will every follicle contain a usable egg?",
+  "answer": "Follicle counts, eggs retrieved and mature eggs are different numbers. Ask the lab when it will report each count and what it means for freezing or fertilisation.",
+  "stage": "retrieval",
+  "topic": "results",
+  "content_class": "education",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "Guy's and St Thomas' NHS FT: Egg collection and preparation",
+  "source_url": "https://www.guysandstthomas.nhs.uk/health-information/ivf-treatment/step-2-egg-collection",
+  "section_refs": "[1] · [2] · [5] · [6]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-30",
+  "pdf_number": 30,
+  "question": "What is normal during recovery?",
+  "answer": "Mild cramping or light spotting can happen after collection. Follow your discharge instructions and contact the clinic if pain, bleeding or swelling increases, or if you develop fever or vomiting.",
+  "stage": "retrieval",
+  "topic": "recovery",
+  "content_class": "education",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "Guy's and St Thomas' NHS FT: Egg collection and preparation",
+  "source_url": "https://www.guysandstthomas.nhs.uk/health-information/ivf-treatment/step-2-egg-collection",
+  "section_refs": "[1] · [2] · [5] · [6]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-31",
+  "pdf_number": 31,
+  "question": "When can I return to work, exercise, sex or swimming?",
+  "answer": "The answer depends on how you feel, the procedure, the medicines used and your risk factors. Use your discharge plan and ask about strenuous activity, driving, swimming and sex before restarting.",
+  "stage": "retrieval",
+  "topic": "recovery",
+  "content_class": "clinic_specific",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "Guy's and St Thomas' NHS FT: Egg collection and preparation",
+  "source_url": "https://www.guysandstthomas.nhs.uk/health-information/ivf-treatment/step-2-egg-collection",
+  "section_refs": "[1] · [2] · [5] · [6]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-32",
+  "pdf_number": 32,
+  "question": "Can I take something for pain?",
+  "answer": "Use the options on your discharge sheet or check with the clinic or pharmacist for your specific case. Worsening or severe pain needs assessment.",
+  "stage": "retrieval",
+  "topic": "recovery",
+  "content_class": "clinic_specific",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "Guy's and St Thomas' NHS FT: Egg collection and preparation",
+  "source_url": "https://www.guysandstthomas.nhs.uk/health-information/ivf-treatment/step-2-egg-collection",
+  "section_refs": "[1] · [2] · [5] · [6]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-33",
+  "pdf_number": 33,
+  "question": "Can egg retrieval affect my periods or future fertility?",
+  "answer": "The treatment can temporarily change cycle timing. Stimulation helps a group of follicles develop in that cycle. Ask your specialist about expected recovery, concerns about egg reserve or menopause, and the effect of any underlying condition.",
+  "stage": "retrieval",
+  "topic": "recovery",
+  "content_class": "education",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "HFEA: Risks of fertility treatment",
+  "source_url": "https://www.hfea.gov.uk/treatments/explore-all-treatments/risks-of-fertility-treatment",
+  "section_refs": "[1] · [2] · [5] · [6]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-34",
+  "pdf_number": 34,
+  "question": "What is OHSS?",
+  "answer": "Ovarian hyperstimulation syndrome is a reaction to fertility stimulation. It can involve enlarged ovaries and fluid shifts. Symptoms may arise after the trigger or egg collection and can worsen if pregnancy occurs.",
+  "stage": "retrieval",
+  "topic": "urgent help",
+  "content_class": "education",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "RCOG: Ovarian hyperstimulation syndrome",
+  "source_url": "https://www.rcog.org.uk/for-the-public/browse-our-patient-information/ovarian-hyperstimulation-syndrome/",
+  "section_refs": "[2] · [5] · [6] · [7]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-35",
+  "pdf_number": 35,
+  "question": "What should I call the clinic about today?",
+  "answer": "Call promptly for increasing abdominal swelling or pain, persistent nausea or vomiting, fever or increasing bleeding after retrieval. Use the clinic's urgent contact instructions. If you cannot reach them promptly, seek urgent medical assessment.",
+  "stage": "retrieval",
+  "topic": "urgent help",
+  "content_class": "clinic_specific",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "RCOG: Ovarian hyperstimulation syndrome",
+  "source_url": "https://www.rcog.org.uk/for-the-public/browse-our-patient-information/ovarian-hyperstimulation-syndrome/",
+  "section_refs": "[2] · [5] · [6] · [7]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-36",
+  "pdf_number": 36,
+  "question": "When should I seek emergency care?",
+  "answer": "Seek emergency care now for breathing difficulty, chest pain, fainting, heavy bleeding, severe abdominal pain or markedly reduced urination with worsening swelling. Call your local emergency number or go to emergency care. Use a phone or in-person route for urgent help.",
+  "stage": "retrieval",
+  "topic": "urgent help",
+  "content_class": "education",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "RCOG: Ovarian hyperstimulation syndrome",
+  "source_url": "https://www.rcog.org.uk/for-the-public/browse-our-patient-information/ovarian-hyperstimulation-syndrome/",
+  "section_refs": "[2] · [5] · [6] · [7]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-38",
+  "pdf_number": 38,
+  "question": "What if I cannot reach my clinic after hours?",
+  "answer": "Use its written out-of-hours number or local urgent care pathway. If symptoms are severe, call local emergency services or seek emergency care immediately.",
+  "stage": "retrieval",
+  "topic": "urgent help",
+  "content_class": "clinic_specific",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "RCOG: Ovarian hyperstimulation syndrome",
+  "source_url": "https://www.rcog.org.uk/for-the-public/browse-our-patient-information/ovarian-hyperstimulation-syndrome/",
+  "section_refs": "[2] · [5] · [6] · [7]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-39",
+  "pdf_number": 39,
+  "question": "What should I tell the person who answers?",
+  "answer": "Say where you are in the cycle, when treatment or retrieval occurred, which medicines you took, when symptoms started and how they changed. Have your clinic details and relevant instructions ready if available.",
+  "stage": "retrieval",
+  "topic": "urgent help",
+  "content_class": "education",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "RCOG: Ovarian hyperstimulation syndrome",
+  "source_url": "https://www.rcog.org.uk/for-the-public/browse-our-patient-information/ovarian-hyperstimulation-syndrome/",
+  "section_refs": "[2] · [5] · [6] · [7]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-57",
+  "pdf_number": 57,
+  "question": "Who might consider egg freezing?",
+  "answer": "People may consider it before treatment that can impair fertility, or to preserve an option for later family building. If another medical treatment is imminent, ask for a coordinated fertility preservation referral promptly.",
+  "stage": "explore",
+  "topic": "basics",
+  "content_class": "education",
+  "pathways": [
+   "social-egg-freezing"
+  ],
+  "source_title": "ASRM ReproductiveFacts: Planned egg freezing",
+  "source_url": "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/can-i-freeze-my-eggs-to-use-later-if-im-not-sick/",
+  "section_refs": "[2] · [3] · [11] · [12]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-58",
+  "pdf_number": 58,
+  "question": "When is the best age to freeze?",
+  "answer": "Outcomes tend to be better when eggs are frozen at a younger age. The decision also depends on personal plans, expected response, costs, risks and how likely you are to use the eggs.",
+  "stage": "explore",
+  "topic": "age",
+  "content_class": "education",
+  "pathways": [
+   "social-egg-freezing"
+  ],
+  "source_title": "ASRM: Evidence on planned oocyte cryopreservation",
+  "source_url": "https://www.asrm.org/practice-guidance/practice-committee-documents/evidence-based-outcomes-after-oocyte-cryopreservation-for-donor-oocyte-in-vitro-fertilization-and-planned-oocyte-cryopreservation-a-guideline-2021/",
+  "section_refs": "[2] · [3] · [11] · [12]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-59",
+  "pdf_number": 59,
+  "question": "How many eggs should I freeze?",
+  "answer": "There is no universal number. Ask for an estimate that uses your age at collection, the expected number of mature eggs, lab experience, desired family size and the uncertainty around live birth.",
+  "stage": "assessment",
+  "topic": "cycles",
+  "content_class": "individual",
+  "pathways": [
+   "social-egg-freezing"
+  ],
+  "source_title": "ASRM: Evidence on planned oocyte cryopreservation",
+  "source_url": "https://www.asrm.org/practice-guidance/practice-committee-documents/evidence-based-outcomes-after-oocyte-cryopreservation-for-donor-oocyte-in-vitro-fertilization-and-planned-oocyte-cryopreservation-a-guideline-2021/",
+  "section_refs": "[2] · [3] · [11] · [12]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-60",
+  "pdf_number": 60,
+  "question": "Could I need more than one retrieval?",
+  "answer": "Possibly. Your specialist can explain the expected range of mature eggs in one cycle and how the first retrieval result might change the value of another cycle.",
+  "stage": "assessment",
+  "topic": "cycles",
+  "content_class": "individual",
+  "pathways": [
+   "social-egg-freezing"
+  ],
+  "source_title": "ASRM: Evidence on planned oocyte cryopreservation",
+  "source_url": "https://www.asrm.org/practice-guidance/practice-committee-documents/evidence-based-outcomes-after-oocyte-cryopreservation-for-donor-oocyte-in-vitro-fertilization-and-planned-oocyte-cryopreservation-a-guideline-2021/",
+  "section_refs": "[2] · [3] · [11] · [12]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-61",
+  "pdf_number": 61,
+  "question": "Will I need sperm to freeze eggs?",
+  "answer": "Eggs can be frozen unfertilised. Creating embryos before freezing requires sperm and involves separate decisions about consent and future use.",
+  "stage": "explore",
+  "topic": "basics",
+  "content_class": "education",
+  "pathways": [
+   "social-egg-freezing"
+  ],
+  "source_title": "HFEA: Egg freezing, use and storage",
+  "source_url": "https://www.hfea.gov.uk/treatments/fertility-preservation/egg-freezing/",
+  "section_refs": "[2] · [3] · [11] · [12]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-62",
+  "pdf_number": 62,
+  "question": "What does the clinic freeze and how will I know what is stored?",
+  "answer": "Clinics generally freeze suitable mature eggs, often using rapid freezing called vitrification. Ask for the final inventory, storage location and a copy of your consent and fee agreement.",
+  "stage": "retrieval",
+  "topic": "results",
+  "content_class": "clinic_specific",
+  "pathways": [
+   "social-egg-freezing"
+  ],
+  "source_title": "HFEA: Egg freezing, use and storage",
+  "source_url": "https://www.hfea.gov.uk/treatments/fertility-preservation/egg-freezing/",
+  "section_refs": "[2] · [3] · [11] · [12]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-63",
+  "pdf_number": 63,
+  "question": "How long can I store my eggs?",
+  "answer": "Storage periods, renewals and consent rules depend on the jurisdiction and your clinic agreement. Ask about deadlines, annual charges, contact updates and what happens if you move or cannot be reached.",
+  "stage": "storage",
+  "topic": "storage limits",
+  "content_class": "clinic_specific",
+  "pathways": [
+   "social-egg-freezing"
+  ],
+  "source_title": "HFEA: Egg freezing, use and storage",
+  "source_url": "https://www.hfea.gov.uk/treatments/fertility-preservation/egg-freezing/",
+  "section_refs": "[2] · [3] · [11] · [12]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-64",
+  "pdf_number": 64,
+  "question": "Does egg freezing guarantee a baby later?",
+  "answer": "No. Some eggs may not survive warming, fertilise or develop into transferable embryos. A transfer also may not result in a live birth. Ask your clinic to explain these steps when discussing your chances.",
+  "stage": "explore",
+  "topic": "expectations",
+  "content_class": "education",
+  "pathways": [
+   "social-egg-freezing"
+  ],
+  "source_title": "ASRM ReproductiveFacts: Planned egg freezing",
+  "source_url": "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/can-i-freeze-my-eggs-to-use-later-if-im-not-sick/",
+  "section_refs": "[2] · [3] · [11] · [12]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-65",
+  "pdf_number": 65,
+  "question": "When should I use my frozen eggs?",
+  "answer": "There is no single best time. Age at freezing strongly affects the egg-related chances of success. Your current health, age and family plans matter when deciding whether and when to try pregnancy. Ask the clinic to compare your options.",
+  "stage": "using-later",
+  "topic": "decision",
+  "content_class": "individual",
+  "pathways": [
+   "social-egg-freezing"
+  ],
+  "source_title": "ASRM ReproductiveFacts: Planned egg freezing",
+  "source_url": "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/can-i-freeze-my-eggs-to-use-later-if-im-not-sick/",
+  "section_refs": "[2] · [10] · [11] · [12] · [13]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-66",
+  "pdf_number": 66,
+  "question": "Can I try to conceive naturally first?",
+  "answer": "That can be an option for some people. Ask your fertility specialist how your current age, medical history and family goals affect the timing of an evaluation and when it might make sense to use stored eggs.",
+  "stage": "using-later",
+  "topic": "decision",
+  "content_class": "individual",
+  "pathways": [
+   "social-egg-freezing"
+  ],
+  "source_title": "ASRM ReproductiveFacts: Planned egg freezing",
+  "source_url": "https://www.reproductivefacts.org/news-and-publications/fact-sheets-and-infographics/can-i-freeze-my-eggs-to-use-later-if-im-not-sick/",
+  "section_refs": "[2] · [10] · [11] · [12] · [13]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-67",
+  "pdf_number": 67,
+  "question": "What happens when I decide to use my eggs?",
+  "answer": "The lab warms eggs, then usually uses ICSI to fertilise surviving mature eggs. Embryos that develop may be considered for transfer or freezing. The clinic also plans any tests or medication needed for transfer.",
+  "stage": "using-later",
+  "topic": "warming and IVF",
+  "content_class": "education",
+  "pathways": [
+   "social-egg-freezing"
+  ],
+  "source_title": "HFEA: Egg freezing, use and storage",
+  "source_url": "https://www.hfea.gov.uk/treatments/fertility-preservation/egg-freezing/",
+  "section_refs": "[2] · [10] · [11] · [12] · [13]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-68",
+  "pdf_number": 68,
+  "question": "Do eggs lose quality while stored?",
+  "answer": "Age at freezing is a major predictor of outcomes. Evidence about very long storage is limited. Ask your clinic about its experience with your freezing method and how it monitors and documents storage.",
+  "stage": "storage",
+  "topic": "storage",
+  "content_class": "education",
+  "pathways": [
+   "social-egg-freezing"
+  ],
+  "source_title": "ASRM: Evidence on planned oocyte cryopreservation",
+  "source_url": "https://www.asrm.org/practice-guidance/practice-committee-documents/evidence-based-outcomes-after-oocyte-cryopreservation-for-donor-oocyte-in-vitro-fertilization-and-planned-oocyte-cryopreservation-a-guideline-2021/",
+  "section_refs": "[2] · [10] · [11] · [12] · [13]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-69",
+  "pdf_number": 69,
+  "question": "Can I move my eggs to a different clinic?",
+  "answer": "Ask both clinics about acceptance criteria, records, consents, shipping arrangements, cost and timing. International transport can add jurisdiction-specific requirements.",
+  "stage": "storage",
+  "topic": "transfer",
+  "content_class": "clinic_specific",
+  "pathways": [
+   "social-egg-freezing"
+  ],
+  "source_title": "HFEA: Egg freezing, use and storage",
+  "source_url": "https://www.hfea.gov.uk/treatments/fertility-preservation/egg-freezing/",
+  "section_refs": "[2] · [10] · [11] · [12] · [13]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-70",
+  "pdf_number": 70,
+  "question": "How do I compare success rates?",
+  "answer": "Compare live birth for similar patients and the same denominator. Per transfer and per intended retrieval answer different questions. Ask which transfers and follow-up period a cumulative figure includes.",
+  "stage": "using-later",
+  "topic": "success rates",
+  "content_class": "education",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "CDC: How to interpret ART clinic success rates",
+  "source_url": "https://www.cdc.gov/art/success-rates/interpret.html",
+  "section_refs": "[2] · [10] · [11] · [12] · [13]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-71",
+  "pdf_number": 71,
+  "question": "What is included in the cost and what might be extra?",
+  "answer": "Request an itemised quote covering consultations, monitoring, medicines, retrieval, anaesthesia, lab procedures, testing, freezing, annual storage, warming and transfer. Ask what happens to fees if a cycle is cancelled.",
+  "stage": "find-clinic",
+  "topic": "costs",
+  "content_class": "education",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "HFEA: Egg freezing, use and storage",
+  "source_url": "https://www.hfea.gov.uk/treatments/fertility-preservation/egg-freezing/",
+  "section_refs": "[2] · [10] · [11] · [12] · [13]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-72",
+  "pdf_number": 72,
+  "question": "Will insurance or employer benefits pay for it?",
+  "answer": "Coverage varies by location, plan and indication. Ask the payer and clinic for written confirmation of eligible services, network rules, approval requirements, limits and expected out-of-pocket costs.",
+  "stage": "find-clinic",
+  "topic": "costs",
+  "content_class": "clinic_specific",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "HFEA: Egg freezing, use and storage",
+  "source_url": "https://www.hfea.gov.uk/treatments/fertility-preservation/egg-freezing/",
+  "section_refs": "[2] · [10] · [11] · [12] · [13]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-73",
+  "pdf_number": 73,
+  "question": "What happens to unused eggs or embryos?",
+  "answer": "Ask about continued storage and any options for disposition, donation or research where available. Review consent and local rules for death, incapacity or a change in circumstances.",
+  "stage": "storage",
+  "topic": "consent",
+  "content_class": "clinic_specific",
+  "pathways": [
+   "social-egg-freezing"
+  ],
+  "source_title": "HFEA: Egg freezing, use and storage",
+  "source_url": "https://www.hfea.gov.uk/treatments/fertility-preservation/egg-freezing/",
+  "section_refs": "[2] · [10] · [11] · [12] · [13]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-74",
+  "pdf_number": 74,
+  "question": "Can I ask for my own doctor?",
+  "answer": "If your clinic offers secure messaging, you can request the clinician treating you. Ask how the team handles absences, which staff can respond and which questions go directly to the doctor.",
+  "stage": "find-clinic",
+  "topic": "care team",
+  "content_class": "clinic_specific",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "HHS Telehealth: Patient guide to hybrid care",
+  "source_url": "https://telehealth.hhs.gov/patients/how-can-i-use-hybrid-care",
+  "section_refs": "[1] · [5] · [10] · [14]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-75",
+  "pdf_number": 75,
+  "question": "Can I use WhatsApp or a text message?",
+  "answer": "Use the channel your clinic identifies for treatment questions. Ask what can be sent there, who can see the message, how quickly to expect a reply and what to use for urgent help.",
+  "stage": "find-clinic",
+  "topic": "care team",
+  "content_class": "clinic_specific",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "HHS Telehealth: Patient guide to hybrid care",
+  "source_url": "https://telehealth.hhs.gov/patients/how-can-i-use-hybrid-care",
+  "section_refs": "[1] · [5] · [10] · [14]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-76",
+  "pdf_number": 76,
+  "question": "How do I know whether a person has reviewed my question?",
+  "answer": "Look for the sender's name or role and the message status. A received or assigned request can still be awaiting clinical review. Ask how you will be notified when the team responds.",
+  "stage": "retrieval",
+  "topic": "care team",
+  "content_class": "education",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "HHS Telehealth: Patient guide to hybrid care",
+  "source_url": "https://telehealth.hhs.gov/patients/how-can-i-use-hybrid-care",
+  "section_refs": "[1] · [5] · [10] · [14]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-77",
+  "pdf_number": 77,
+  "question": "What can an AI guide safely show me?",
+  "answer": "It can explain general terms and show a clinic-approved guide, such as the correct pen demonstration when the clinic has verified the device. Your team confirms new doses, interprets results and handles changes to treatment.",
+  "stage": "first-injection",
+  "topic": "AI guide",
+  "content_class": "education",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "HHS Telehealth: Patient guide to hybrid care",
+  "source_url": "https://telehealth.hhs.gov/patients/how-can-i-use-hybrid-care",
+  "section_refs": "[1] · [5] · [10] · [14]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-78",
+  "pdf_number": 78,
+  "question": "What should I say if my instructions changed?",
+  "answer": "Explain what changed, who told you, when you received it and which part conflicts with the plan you can see. Ask for the current instructions to be confirmed by the team.",
+  "stage": "first-injection",
+  "topic": "conflicting instructions",
+  "content_class": "individual",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "HHS Telehealth: Patient guide to hybrid care",
+  "source_url": "https://telehealth.hhs.gov/patients/how-can-i-use-hybrid-care",
+  "section_refs": "[1] · [5] · [10] · [14]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ },
+ {
+  "key": "faq-79",
+  "pdf_number": 79,
+  "question": "Can my partner see my schedule, results or messages?",
+  "answer": "Ask the clinic about authorised access and which information can be shared. You can ask how to grant, limit or revoke permission.",
+  "stage": "first-injection",
+  "topic": "support person",
+  "content_class": "clinic_specific",
+  "pathways": [
+   "social-egg-freezing",
+   "ivf"
+  ],
+  "source_title": "HHS Telehealth: Patient guide to hybrid care",
+  "source_url": "https://telehealth.hhs.gov/patients/how-can-i-use-hybrid-care",
+  "section_refs": "[1] · [5] · [10] · [14]",
+  "review_status": "in_review",
+  "version": 1,
+  "effective_date": "2026-11",
+  "inventory": "MYOS_IVF_and_Egg_Freezing_Patient_FAQ.pdf (MYOS patient guide, November 2026)"
+ }
+]

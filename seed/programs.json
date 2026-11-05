@@ -330,28 +330,40 @@
   {
     "workspace": "myos-fertility-sf",
     "slug": "egg-freezing",
-    "name": "Egg freezing",
+    "name": "Social egg freezing",
     "twin": "dr-avery",
     "stages": [
       [
-        "consultation",
-        "Consultation and tests"
+        "explore",
+        "Explore egg freezing"
+      ],
+      [
+        "find-clinic",
+        "Find a clinic and prepare"
+      ],
+      [
+        "assessment",
+        "Assessment and planning"
       ],
       [
         "stimulation",
-        "Stimulation"
+        "Stimulation and monitoring"
+      ],
+      [
+        "first-injection",
+        "First injection"
       ],
       [
         "retrieval",
-        "Egg collection"
+        "Retrieval and recovery"
       ],
       [
-        "freezing-and-storage",
-        "Freezing and storage"
+        "storage",
+        "Storage and follow-up"
       ],
       [
-        "using-your-eggs",
-        "Using your eggs later"
+        "using-later",
+        "Using frozen eggs later"
       ]
     ],
     "items": [
@@ -360,7 +372,7 @@
         "title": "What egg freezing involves",
         "body": "Egg freezing uses the same first steps as IVF: medication to mature several eggs, monitoring scans and egg collection. The eggs are then frozen by vitrification and stored for later use.",
         "kind": "faq",
-        "stage": "consultation",
+        "stage": "explore",
         "source": "hfea_eggs",
         "source_type": "public_guidance",
         "suggested_questions": [
@@ -372,7 +384,7 @@
         "title": "Age and success",
         "body": "The chance of a future pregnancy from frozen eggs is higher when eggs are frozen at a younger age. Freezing eggs does not guarantee a future pregnancy.",
         "kind": "faq",
-        "stage": "consultation",
+        "stage": "explore",
         "source": "rf_eggs",
         "source_type": "public_guidance",
         "suggested_questions": [
@@ -405,7 +417,7 @@
         "title": "Freezing and storage",
         "body": "Mature eggs are frozen quickly by vitrification and stored in liquid nitrogen. Your clinic explains storage consent, renewal and costs.",
         "kind": "faq",
-        "stage": "freezing-and-storage",
+        "stage": "storage",
         "source": "hfea_eggs",
         "source_type": "public_guidance",
         "suggested_questions": [
@@ -417,15 +429,54 @@
         "title": "Using your eggs later",
         "body": "When you want to use them, the eggs are thawed, fertilised in the laboratory and an embryo is transferred, as in IVF. Not every egg survives thawing.",
         "kind": "faq",
-        "stage": "using-your-eggs",
+        "stage": "using-later",
         "source": "rf_eggs",
+        "source_type": "public_guidance",
+        "suggested_questions": []
+      },
+      {
+        "key": "fsh-pen",
+        "title": "FSH pen",
+        "body": "What it does\nFSH medication helps several follicles grow at the same time.\n\nWhat to have ready\nThe pen, a new pen needle, an alcohol swab, your sharps container and your treatment plan.\n\nYour clinic's video\nShown below when your clinic adds it.\n\nManufacturer instructions\nUse the leaflet in the box. It is the reference for your exact device.\n\nStorage\nFollow the storage instructions in the box; many pens are kept in the fridge before first use.\n\nWhen to call your team\nIf the pen looks damaged, the liquid looks unusual, or you are not sure of your dose.",
+        "kind": "patient_instruction",
+        "stage": "first-injection",
+        "source": "hfea_drugs",
         "source_type": "public_guidance",
         "suggested_questions": []
       }
     ],
     "status": "published",
     "position": 2,
-    "description": "What to expect when freezing your eggs."
+    "description": "Elective egg freezing, step by step: for anyone who wants to keep the option of using their own eggs later.",
+    "red_flags": [
+      [
+        "Severe abdominal pain or bloating",
+        [
+          "severe abdominal pain",
+          "severe bloating",
+          "severe pain"
+        ],
+        "Call your clinic's nurse line now. If you cannot reach them and symptoms are severe, call emergency services.",
+        "urgent"
+      ],
+      [
+        "Shortness of breath",
+        [
+          "short of breath",
+          "shortness of breath",
+          "can't breathe",
+          "cannot breathe"
+        ],
+        "Call emergency services now.",
+        "emergency"
+      ]
+    ],
+    "faq_inventory": "egg_freezing_faq.json",
+    "suggested_questions": [
+      "What should I check before renewing storage?",
+      "Where is my clinic's guide for my device?",
+      "How many eggs should I freeze?"
+    ]
   },
   {
     "workspace": "burjeel-orthopaedics",

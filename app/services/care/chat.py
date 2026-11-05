@@ -86,6 +86,15 @@ FALLBACK_INTRO = guidance.FALLBACK_LEAD  # plain, patient-facing; never mentions
 LLM_TIMEOUT_S = float(__import__("os").getenv("CARE_LLM_TIMEOUT_S") or 5)
 
 
+def _chosen_stage(db: DBSession, program: CareProgram, stage: Optional[str]) -> Optional[str]:
+    """A stage the patient picked in Ask MYOS, only if it is a published stage of this program."""
+    if not stage:
+        return None
+    from app.database.models import CareCourse
+    ok = db.query(CareCourse.id).filter_by(program_id=program.id, slug=stage, status="published").first()
+    return stage if ok else None
+
+
 def source_block(chunks: List[Dict[str, Any]]) -> str:
     """Delimit each approved passage as untrusted data. Delimiter look-alikes inside
     the passage are neutralised so a document cannot close its own fence."""
@@ -200,7 +209,7 @@ def _context(clinic: Clinic, program: CareProgram, c: Consultation) -> Dict[str,
 
 
 async def send(db: DBSession, user: User, clinic: Clinic, access: ProgramAccess, text: str,
-               mode: str = "text", request_id: Optional[str] = None) -> Dict[str, Any]:
+               mode: str = "text", request_id: Optional[str] = None, stage: Optional[str] = None) -> Dict[str, Any]:
     text = (text or "").strip()
     if not text:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Message is empty")
@@ -245,7 +254,7 @@ async def send(db: DBSession, user: User, clinic: Clinic, access: ProgramAccess,
         kw = dict(program_id=program.id, clinic_id=clinic.id, visible_course_ids=courses,
                   audience="caregiver" if access.role in ("caregiver", "supporter") else
                   ("staff" if access.role == "staff" else "patient"), query=text,
-                  stage=patient_stage(db, user, program))
+                  stage=_chosen_stage(db, program, stage) or patient_stage(db, user, program))
         chunks = content.retrieve(db, lineage_ids=lineages, **kw) if lineages else []
         # a device guide first, then any approved source (e.g. the video transcript)
         if lineages:

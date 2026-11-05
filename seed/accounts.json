@@ -93,5 +93,48 @@
     "staff_of": [
       "myos-fertility-sf"
     ]
+  },
+  {
+    "key": "nora",
+    "email": "nora.demo@myos.test",
+    "username": "nora",
+    "first": "Nora",
+    "last": "Example (synthetic demo patient)",
+    "age": 34,
+    "role": "subscriber",
+    "synthetic": true,
+    "programs": [
+      [
+        "myos-fertility-sf",
+        "egg-freezing",
+        "patient",
+        "first-injection"
+      ]
+    ],
+    "device": {
+      "program": "egg-freezing",
+      "medication": "FSH stimulation medication, demo setup",
+      "device": "FSH pen",
+      "guide": "fsh-pen",
+      "verified_by": "MYOS demo configuration (synthetic patient, not a clinic verification)"
+    }
+  },
+  {
+    "key": "leo",
+    "email": "leo.demo@myos.test",
+    "username": "leo",
+    "first": "Leo",
+    "last": "Example (synthetic demo partner)",
+    "role": "subscriber",
+    "synthetic": true,
+    "support_for": "nora",
+    "programs": [
+      [
+        "myos-fertility-sf",
+        "egg-freezing",
+        "partner",
+        null
+      ]
+    ]
   }
 ]

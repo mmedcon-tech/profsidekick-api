@@ -259,6 +259,9 @@ def _terms(q: str) -> List[str]:
     return _query_terms(q)
 
 
+STAGE_BOOST = 0.08
+
+
 def retrieve(db: DBSession, *, program_id, clinic_id, visible_course_ids: Set, audience: str, query: str,
              top_k: int = 4, lineage_ids: Optional[List] = None, stage: Optional[str] = None) -> List[Dict[str, Any]]:
     if not (query or "").strip():
@@ -308,6 +311,10 @@ def retrieve(db: DBSession, *, program_id, clinic_id, visible_course_ids: Set, a
             vec_s = pool[ch.id][2]
             score = max(vec_s, score) + 0.1 * min(vec_s, score)
         pool[ch.id] = (ch, it, score)
+    if stage:  # material filed under the patient's current stage ranks a little higher (never admits anything new)
+        sc = db.query(CareCourse.id).filter_by(program_id=program_id, slug=stage).first()
+        if sc:
+            pool = {k: (ch, it, s + STAGE_BOOST if it.course_id == sc[0] and s >= 0.3 else s) for k, (ch, it, s) in pool.items()}
     ranked = []
     for r in sorted(pool.values(), key=lambda x: x[2], reverse=True):
         if r[2] < 0.3:

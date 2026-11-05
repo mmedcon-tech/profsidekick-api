@@ -16,7 +16,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session as DBSession
 
-from app.database.models import (CareContentItem, CareCourse, CareEntitlement, CareHandoff, CareHandoffEvent, CareLesson,
+from app.database.models import (CareContentItem, CareCourse, CareDeviceAssignment, CareEntitlement, CareHandoff, CareHandoffEvent, CareLesson,
                                  CareProgram, CareProgramMembership, CareSupportGrant, Clinic, ClinicStaff, DoctorPersona,
                                  RedFlagRule, User, UserMemory)
 from app.services.care import content, integrity
@@ -56,6 +56,25 @@ def _user(db, spec, now, password_hash):
 
 def _pin_in_review(item: CareContentItem, now):
     item.content_sha256 = item.approved_sha256 = integrity.content_hash(item)
+
+
+def faq_items(spec: dict, sources: dict) -> list:
+    """Entries from a pathway's FAQ inventory (seed/<file>.json), imported as in-review FAQ items.
+
+    The inventory is the single canonical record (question, answer, stage, topic, source, review status,
+    version, effective date). Entries shared with IVF carry both pathways, so an edit to the inventory
+    updates every pathway that seeds from it. Nothing is marked approved here.
+    """
+    if not spec.get("faq_inventory"):
+        return []
+    out = []
+    for e in _load(spec["faq_inventory"]):
+        skey = "inv:" + e["source_url"]
+        sources.setdefault(skey, {"title": e["source_title"], "url": e["source_url"]})
+        out.append({"key": e["key"], "title": e["question"], "body": e["answer"], "kind": "faq", "stage": e["stage"],
+                    "source": skey, "source_type": "public_guidance", "suggested_questions": [],
+                    "status": "in_review" if e.get("review_status") != "draft" else "draft"})
+    return out
 
 
 def seed(db: DBSession, now: datetime | None = None) -> dict:
@@ -156,7 +175,10 @@ def seed(db: DBSession, now: datetime | None = None) -> dict:
             course.title, course.position, course.status, course.updated_at = ctitle, pos, "published", now
             db.flush()
             courses[cslug] = course
-        for it in spec["items"]:
+        for cr in db.query(CareCourse).filter(CareCourse.program_id == prog.id,
+                                              CareCourse.slug.notin_([c for c, _ in spec["stages"]])).all():
+            cr.status, cr.updated_at = "draft", now  # stage dropped from the pathway: hide it, keep its history
+        for it in list(spec["items"]) + faq_items(spec, sources):
             key = f"{spec['slug']}:{it['key']}"
             row = (db.query(CareContentItem).filter(CareContentItem.seed_key == key)
                    .order_by(CareContentItem.version.desc()).first())
@@ -215,6 +237,22 @@ def seed(db: DBSession, now: datetime | None = None) -> dict:
                     db.add(CareSupportGrant(id=uuid.uuid4(), clinic_id=clinics[wslug].id, program_id=prog.id,
                                             patient_user_id=patient.id, supporter_user_id=u.id, entitlement_id=e.id,
                                             scopes=["education", "videos"], created_at=now))
+    db.flush()
+
+    for s in _load("accounts.json"):
+        dv = s.get("device")
+        if not dv:
+            continue
+        prog, u = programs[(s["programs"][0][0], dv["program"])], users[s["key"]]
+        guide = (db.query(CareContentItem).filter(CareContentItem.seed_key == f"{dv['program']}:{dv['guide']}")
+                 .order_by(CareContentItem.version.desc()).first())
+        row = db.query(CareDeviceAssignment).filter_by(program_id=prog.id, user_id=u.id, revoked_at=None).first()
+        if not row:
+            row = CareDeviceAssignment(id=uuid.uuid4(), clinic_id=prog.clinic_ref_id, program_id=prog.id, user_id=u.id,
+                                       source="assignment", is_demo=True, created_at=now)
+            db.add(row)
+        row.medication, row.device, row.verified_by = dv["medication"], dv["device"], dv["verified_by"]
+        row.guide_lineage_id = guide.lineage_id if guide else None
     db.flush()
 
     for r in _load("requests.json"):

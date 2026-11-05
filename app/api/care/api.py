@@ -266,6 +266,7 @@ def get_consultation(clinic_slug: str, program_slug: str, db: Session = Depends(
 class SendBody(BaseModel):
     content: str = Field(..., max_length=4000)
     mode: str = "text"
+    stage: Optional[str] = Field(None, max_length=80)  # the stage the patient picked in Ask MYOS (validated)
 
 
 @router.post("/p/{clinic_slug}/{program_slug}/messages")
@@ -274,7 +275,7 @@ async def send_message(clinic_slug: str, program_slug: str, body: SendBody, requ
     clinic, a = _ctx(db, user, clinic_slug, program_slug)
     a.require("chat_history")
     return await chat.send(db, user, clinic, a, body.content, body.mode if body.mode in ("text", "voice", "avatar") else "text",
-                           request_id=getattr(request.state, "request_id", None))
+                           request_id=getattr(request.state, "request_id", None), stage=body.stage)
 
 
 @router.delete("/p/{clinic_slug}/{program_slug}/messages", status_code=204)
